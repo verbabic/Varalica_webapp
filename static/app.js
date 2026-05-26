@@ -1,0 +1,1092 @@
+const setupView = document.querySelector("#setupView");
+const roomView = document.querySelector("#roomView");
+const playerNameInput = document.querySelector("#playerName");
+const roomCodeInput = document.querySelector("#roomCode");
+const createRoomButton = document.querySelector("#createRoomButton");
+const joinRoomButton = document.querySelector("#joinRoomButton");
+const copyCodeButton = document.querySelector("#copyCodeButton");
+const copyLinkButton = document.querySelector("#copyLinkButton");
+const showQrButton = document.querySelector("#showQrButton");
+const resetRoomButton = document.querySelector("#resetRoomButton");
+const leaveRoomButton = document.querySelector("#leaveRoomButton");
+const connectionStatus = document.querySelector("#connectionStatus");
+const roomCodeDisplay = document.querySelector("#roomCodeDisplay");
+const roundDisplay = document.querySelector("#roundDisplay");
+const phaseContent = document.querySelector("#phaseContent");
+const playersList = document.querySelector("#playersList");
+const playerCountBadge = document.querySelector("#playerCountBadge");
+const errorBox = document.querySelector("#errorBox");
+const inviteNotice = document.querySelector("#inviteNotice");
+const avatarGrid = document.querySelector("#avatarGrid");
+const clearAvatarButton = document.querySelector("#clearAvatarButton");
+const qrPanel = document.querySelector("#qrPanel");
+const hostPanel = document.querySelector("#hostPanel");
+const hostPanelActions = document.querySelector("#hostPanelActions");
+const rulesButton = document.querySelector("#rulesButton");
+const rulesModal = document.querySelector("#rulesModal");
+const leaveModal = document.querySelector("#leaveModal");
+const cancelLeaveButton = document.querySelector("#cancelLeaveButton");
+const confirmLeaveButton = document.querySelector("#confirmLeaveButton");
+const toastContainer = document.querySelector("#toastContainer");
+
+const SESSION_MAX_AGE_MS = 30 * 60 * 1000;
+const AVATARS = [
+  "😀", "😎", "🤓", "🥳", "😇", "🤠", "🐵", "🦊", "🐼", "🐸",
+  "🐱", "🐶", "🦁", "🐯", "🦄", "🐧", "🐙", "🦖", "👽", "🤖",
+  "🧙‍♂️", "🧙‍♀️", "🦸‍♂️", "🦸‍♀️", "🕵️‍♂️", "🕵️‍♀️", "👑", "🎭", "🎲", "🔥",
+];
+
+expireOldSession();
+
+let roomState = null;
+let socket = null;
+let localRoomCode = localStorage.getItem("varalica_room_code") || "";
+let localPlayerId = localStorage.getItem("varalica_player_id") || "";
+let selectedAvatar = localStorage.getItem("varalica_avatar") || "";
+let selectedCategory = localStorage.getItem("varalica_selected_category") || "Sve kategorije";
+let selectedDiscussionSeconds = Number(localStorage.getItem("varalica_discussion_seconds") || 180);
+let hasRevealedPrivateCard = false;
+let lastRoomState = "";
+let revealCountdownActive = false;
+let revealCountdownValue = 0;
+let inviteRoomCode = "";
+let reconnectTimer = null;
+let shouldReconnectSocket = true;
+let connectionMode = "disconnected";
+let hadSocketDisconnect = false;
+let lastSeenEventId = "";
+let currentTurnId = "";
+let nextPlayerUnlockAt = 0;
+let nextPlayerCountdownTimer = null;
+
+const pathRoomMatch = window.location.pathname.match(/^\/room\/([A-Z0-9]{5})$/i);
+if (pathRoomMatch) {
+  inviteRoomCode = pathRoomMatch[1].toUpperCase();
+  roomCodeInput.value = inviteRoomCode;
+  inviteNotice.textContent = `Pridruzuješ se sobi ${inviteRoomCode}. Unesi ime i klikni “Pridruzi se”.`;
+  inviteNotice.classList.remove("hidden");
+  createRoomButton.classList.add("hidden");
+}
+
+createRoomButton.addEventListener("click", createRoom);
+joinRoomButton.addEventListener("click", joinRoom);
+copyCodeButton.addEventListener("click", copyRoomCode);
+copyLinkButton.addEventListener("click", copyRoomLink);
+showQrButton.addEventListener("click", toggleQrPanel);
+resetRoomButton.addEventListener("click", resetRoom);
+leaveRoomButton.addEventListener("click", showLeaveModal);
+rulesButton.addEventListener("click", () => showModal(rulesModal));
+cancelLeaveButton.addEventListener("click", () => hideModal(leaveModal));
+confirmLeaveButton.addEventListener("click", leaveRoom);
+document.querySelectorAll(".modal-backdrop").forEach((modal) => {
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) hideModal(modal);
+  });
+});
+document.querySelectorAll("[data-close-modal]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const modal = document.querySelector(`#${button.dataset.closeModal}`);
+    if (modal) hideModal(modal);
+  });
+});
+clearAvatarButton.addEventListener("click", () => {
+  selectedAvatar = "";
+  localStorage.removeItem("varalica_avatar");
+  renderAvatarGrid();
+});
+renderAvatarGrid();
+setConnectionMode("disconnected");
+touchSession();
+
+async function createRoom() {
+  clearError();
+  const name = playerNameInput.value;
+  const result = await apiRequest("/api/rooms", { name, avatar: selectedAvatar || null });
+  if (!result) return;
+  enterRoom(result.room_code, result.player_id, result.avatar);
+}
+
+async function joinRoom() {
+  clearError();
+  const name = playerNameInput.value;
+  const code = roomCodeInput.value.trim().toUpperCase();
+  if (!code) {
+    showError("Unesi kod sobe.");
+    return;
+  }
+  const result = await apiRequest(`/api/rooms/${code}/join`, { name, avatar: selectedAvatar || null });
+  if (!result) return;
+  enterRoom(result.room_code, result.player_id, result.avatar);
+}
+
+function enterRoom(roomCode, playerId, avatar) {
+  localRoomCode = roomCode;
+  localPlayerId = playerId;
+  hasRevealedPrivateCard = false;
+  localStorage.setItem("varalica_room_code", roomCode);
+  localStorage.setItem("varalica_player_id", playerId);
+  touchSession();
+  if (avatar) {
+    selectedAvatar = avatar;
+    localStorage.setItem("varalica_avatar", avatar);
+    renderAvatarGrid();
+  }
+  window.history.replaceState({}, "", `/room/${roomCode}`);
+  setupView.classList.add("hidden");
+  roomView.classList.remove("hidden");
+  connectSocket();
+}
+
+function setConnectionMode(mode) {
+  connectionMode = mode;
+  const labels = {
+    stable: "Stable",
+    reconnecting: "Reconnecting",
+    disconnected: "Disconnected",
+  };
+  const icons = {
+    stable: "●",
+    reconnecting: "●",
+    disconnected: "●",
+  };
+  connectionStatus.className = `status-pill connection-${mode}`;
+  connectionStatus.textContent = `${icons[mode]} ${labels[mode]}`;
+}
+
+function showToast(message, type = "info") {
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  toastContainer.appendChild(toast);
+  setTimeout(() => toast.classList.add("leaving"), 1800);
+  setTimeout(() => toast.remove(), 2300);
+}
+
+function handleRoomEvent(event) {
+  if (!event || event.event_id === lastSeenEventId || event.player_id === localPlayerId) return;
+  lastSeenEventId = event.event_id;
+  if (event.created_at && Date.now() / 1000 - event.created_at > 6) return;
+  if (event.type === "join") {
+    showToast(`${event.player_avatar || ""} ${event.player_name} se pridruzio`, "celebrate");
+  }
+  if (event.type === "reconnect") {
+    showToast(`${event.player_avatar || ""} ${event.player_name} se vratio`, "success");
+  }
+}
+
+function updateTurnLock(state) {
+  const turnId = state.discussion?.current_player_id || state.overtime?.current_player_id || "";
+  if (turnId && turnId !== currentTurnId) {
+    currentTurnId = turnId;
+    nextPlayerUnlockAt = Date.now() + 3000;
+    scheduleNextPlayerCountdown();
+  }
+}
+
+function scheduleNextPlayerCountdown() {
+  if (nextPlayerCountdownTimer) clearTimeout(nextPlayerCountdownTimer);
+  if (Date.now() >= nextPlayerUnlockAt) {
+    render();
+    return;
+  }
+  nextPlayerCountdownTimer = setTimeout(scheduleNextPlayerCountdown, 250);
+  render();
+}
+
+function nextPlayerLockSecondsLeft() {
+  return Math.max(0, Math.ceil((nextPlayerUnlockAt - Date.now()) / 1000));
+}
+
+function showModal(modal) {
+  modal.classList.remove("hidden");
+}
+
+function hideModal(modal) {
+  modal.classList.add("hidden");
+}
+
+function showLeaveModal() {
+  showModal(leaveModal);
+}
+
+function connectSocket() {
+  shouldReconnectSocket = true;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (socket) {
+    shouldReconnectSocket = false;
+    socket.close();
+  }
+  shouldReconnectSocket = true;
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  socket = new WebSocket(`${protocol}://${window.location.host}/ws/${localRoomCode}/${localPlayerId}`);
+
+  socket.addEventListener("open", () => {
+    setConnectionMode("stable");
+    if (hadSocketDisconnect) {
+      showToast("Ponovno povezano", "success");
+      hadSocketDisconnect = false;
+    }
+    touchSession();
+  });
+
+  socket.addEventListener("message", (event) => {
+    const previousState = roomState?.state || "";
+    roomState = JSON.parse(event.data);
+    touchSession();
+    handleRoomEvent(roomState.last_event);
+    updateTurnLock(roomState);
+    if (roomState.state === "reveal" && previousState !== "reveal") {
+      hasRevealedPrivateCard = false;
+      revealCountdownActive = false;
+    }
+    if (roomState.state === "results" && previousState === "voting_complete") {
+      startRevealCountdown();
+    }
+    lastRoomState = roomState.state;
+    render();
+  });
+
+  socket.addEventListener("close", () => {
+    hadSocketDisconnect = true;
+    if (shouldReconnectSocket && localRoomCode && localPlayerId) {
+      setConnectionMode("reconnecting");
+      reconnectTimer = setTimeout(connectSocket, 2000);
+    } else {
+      setConnectionMode("disconnected");
+    }
+  });
+}
+
+async function startRound() {
+  clearError();
+  touchSession();
+  hasRevealedPrivateCard = false;
+  await apiRequest(`/api/rooms/${localRoomCode}/start`, {
+    player_id: localPlayerId,
+    category: selectedCategory,
+    discussion_seconds: selectedDiscussionSeconds,
+  });
+}
+
+async function markSecretViewed() {
+  return apiRequest(`/api/rooms/${localRoomCode}/view-secret`, { player_id: localPlayerId });
+}
+
+async function changeWord() {
+  clearError();
+  touchSession();
+  hasRevealedPrivateCard = false;
+  await apiRequest(`/api/rooms/${localRoomCode}/change-word`, { player_id: localPlayerId });
+}
+
+async function confirmSeen() {
+  clearError();
+  touchSession();
+  await apiRequest(`/api/rooms/${localRoomCode}/confirm`, { player_id: localPlayerId });
+}
+
+async function nextPlayer() {
+  clearError();
+  touchSession();
+  await apiRequest(`/api/rooms/${localRoomCode}/next-player`, { player_id: localPlayerId });
+}
+
+async function requestVote() {
+  clearError();
+  touchSession();
+  await apiRequest(`/api/rooms/${localRoomCode}/request-vote`, { player_id: localPlayerId });
+}
+
+async function openFinalVoting() {
+  clearError();
+  touchSession();
+  await apiRequest(`/api/rooms/${localRoomCode}/open-final-voting`, { player_id: localPlayerId });
+}
+
+async function submitFinalVote(targetId) {
+  clearError();
+  touchSession();
+  await apiRequest(`/api/rooms/${localRoomCode}/vote`, {
+    player_id: localPlayerId,
+    target_id: targetId,
+  });
+}
+
+async function startNewRound() {
+  clearError();
+  touchSession();
+  hasRevealedPrivateCard = false;
+  await apiRequest(`/api/rooms/${localRoomCode}/new-round`, { player_id: localPlayerId });
+}
+
+async function resetRoom() {
+  clearError();
+  touchSession();
+  hasRevealedPrivateCard = false;
+  await apiRequest(`/api/rooms/${localRoomCode}/reset`, { player_id: localPlayerId });
+}
+
+async function leaveRoom() {
+  clearError();
+  hideModal(leaveModal);
+  if (localRoomCode && localPlayerId) {
+    await apiRequest(`/api/rooms/${localRoomCode}/leave`, { player_id: localPlayerId });
+  }
+  shouldReconnectSocket = false;
+  if (socket) socket.close();
+  localStorage.removeItem("varalica_room_code");
+  localStorage.removeItem("varalica_player_id");
+  localStorage.removeItem("varalica_last_active_at");
+  localRoomCode = "";
+  localPlayerId = "";
+  roomState = null;
+  roomView.classList.add("hidden");
+  setupView.classList.remove("hidden");
+  window.history.replaceState({}, "", "/");
+}
+
+async function startOvertime() {
+  clearError();
+  touchSession();
+  await apiRequest(`/api/rooms/${localRoomCode}/start-overtime`, { player_id: localPlayerId });
+}
+
+async function revealResults() {
+  clearError();
+  touchSession();
+  await apiRequest(`/api/rooms/${localRoomCode}/reveal`, { player_id: localPlayerId });
+}
+
+function startRevealCountdown() {
+  revealCountdownActive = true;
+  revealCountdownValue = 3;
+  if (navigator.vibrate) {
+    navigator.vibrate([80, 80, 80]);
+  }
+  const tick = () => {
+    if (!revealCountdownActive || !roomState || roomState.state !== "results") return;
+    render();
+    if (revealCountdownValue <= 1) {
+      setTimeout(() => {
+        revealCountdownActive = false;
+        revealCountdownValue = 0;
+        render();
+      }, 750);
+      return;
+    }
+    revealCountdownValue -= 1;
+    setTimeout(tick, 750);
+  };
+  tick();
+}
+
+function expireOldSession() {
+  const lastActiveAt = Number(localStorage.getItem("varalica_last_active_at") || 0);
+  const hasSession = Boolean(localStorage.getItem("varalica_room_code") || localStorage.getItem("varalica_player_id"));
+  if (hasSession && (!lastActiveAt || Date.now() - lastActiveAt > SESSION_MAX_AGE_MS)) {
+    clearStoredSession();
+  }
+}
+
+function touchSession() {
+  if (localStorage.getItem("varalica_room_code") || localStorage.getItem("varalica_player_id")) {
+    localStorage.setItem("varalica_last_active_at", String(Date.now()));
+  }
+}
+
+function clearStoredSession() {
+  localStorage.removeItem("varalica_room_code");
+  localStorage.removeItem("varalica_player_id");
+  localStorage.removeItem("varalica_last_active_at");
+}
+
+function renderAvatarGrid() {
+  avatarGrid.innerHTML = AVATARS.map(
+    (avatar) => `
+      <button
+        class="avatar-option ${avatar === selectedAvatar ? "selected" : ""}"
+        type="button"
+        data-avatar="${escapeHtml(avatar)}"
+        aria-label="Avatar ${escapeHtml(avatar)}"
+      >
+        ${escapeHtml(avatar)}
+      </button>
+    `,
+  ).join("");
+
+  avatarGrid.querySelectorAll(".avatar-option").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedAvatar = button.dataset.avatar;
+      localStorage.setItem("varalica_avatar", selectedAvatar);
+      renderAvatarGrid();
+    });
+  });
+}
+
+function playerNameHtml(player) {
+  const avatar = player?.avatar || "🎲";
+  const name = player?.name || "Nepoznato";
+  return `<span class="player-avatar">${escapeHtml(avatar)}</span><span>${escapeHtml(name)}</span>`;
+}
+
+function playerNameText(player) {
+  const avatar = player?.avatar || "🎲";
+  const name = player?.name || "Nepoznato";
+  return `${avatar} ${name}`;
+}
+
+function render() {
+  if (!roomState) return;
+  roomCodeDisplay.textContent = roomState.room_code;
+  roundDisplay.textContent = `Runda ${roomState.round_number || 1}`;
+  playerCountBadge.textContent = `${roomState.player_count}/${roomState.max_players}`;
+  resetRoomButton.classList.add("hidden");
+  renderHostPanel();
+  renderPlayers();
+
+  if (roomState.state === "lobby") {
+    renderLobby();
+    return;
+  }
+
+  if (roomState.state === "reveal") {
+    renderReveal();
+    return;
+  }
+
+  if (roomState.state === "discussion") {
+    renderDiscussion();
+    return;
+  }
+
+  if (roomState.state === "ready_for_final_voting") {
+    renderReadyForFinalVoting();
+    return;
+  }
+
+  if (roomState.state === "final_voting") {
+    renderFinalVoting();
+    return;
+  }
+
+  if (roomState.state === "overtime") {
+    renderOvertime();
+    return;
+  }
+
+  if (roomState.state === "overtime_voting") {
+    renderFinalVoting();
+    return;
+  }
+
+  if (roomState.state === "voting_complete") {
+    renderVotingComplete();
+    return;
+  }
+
+  if (roomState.state === "results") {
+    renderResults();
+  }
+}
+
+function renderHostPanel() {
+  const isHost = roomState.viewer_id === roomState.host_id;
+  hostPanel.classList.toggle("hidden", !isHost);
+  if (!isHost) {
+    hostPanelActions.innerHTML = "";
+    return;
+  }
+
+  const actions = [`<button id="hostResetRoomButton" class="small danger">Resetuj sobu</button>`];
+  if (roomState.state === "reveal") {
+    const locked = roomState.players.some((player) => player.is_active_round_player && (player.viewed_secret || player.confirmed));
+    actions.unshift(`<button id="hostChangeWordButton" class="small secondary" ${locked ? "disabled" : ""}>Promijeni rijec</button>`);
+  }
+  if (roomState.state === "discussion" && roomState.discussion) {
+    actions.unshift(`<button id="hostOpenVotingButton" class="small" ${roomState.discussion.voting_unlocked ? "" : "disabled"}>Otvori glasanje</button>`);
+  }
+  if (roomState.state === "ready_for_final_voting") {
+    actions.unshift(`<button id="hostOpenVotingButton" class="small">Otvori glasanje</button>`);
+  }
+
+  hostPanelActions.innerHTML = actions.join("");
+  document.querySelector("#hostResetRoomButton")?.addEventListener("click", resetRoom);
+  document.querySelector("#hostChangeWordButton")?.addEventListener("click", changeWord);
+  document.querySelector("#hostOpenVotingButton")?.addEventListener("click", openFinalVoting);
+}
+
+function renderLobby() {
+  const isHost = roomState.viewer_id === roomState.host_id;
+  const canStart = isHost && roomState.player_count >= roomState.min_players;
+  const categories = roomState.categories || ["Sve kategorije"];
+  const durationOptions = roomState.allowed_discussion_seconds || [120, 180, 300];
+  if (!categories.includes(selectedCategory)) {
+    selectedCategory = roomState.selected_category || "Sve kategorije";
+  }
+  if (!durationOptions.includes(selectedDiscussionSeconds)) {
+    selectedDiscussionSeconds = roomState.discussion_duration_seconds || 180;
+  }
+  phaseContent.innerHTML = `
+    <div class="phase-card">
+      <h2>Lobby</h2>
+      <p class="helper-text">Podijeli kod sobe ili link. Runda moze poceti kad su tu najmanje 4 igraca.</p>
+      ${
+        isHost
+          ? `<div class="category-control">
+              <label for="categorySelect">Kategorija</label>
+              <select id="categorySelect">
+                ${categories
+                  .map(
+                    (category) => `<option value="${escapeHtml(category)}" ${category === selectedCategory ? "selected" : ""}>${escapeHtml(category)}</option>`,
+                  )
+                  .join("")}
+              </select>
+            </div>
+            <div class="category-control">
+              <label for="durationSelect">Vrijeme diskusije</label>
+              <select id="durationSelect">
+                ${durationOptions
+                  .map(
+                    (seconds) => `<option value="${seconds}" ${seconds === selectedDiscussionSeconds ? "selected" : ""}>${seconds / 60} min</option>`,
+                  )
+                  .join("")}
+              </select>
+            </div>
+            <button id="startRoundButton" ${canStart ? "" : "disabled"}>
+              ${canStart ? "Pokreni rundu" : "Potrebna su najmanje 4 igraca"}
+            </button>`
+          : `<p class="helper-text">Host pokrece rundu.</p>`
+      }
+    </div>
+  `;
+  const categorySelect = document.querySelector("#categorySelect");
+  if (categorySelect) {
+    categorySelect.addEventListener("change", () => {
+      selectedCategory = categorySelect.value;
+      localStorage.setItem("varalica_selected_category", selectedCategory);
+    });
+  }
+  const durationSelect = document.querySelector("#durationSelect");
+  if (durationSelect) {
+    durationSelect.addEventListener("change", () => {
+      selectedDiscussionSeconds = Number(durationSelect.value);
+      localStorage.setItem("varalica_discussion_seconds", String(selectedDiscussionSeconds));
+    });
+  }
+  const startButton = document.querySelector("#startRoundButton");
+  if (startButton) startButton.addEventListener("click", startRound);
+}
+
+function renderReveal() {
+  const privateInfo = roomState.private;
+  const me = roomState.players.find((player) => player.id === roomState.viewer_id);
+  const alreadyConfirmed = Boolean(me?.confirmed);
+
+  if (roomState.all_confirmed) {
+    phaseContent.innerHTML = `
+      <div class="phase-card">
+        <h2>Svi su spremni</h2>
+        <p class="helper-text">Diskusija se pokrece automatski.</p>
+      </div>
+    `;
+    return;
+  }
+
+  if (!privateInfo) {
+    phaseContent.innerHTML = `
+      <div class="phase-card">
+        <h2>Otkrivanje</h2>
+        <p class="helper-text">Cekamo podatke za ovu rundu.</p>
+      </div>
+    `;
+    return;
+  }
+
+  if (!hasRevealedPrivateCard) {
+    phaseContent.innerHTML = `
+      <div class="phase-card">
+        <h2>Tvoja tajna kartica</h2>
+        <p class="helper-text">Provjeri je na svom telefonu i ne pokazuj drugim igracima.</p>
+        <button id="showWordButton">Prikazi moju rijec</button>
+      </div>
+    `;
+    document.querySelector("#showWordButton").addEventListener("click", async () => {
+      const result = await markSecretViewed();
+      if (!result) return;
+      hasRevealedPrivateCard = true;
+      renderReveal();
+    });
+    return;
+  }
+
+  const secretHtml =
+    privateInfo.role === "varalica"
+      ? `<p class="big-message">Ti si Varalica</p>
+         <div class="hint-box">
+           <p class="eyebrow">Smjernica</p>
+           <p>${escapeHtml(privateInfo.hint || "Slušaj druge igrače i pokušaj ostati uvjerljiv.")}</p>
+           <span class="badge">Kategorija: ${escapeHtml(privateInfo.category || "Nepoznato")}</span>
+         </div>`
+      : `<p class="big-message">${escapeHtml(privateInfo.word.hr)} (${escapeHtml(privateInfo.word.sr)})</p>
+         <p class="helper-text">Kategorija: ${escapeHtml(privateInfo.word.category)}</p>`;
+
+  phaseContent.innerHTML = `
+    <div class="phase-card">
+      <h2>Tvoja tajna kartica</h2>
+      ${secretHtml}
+      <button id="confirmSeenButton" ${alreadyConfirmed ? "disabled" : ""}>
+        ${alreadyConfirmed ? "Potvrdjeno" : "OK, vidio sam"}
+      </button>
+      <p class="helper-text">Diskusija ne moze poceti dok svi aktivni igraci ne potvrde.</p>
+    </div>
+  `;
+
+  const confirmButton = document.querySelector("#confirmSeenButton");
+  if (confirmButton && !alreadyConfirmed) {
+    confirmButton.addEventListener("click", confirmSeen);
+  }
+}
+
+function renderDiscussion() {
+  const isHost = roomState.viewer_id === roomState.host_id;
+  const discussion = roomState.discussion;
+  const me = roomState.players.find((player) => player.id === roomState.viewer_id);
+  const currentPlayer = roomState.players.find((player) => player.id === discussion.current_player_id);
+  const canAdvanceTurn = isHost || me?.id === discussion.current_player_id;
+  const nextLockLeft = nextPlayerLockSecondsLeft();
+  const nextButtonHtml = canAdvanceTurn
+    ? `<button id="nextPlayerButton" ${nextLockLeft > 0 ? "disabled" : ""}>Sljedeci igrac</button>
+       ${nextLockLeft > 0 ? `<p class="helper-text">Dostupno za ${nextLockLeft}...</p>` : ""}`
+    : `<p class="helper-text">Samo host ili trenutni igrac mogu prebaciti red.</p>`;
+  const voteLocked = !discussion.voting_unlocked;
+  const votingControl = voteLocked
+    ? `<button disabled>Otvori glasanje</button>`
+    : isHost
+      ? `<button id="openFinalVotingButton">Otvori glasanje</button>`
+      : `<button disabled>Host otvara glasanje</button>`;
+  const votingHelper = voteLocked
+    ? `Glasanje ce biti dostupno uskoro. Preostalo: ${formatSeconds(discussion.voting_seconds_left)}.`
+    : "Host sada moze otvoriti glasanje.";
+
+  phaseContent.innerHTML = `
+    <div class="phase-card discussion-card">
+      <div class="timer-box">
+        <span>Diskusija</span>
+        <strong>${formatSeconds(discussion.remaining_seconds)}</strong>
+      </div>
+      <div class="current-player-card">
+        <p class="eyebrow">Trenutni igrac</p>
+        <p class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
+      </div>
+      ${
+        isHost
+          ? `<button id="nextPlayerButton">Sljedeći igrač</button>`
+          : `<p class="helper-text">Samo host ili trenutni igrac mogu prebaciti red.</p>`
+      }
+      ${votingControl}
+      <p class="helper-text">
+        ${votingHelper}
+      </p>
+    </div>
+  `;
+
+  const nextButton = document.querySelector("#nextPlayerButton");
+  if (!nextButton && canAdvanceTurn) {
+    document.querySelector(".discussion-card")?.insertAdjacentHTML("beforeend", `<button id="nextPlayerButton">Sljedeci igrac</button>`);
+  }
+  const insertedNextButton = document.querySelector("#nextPlayerButton");
+  if (insertedNextButton) {
+    if (nextLockLeft > 0) {
+      insertedNextButton.disabled = true;
+      insertedNextButton.insertAdjacentHTML("afterend", `<p class="helper-text">Dostupno za ${nextLockLeft}...</p>`);
+    } else {
+      insertedNextButton.addEventListener("click", nextPlayer);
+    }
+  }
+
+  const openButton = document.querySelector("#openFinalVotingButton");
+  if (openButton) openButton.addEventListener("click", openFinalVoting);
+}
+
+function renderReadyForFinalVoting() {
+  const isHost = roomState.viewer_id === roomState.host_id;
+  phaseContent.innerHTML = `
+    <div class="phase-card">
+      <h2>Svi igrači su spremni za glasanje.</h2>
+      <p class="helper-text">Host sada moze otvoriti finalno glasanje.</p>
+      ${
+        isHost
+          ? `<button id="openFinalVotingButton">Otvori glasanje</button>`
+          : `<p class="helper-text">Cekamo hosta da otvori glasanje.</p>`
+      }
+    </div>
+  `;
+
+  const openButton = document.querySelector("#openFinalVotingButton");
+  if (openButton) openButton.addEventListener("click", openFinalVoting);
+}
+
+function renderOvertime() {
+  const isHost = roomState.viewer_id === roomState.host_id;
+  const overtime = roomState.overtime;
+  const me = roomState.players.find((player) => player.id === roomState.viewer_id);
+  const currentPlayer = roomState.players.find((player) => player.id === overtime.current_player_id);
+  const canAdvanceTurn = isHost || me?.id === overtime.current_player_id;
+  const nextLockLeft = nextPlayerLockSecondsLeft();
+
+  if (!overtime.started) {
+    phaseContent.innerHTML = `
+      <div class="phase-card overtime-card">
+        <p class="eyebrow">Produzetak</p>
+        <h2>Glasanje je neriješeno.</h2>
+        <p class="helper-text">Varalica se jos ne otkriva. Host moze produziti diskusiju za 60 sekundi.</p>
+        ${
+          isHost
+            ? `<button id="startOvertimeButton">Produži igru 60 sekundi</button>`
+            : `<p class="helper-text">Cekamo hosta da pokrene produzetak.</p>`
+        }
+      </div>
+    `;
+    const button = document.querySelector("#startOvertimeButton");
+    if (button) button.addEventListener("click", startOvertime);
+    return;
+  }
+
+  phaseContent.innerHTML = `
+    <div class="phase-card overtime-card">
+      <p class="eyebrow">Produzetak</p>
+      <div class="timer-box">
+        <span>Produzetak</span>
+        <strong>${formatSeconds(overtime.remaining_seconds)}</strong>
+      </div>
+      <div class="current-player-card">
+        <p class="eyebrow">Trenutni igrac</p>
+        <p class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
+      </div>
+      ${
+        isHost
+          ? `<button id="nextPlayerButton">Sljedeći igrač</button>`
+          : `<p class="helper-text">Samo host ili trenutni igrac mogu prebaciti red.</p>`
+      }
+      <p class="helper-text">Nakon isteka vremena glasanje se automatski otvara ponovo.</p>
+    </div>
+  `;
+
+  const nextButton = document.querySelector("#nextPlayerButton");
+  if (!nextButton && canAdvanceTurn) {
+    document.querySelector(".overtime-card")?.insertAdjacentHTML("beforeend", `<button id="nextPlayerButton">Sljedeci igrac</button>`);
+  }
+  const insertedNextButton = document.querySelector("#nextPlayerButton");
+  if (insertedNextButton) {
+    if (nextLockLeft > 0) {
+      insertedNextButton.disabled = true;
+      insertedNextButton.insertAdjacentHTML("afterend", `<p class="helper-text">Dostupno za ${nextLockLeft}...</p>`);
+    } else {
+      insertedNextButton.addEventListener("click", nextPlayer);
+    }
+  }
+}
+
+function renderFinalVoting() {
+  const me = roomState.players.find((player) => player.id === roomState.viewer_id);
+  const hasVoted = Boolean(me?.has_voted);
+  const activePlayers = roomState.players.filter((player) => player.is_active_round_player && player.id !== roomState.viewer_id);
+  const isOvertimeVote = roomState.state === "overtime_voting";
+
+  phaseContent.innerHTML = `
+    <div class="phase-card">
+      <h2>${isOvertimeVote ? "Glasanje nakon produzetka" : "Finalno glasanje"}</h2>
+      <p class="helper-text">
+        Odaberi jednog igraca za kojeg mislis da je Varalica. Glasovi se ne otkrivaju dok svi ne glasaju.
+      </p>
+      <p class="helper-text">Ne mozes glasati za sebe.</p>
+      <div class="vote-list">
+        ${activePlayers
+          .map(
+            (player) => `
+              <div class="vote-option">
+                <div>
+                  <strong class="inline-player">${playerNameHtml(player)}</strong>
+                  ${player.id === roomState.viewer_id ? `<span class="helper-text">Ti</span>` : ""}
+                </div>
+                <button class="small vote-button" data-target-id="${escapeHtml(player.id)}" ${hasVoted ? "disabled" : ""}>
+                  Glasaj
+                </button>
+              </div>
+            `,
+          )
+          .join("")}
+      </div>
+      <p class="helper-text">
+        ${hasVoted ? "Tvoj glas je zaprimljen. Cekamo ostale igrace." : "Mozes glasati samo jednom."}
+      </p>
+    </div>
+  `;
+
+  if (!hasVoted) {
+    document.querySelectorAll(".vote-button").forEach((button) => {
+      button.addEventListener("click", () => submitFinalVote(button.dataset.targetId));
+    });
+  }
+}
+
+function renderVotingComplete() {
+  const isHost = roomState.viewer_id === roomState.host_id;
+  const voting = roomState.voting_complete;
+  phaseContent.innerHTML = `
+    <div class="phase-card">
+      <h2>Glasanje je završeno</h2>
+      <p class="helper-text">
+        ${isHost ? "Prikaži Varalicu kada su svi spremni da vide rezultat." : "Čeka se da host prikaže Varalicu."}
+      </p>
+      ${
+        voting.can_overtime
+          ? `<div class="overtime-card">
+              <h2>Glasanje je neriješeno.</h2>
+              <p class="helper-text">Host može produžiti diskusiju za 60 sekundi ili odmah prikazati Varalicu.</p>
+              ${isHost ? `<button id="startOvertimeButton">Produži igru 60 sekundi</button>` : ""}
+            </div>`
+          : ""
+      }
+      ${
+        isHost
+          ? `<button id="revealResultsButton">Prikaži Varalicu</button>`
+          : `<p class="helper-text">Čeka se da host prikaže Varalicu.</p>`
+      }
+    </div>
+  `;
+
+  const overtimeButton = document.querySelector("#startOvertimeButton");
+  if (overtimeButton) overtimeButton.addEventListener("click", startOvertime);
+
+  const revealButton = document.querySelector("#revealResultsButton");
+  if (revealButton) revealButton.addEventListener("click", revealResults);
+}
+
+function renderResults() {
+  const isHost = roomState.viewer_id === roomState.host_id;
+  const results = roomState.results;
+  if (revealCountdownActive) {
+    phaseContent.innerHTML = `
+      <div class="phase-card reveal-countdown-card">
+        <p class="eyebrow">Otkrivanje Varalice</p>
+        <p class="reveal-countdown-number">${revealCountdownValue}</p>
+      </div>
+    `;
+    return;
+  }
+  const voteRows = results.vote_summary
+    .map(
+      (item) => `
+        <div class="result-row">
+          <span class="inline-player">${playerNameHtml(item)}</span>
+          <strong>${item.votes}</strong>
+        </div>
+      `,
+    )
+    .join("");
+  const individualVoteRows = results.individual_votes
+    .map(
+      (item) => `
+        <div class="result-row">
+          <span>${escapeHtml(item.voter_avatar || "🎲")} ${escapeHtml(item.voter_name)} → ${escapeHtml(item.target_avatar || "🎲")} ${escapeHtml(item.target_name)}</span>
+        </div>
+      `,
+    )
+    .join("");
+  const scoreboardRows = (roomState.scoreboard || [])
+    .filter((item) => item.discoveries > 0 || item.survivals > 0)
+    .map(
+      (item) => `
+        <div class="score-row">
+          <span>${escapeHtml(playerNameText(item))}</span>
+          <strong>${item.discoveries} pronasao/la</strong>
+          <strong>${item.survivals} prezivio/la</strong>
+        </div>
+      `,
+    )
+    .join("");
+  const correctGuessers = (results.correct_guessers || [])
+    .map((player) => escapeHtml(playerNameText(player)))
+    .join(", ");
+
+  phaseContent.innerHTML = `
+    <div class="phase-card results-card">
+      <h2>Rezultati</h2>
+      <p class="big-result">Varalica je bio/la: ${escapeHtml(playerNameText(results.varalica))}</p>
+      <p class="word-result">Riječ je bila: ${escapeHtml(results.word.hr)} (${escapeHtml(results.word.sr)})</p>
+      <p class="outcome-text">${escapeHtml(results.outcome)}</p>
+      <p class="helper-text">
+        ${correctGuessers ? `Tacno pogodili: ${correctGuessers}` : "Niko nije tacno pogodio Varalicu."}
+      </p>
+      <div class="result-list">
+        ${voteRows}
+      </div>
+      <h2>Ko je za koga glasao</h2>
+      <div class="result-list">
+        ${individualVoteRows}
+      </div>
+      ${
+        scoreboardRows
+          ? `<h2>Mini scoreboard</h2>
+             <div class="scoreboard-list">${scoreboardRows}</div>`
+          : ""
+      }
+      ${
+        isHost
+          ? `<button id="newRoundButton">Nova runda</button>`
+          : `<p class="helper-text">Host moze pokrenuti novu rundu.</p>`
+      }
+    </div>
+  `;
+
+  const newRoundButton = document.querySelector("#newRoundButton");
+  if (newRoundButton) newRoundButton.addEventListener("click", startNewRound);
+}
+
+function renderPlayers() {
+  playersList.innerHTML = "";
+  for (const player of roomState.players) {
+    const row = document.createElement("div");
+    row.className = "player-row";
+    if (player.is_current) {
+      row.classList.add("is-current");
+    }
+
+    const statusLabel = player.confirmed ? "Spreman" : "Nije vidio";
+    const statusClass = player.confirmed ? "ready" : "waiting";
+    const connectionStatusLabel = player.connection_status === "idle" ? "Idle" : player.connection_status === "active" ? "Online" : "Offline";
+    const disconnectedLabel = "";
+    const connectedLabel = "";
+    const hostLabel = player.is_host ? `<span class="badge">Host</span>` : "";
+    const currentLabel = player.is_current ? `<span class="badge active-turn">Na redu</span>` : "";
+    const voteLabel = player.requested_vote ? `<span class="badge vote-requested">Trazi glasanje</span>` : "";
+    const finalVoteLabel =
+      (roomState.state === "final_voting" || roomState.state === "overtime_voting" || roomState.state === "voting_complete" || roomState.state === "results") && player.is_active_round_player
+        ? `<span class="badge ${player.has_voted ? "ready" : "waiting"}">${player.has_voted ? "Glasao/la" : "Nije glasao/la"}</span>`
+        : "";
+    const voteTargetLabel = player.vote_target
+      ? `<div class="vote-target-line"><span>Glasao/la za:</span> <strong>${escapeHtml(playerNameText(player.vote_target))}</strong></div>`
+      : "";
+
+    row.innerHTML = `
+      <div class="player-name">
+        <span class="inline-player">
+          <span class="status-dot ${escapeHtml(player.connection_status || "offline")}" title="${connectionStatusLabel}"></span>
+          ${playerNameHtml(player)}
+        </span>
+        ${voteTargetLabel}
+      </div>
+      <div class="player-meta">
+        ${hostLabel}
+        ${currentLabel}
+        ${voteLabel}
+        ${finalVoteLabel}
+        ${disconnectedLabel}
+        ${connectedLabel}
+        ${
+          roomState.state === "reveal"
+            ? `<span class="badge ${statusClass}">${statusLabel}</span>`
+            : ""
+        }
+      </div>
+    `;
+    playersList.appendChild(row);
+  }
+}
+
+async function copyRoomLink() {
+  const link = `${window.location.origin}/room/${localRoomCode}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    copyLinkButton.textContent = "Kopirano";
+    setTimeout(() => {
+      copyLinkButton.textContent = "Kopiraj link";
+    }, 1200);
+  } catch {
+    showError(link);
+  }
+}
+
+async function copyRoomCode() {
+  try {
+    await navigator.clipboard.writeText(localRoomCode);
+    copyCodeButton.textContent = "Kod kopiran";
+    setTimeout(() => {
+      copyCodeButton.textContent = "Kopiraj kod";
+    }, 1200);
+  } catch {
+    showError(localRoomCode);
+  }
+}
+
+function toggleQrPanel() {
+  const link = `${window.location.origin}/room/${localRoomCode}`;
+  if (!qrPanel.classList.contains("hidden")) {
+    qrPanel.classList.add("hidden");
+    showQrButton.textContent = "QR";
+    return;
+  }
+
+  qrPanel.innerHTML = `
+    <canvas id="roomQrCanvas" aria-label="QR kod za ulazak u sobu"></canvas>
+    <p class="helper-text">Scan to join</p>
+  `;
+  window.VaralicaQRCode.draw(document.querySelector("#roomQrCanvas"), link, { scale: 5 });
+  qrPanel.classList.remove("hidden");
+  showQrButton.textContent = "Sakrij QR";
+}
+
+async function apiRequest(url, body) {
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      showError(data.detail || "Doslo je do greske.");
+      return null;
+    }
+    return data;
+  } catch {
+    showError("Nije moguce spojiti se na server.");
+    return null;
+  }
+}
+
+function clearError() {
+  errorBox.classList.add("hidden");
+  errorBox.textContent = "";
+}
+
+function showError(message) {
+  errorBox.classList.remove("hidden");
+  errorBox.textContent = message;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function formatSeconds(totalSeconds) {
+  const safeSeconds = Math.max(0, Number(totalSeconds) || 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+if (localRoomCode && localPlayerId && (!inviteRoomCode || inviteRoomCode === localRoomCode)) {
+  setupView.classList.add("hidden");
+  roomView.classList.remove("hidden");
+  connectSocket();
+}

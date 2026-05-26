@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: varalica
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: VARALICA_DB_PATH
+        value: /varalica-data/varalica.sqlite3
+    disk:
+      name: varalica-data
+      mountPath: /varalica-data
+      sizeGB: 1

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="hr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Varalica</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Mobilna party igra</p>
+          <h1>Varalica</h1>
+        </div>
+        <div class="top-status">
+          <button id="rulesButton" class="small secondary" type="button">? Pravila</button>
+          <div id="connectionStatus" class="status-pill">Nije spojeno</div>
+        </div>
+      </section>
+
+      <section id="setupView" class="panel">
+        <div id="inviteNotice" class="invite-notice hidden"></div>
+
+        <label for="playerName">Tvoje ime</label>
+        <input id="playerName" maxlength="24" autocomplete="name" placeholder="npr. Ana" />
+
+        <div class="avatar-section">
+          <div class="avatar-header">
+            <label>Izaberi avatar</label>
+            <button id="clearAvatarButton" class="small secondary" type="button">Random</button>
+          </div>
+          <div id="avatarGrid" class="avatar-grid" aria-label="Izaberi avatar"></div>
+        </div>
+
+        <div class="actions two-columns">
+          <button id="createRoomButton">Napravi sobu</button>
+        </div>
+
+        <div class="join-box">
+          <label for="roomCode">Kod sobe</label>
+          <input id="roomCode" maxlength="5" autocomplete="off" placeholder="ABCDE" />
+          <button id="joinRoomButton" class="secondary">Pridruzi se</button>
+        </div>
+      </section>
+
+      <section id="roomView" class="room-layout hidden">
+        <div class="panel room-panel">
+          <div class="room-topline">
+            <div>
+              <p class="eyebrow">Kod sobe</p>
+              <div id="roomCodeDisplay" class="room-code">-----</div>
+              <div id="roundDisplay" class="round-display">Runda 1</div>
+            </div>
+            <div class="room-actions">
+              <button id="copyCodeButton" class="small secondary">Kopiraj kod</button>
+              <button id="copyLinkButton" class="small secondary">Kopiraj link</button>
+              <button id="showQrButton" class="small secondary">QR</button>
+            </div>
+          </div>
+          <div id="qrPanel" class="qr-panel hidden"></div>
+          <div id="hostPanel" class="host-panel hidden">
+            <p class="eyebrow">Host panel</p>
+            <div id="hostPanelActions" class="room-secondary-actions"></div>
+          </div>
+          <div class="room-secondary-actions">
+            <button id="resetRoomButton" class="small danger hidden">Resetuj sobu</button>
+            <button id="leaveRoomButton" class="small secondary leave-button">Leave room</button>
+          </div>
+
+          <div id="phaseContent" class="phase-content"></div>
+          <div id="errorBox" class="error-box hidden"></div>
+        </div>
+
+        <aside class="panel players-panel">
+          <div class="players-header">
+            <h2>Igraci</h2>
+            <span id="playerCountBadge" class="status-pill">0/10</span>
+          </div>
+          <div id="playersList" class="players-list"></div>
+        </aside>
+      </section>
+    </main>
+
+    <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+    <div id="rulesModal" class="modal-backdrop hidden">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
+        <button class="modal-close small secondary" data-close-modal="rulesModal" type="button">Zatvori</button>
+        <h2 id="rulesTitle">Varalica - Pravila</h2>
+        <ul>
+          <li>Svi igraci osim jednog dobijaju istu rijec.</li>
+          <li>Jedan igrac je Varalica i dobija samo smjernicu.</li>
+          <li>Igraci redom daju asocijacije bez otkrivanja rijeci.</li>
+          <li>Varalica pokusava da se uklopi i prezivi.</li>
+          <li>Nakon diskusije host otvara glasanje.</li>
+          <li>Ako igraci pronadju Varalicu, igraci pobjedjuju.</li>
+          <li>Ako Varalica prezivi, Varalica pobjedjuje.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="leaveModal" class="modal-backdrop hidden">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="leaveTitle">
+        <h2 id="leaveTitle">Da li sigurno zelis da napustis sobu?</h2>
+        <div class="modal-actions">
+          <button id="cancelLeaveButton" class="secondary" type="button">Cancel</button>
+          <button id="confirmLeaveButton" class="danger" type="button">Leave</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/vendor/qrcode.min.js"></script>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
