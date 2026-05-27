@@ -10,6 +10,8 @@
   --green-soft: rgba(34, 197, 94, 0.16);
   --red: #ef4444;
   --yellow: #facc15;
+  --orange: #fb923c;
+  --grey: #6b7280;
   --primary: #6366f1;
   --primary-soft: rgba(99, 102, 241, 0.18);
   --vote-accent: #f59e0b;
@@ -33,6 +35,13 @@ button,
 input,
 select {
   font: inherit;
+}
+
+.small-select {
+  width: auto;
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 0.9rem;
 }
 
 button {
@@ -257,8 +266,9 @@ label {
 
 .qr-panel {
   display: inline-grid;
-  gap: 8px;
+  gap: 10px;
   justify-items: center;
+  max-width: min(100%, 380px);
   margin-top: 12px;
   padding: 12px;
   border-radius: 8px;
@@ -266,19 +276,21 @@ label {
   background: #0b1020;
 }
 
-.qr-panel img {
-  width: 180px;
-  height: 180px;
-  border-radius: 8px;
-  background: #fff;
+.qr-panel canvas {
+  display: block;
+  width: 328px;
+  height: 328px;
+  max-width: min(82vw, 328px);
+  max-height: min(82vw, 328px);
+  background: #ffffff;
+  image-rendering: pixelated;
 }
 
-.qr-panel canvas {
-  width: 180px;
-  height: 180px;
-  border-radius: 8px;
-  background: #fff;
-  padding: 8px;
+.qr-code-card {
+  padding: 14px;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
 }
 
 .host-panel {
@@ -469,12 +481,18 @@ label {
 }
 
 .status-dot.idle {
+  background: var(--orange);
+  box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.16);
+}
+
+.status-dot.away {
   background: var(--yellow);
   box-shadow: 0 0 0 3px rgba(244, 201, 93, 0.16);
 }
 
 .status-dot.offline {
-  background: #777d8c;
+  background: var(--grey);
+  box-shadow: 0 0 0 3px rgba(107, 114, 128, 0.16);
 }
 
 .vote-target-line {
@@ -495,6 +513,12 @@ label {
   flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
+}
+
+.player-action-button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.78rem;
 }
 
 .error-box {
@@ -692,6 +716,19 @@ label {
 
 .toast.celebrate {
   border-color: rgba(99, 102, 241, 0.55);
+}
+
+.toast.error {
+  border-color: rgba(239, 68, 68, 0.55);
+}
+
+.qr-link {
+  max-width: min(100%, 360px);
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .toast.leaving {

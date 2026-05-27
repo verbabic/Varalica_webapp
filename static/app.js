@@ -27,9 +27,15 @@ const rulesModal = document.querySelector("#rulesModal");
 const leaveModal = document.querySelector("#leaveModal");
 const cancelLeaveButton = document.querySelector("#cancelLeaveButton");
 const confirmLeaveButton = document.querySelector("#confirmLeaveButton");
+const confirmActionModal = document.querySelector("#confirmActionModal");
+const confirmActionText = document.querySelector("#confirmActionText");
+const cancelActionButton = document.querySelector("#cancelActionButton");
+const confirmActionButton = document.querySelector("#confirmActionButton");
 const toastContainer = document.querySelector("#toastContainer");
 
-const SESSION_MAX_AGE_MS = 30 * 60 * 1000;
+const SESSION_MAX_AGE_MS = 15 * 60 * 1000;
+const HEARTBEAT_INTERVAL_MS = 12000;
+const PRODUCTION_ORIGIN = "https://varalica.autolovac.space";
 const AVATARS = [
   "😀", "😎", "🤓", "🥳", "😇", "🤠", "🐵", "🦊", "🐼", "🐸",
   "🐱", "🐶", "🦁", "🐯", "🦄", "🐧", "🐙", "🦖", "👽", "🤖",
@@ -51,6 +57,7 @@ let revealCountdownActive = false;
 let revealCountdownValue = 0;
 let inviteRoomCode = "";
 let reconnectTimer = null;
+let heartbeatTimer = null;
 let shouldReconnectSocket = true;
 let connectionMode = "disconnected";
 let hadSocketDisconnect = false;
@@ -58,6 +65,7 @@ let lastSeenEventId = "";
 let currentTurnId = "";
 let nextPlayerUnlockAt = 0;
 let nextPlayerCountdownTimer = null;
+let pendingConfirmAction = null;
 
 const pathRoomMatch = window.location.pathname.match(/^\/room\/([A-Z0-9]{5})$/i);
 if (pathRoomMatch) {
@@ -78,6 +86,12 @@ leaveRoomButton.addEventListener("click", showLeaveModal);
 rulesButton.addEventListener("click", () => showModal(rulesModal));
 cancelLeaveButton.addEventListener("click", () => hideModal(leaveModal));
 confirmLeaveButton.addEventListener("click", leaveRoom);
+cancelActionButton.addEventListener("click", closeConfirmAction);
+confirmActionButton.addEventListener("click", async () => {
+  const action = pendingConfirmAction;
+  closeConfirmAction();
+  if (action) await action();
+});
 document.querySelectorAll(".modal-backdrop").forEach((modal) => {
   modal.addEventListener("click", (event) => {
     if (event.target === modal) hideModal(modal);
@@ -88,6 +102,10 @@ document.querySelectorAll("[data-close-modal]").forEach((button) => {
     const modal = document.querySelector(`#${button.dataset.closeModal}`);
     if (modal) hideModal(modal);
   });
+});
+document.addEventListener("visibilitychange", () => {
+  touchSession();
+  sendHeartbeat();
 });
 clearAvatarButton.addEventListener("click", () => {
   selectedAvatar = "";
@@ -163,9 +181,15 @@ function showToast(message, type = "info") {
 }
 
 function handleRoomEvent(event) {
-  if (!event || event.event_id === lastSeenEventId || event.player_id === localPlayerId) return;
+  if (!event || event.event_id === lastSeenEventId) return;
   lastSeenEventId = event.event_id;
   if (event.created_at && Date.now() / 1000 - event.created_at > 6) return;
+  if (event.type === "change_word") {
+    hasRevealedPrivateCard = false;
+    showToast("Host je promijenio riječ. Pogledajte novu karticu.", "success");
+    return;
+  }
+  if (event.player_id === localPlayerId) return;
   if (event.type === "join") {
     showToast(`${event.player_avatar || ""} ${event.player_name} se pridruzio`, "celebrate");
   }
@@ -209,6 +233,19 @@ function showLeaveModal() {
   showModal(leaveModal);
 }
 
+function showConfirmAction(message, action, danger = true) {
+  confirmActionText.textContent = message;
+  pendingConfirmAction = action;
+  confirmActionButton.classList.toggle("danger", danger);
+  confirmActionButton.classList.toggle("secondary", !danger);
+  showModal(confirmActionModal);
+}
+
+function closeConfirmAction() {
+  pendingConfirmAction = null;
+  hideModal(confirmActionModal);
+}
+
 function connectSocket() {
   shouldReconnectSocket = true;
   if (reconnectTimer) {
@@ -225,6 +262,7 @@ function connectSocket() {
 
   socket.addEventListener("open", () => {
     setConnectionMode("stable");
+    startHeartbeat();
     if (hadSocketDisconnect) {
       showToast("Ponovno povezano", "success");
       hadSocketDisconnect = false;
@@ -234,7 +272,12 @@ function connectSocket() {
 
   socket.addEventListener("message", (event) => {
     const previousState = roomState?.state || "";
-    roomState = JSON.parse(event.data);
+    const incoming = JSON.parse(event.data);
+    if (incoming.type === "kicked") {
+      handleKicked(incoming.message || "Izbaceni ste iz sobe.");
+      return;
+    }
+    roomState = incoming;
     touchSession();
     handleRoomEvent(roomState.last_event);
     updateTurnLock(roomState);
@@ -249,8 +292,13 @@ function connectSocket() {
     render();
   });
 
-  socket.addEventListener("close", () => {
+  socket.addEventListener("close", (event) => {
+    stopHeartbeat();
     hadSocketDisconnect = true;
+    if (event.code === 1008) {
+      handleExpiredRoom();
+      return;
+    }
     if (shouldReconnectSocket && localRoomCode && localPlayerId) {
       setConnectionMode("reconnecting");
       reconnectTimer = setTimeout(connectSocket, 2000);
@@ -258,6 +306,23 @@ function connectSocket() {
       setConnectionMode("disconnected");
     }
   });
+}
+
+function startHeartbeat() {
+  stopHeartbeat();
+  sendHeartbeat();
+  heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
+}
+
+function sendHeartbeat() {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "heartbeat", hidden: document.hidden, sent_at: Date.now() }));
+  }
 }
 
 async function startRound() {
@@ -329,6 +394,18 @@ async function resetRoom() {
   await apiRequest(`/api/rooms/${localRoomCode}/reset`, { player_id: localPlayerId });
 }
 
+async function kickPlayer(targetId) {
+  clearError();
+  touchSession();
+  await apiRequest(`/api/rooms/${localRoomCode}/kick`, { player_id: localPlayerId, target_id: targetId });
+}
+
+async function transferHost(targetId) {
+  clearError();
+  touchSession();
+  await apiRequest(`/api/rooms/${localRoomCode}/transfer-host`, { player_id: localPlayerId, target_id: targetId });
+}
+
 async function leaveRoom() {
   clearError();
   hideModal(leaveModal);
@@ -340,6 +417,7 @@ async function leaveRoom() {
   localStorage.removeItem("varalica_room_code");
   localStorage.removeItem("varalica_player_id");
   localStorage.removeItem("varalica_last_active_at");
+  sessionStorage.clear();
   localRoomCode = "";
   localPlayerId = "";
   roomState = null;
@@ -362,7 +440,7 @@ async function revealResults() {
 
 function startRevealCountdown() {
   revealCountdownActive = true;
-  revealCountdownValue = 3;
+  revealCountdownValue = 4;
   if (navigator.vibrate) {
     navigator.vibrate([80, 80, 80]);
   }
@@ -403,6 +481,51 @@ function clearStoredSession() {
   localStorage.removeItem("varalica_last_active_at");
 }
 
+function handleExpiredRoom() {
+  shouldReconnectSocket = false;
+  stopHeartbeat();
+  if (socket) socket.close();
+  clearStoredSession();
+  localRoomCode = "";
+  localPlayerId = "";
+  roomState = null;
+  roomView.classList.add("hidden");
+  setupView.classList.remove("hidden");
+  inviteNotice.classList.add("hidden");
+  createRoomButton.classList.remove("hidden");
+  window.history.replaceState({}, "", "/");
+  setConnectionMode("disconnected");
+  showToast("Soba je istekla", "error");
+}
+
+function handleKicked(message) {
+  shouldReconnectSocket = false;
+  stopHeartbeat();
+  if (socket) socket.close();
+  clearStoredSession();
+  sessionStorage.clear();
+  localRoomCode = "";
+  localPlayerId = "";
+  roomState = null;
+  roomView.classList.add("hidden");
+  setupView.classList.remove("hidden");
+  inviteNotice.classList.add("hidden");
+  createRoomButton.classList.remove("hidden");
+  window.history.replaceState({}, "", "/");
+  setConnectionMode("disconnected");
+  showToast(message, "error");
+}
+
+async function validateRoomExists(roomCode) {
+  try {
+    const response = await fetch(`/api/rooms/${roomCode}/status`);
+    if (!response.ok) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function renderAvatarGrid() {
   avatarGrid.innerHTML = AVATARS.map(
     (avatar) => `
@@ -436,6 +559,18 @@ function playerNameText(player) {
   const avatar = player?.avatar || "🎲";
   const name = player?.name || "Nepoznato";
   return `${avatar} ${name}`;
+}
+
+function inviteOrigin() {
+  const origin = window.location.origin;
+  if (origin.includes("localhost") || origin.includes("127.0.0.1") || origin.includes("0.0.0.0") || /^https?:\/\/(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(origin)) {
+    return PRODUCTION_ORIGIN;
+  }
+  return origin;
+}
+
+function inviteLink() {
+  return `${inviteOrigin()}/room/${localRoomCode}`;
 }
 
 function render() {
@@ -502,8 +637,14 @@ function renderHostPanel() {
 
   const actions = [`<button id="hostResetRoomButton" class="small danger">Resetuj sobu</button>`];
   if (roomState.state === "reveal") {
-    const locked = roomState.players.some((player) => player.is_active_round_player && (player.viewed_secret || player.confirmed));
-    actions.unshift(`<button id="hostChangeWordButton" class="small secondary" ${locked ? "disabled" : ""}>Promijeni rijec</button>`);
+    actions.unshift(`<button id="hostChangeWordButton" class="small secondary">Promijeni riječ</button>`);
+  } else if (["discussion", "vote_request", "ready_for_final_voting", "final_voting", "overtime", "overtime_voting", "voting_complete", "results"].includes(roomState.state)) {
+    actions.unshift(`
+      <div class="host-helper">
+        <button class="small secondary" disabled>Promijeni riječ</button>
+        <p class="helper-text">Riječ se može promijeniti samo prije početka diskusije.</p>
+      </div>
+    `);
   }
   if (roomState.state === "discussion" && roomState.discussion) {
     actions.unshift(`<button id="hostOpenVotingButton" class="small" ${roomState.discussion.voting_unlocked ? "" : "disabled"}>Otvori glasanje</button>`);
@@ -511,11 +652,27 @@ function renderHostPanel() {
   if (roomState.state === "ready_for_final_voting") {
     actions.unshift(`<button id="hostOpenVotingButton" class="small">Otvori glasanje</button>`);
   }
+  const transferTargets = roomState.players.filter((player) => player.id !== roomState.viewer_id);
+  if (transferTargets.length > 0) {
+    actions.push(`
+      <select id="transferHostSelect" class="small-select" aria-label="Prenesi hosta">
+        <option value="">Prenesi hosta</option>
+        ${transferTargets.map((player) => `<option value="${escapeHtml(player.id)}">${escapeHtml(playerNameText(player))}</option>`).join("")}
+      </select>
+    `);
+  }
 
   hostPanelActions.innerHTML = actions.join("");
   document.querySelector("#hostResetRoomButton")?.addEventListener("click", resetRoom);
   document.querySelector("#hostChangeWordButton")?.addEventListener("click", changeWord);
   document.querySelector("#hostOpenVotingButton")?.addEventListener("click", openFinalVoting);
+  document.querySelector("#transferHostSelect")?.addEventListener("change", (event) => {
+    const targetId = event.target.value;
+    const target = roomState.players.find((player) => player.id === targetId);
+    if (!target) return;
+    showConfirmAction(`Da li zelis prenijeti hosta na ${playerNameText(target)}?`, () => transferHost(targetId), false);
+    event.target.value = "";
+  });
 }
 
 function renderLobby() {
@@ -584,6 +741,9 @@ function renderReveal() {
   const privateInfo = roomState.private;
   const me = roomState.players.find((player) => player.id === roomState.viewer_id);
   const alreadyConfirmed = Boolean(me?.confirmed);
+  if (me && !me.viewed_secret && !me.confirmed) {
+    hasRevealedPrivateCard = false;
+  }
 
   if (roomState.all_confirmed) {
     phaseContent.innerHTML = `
@@ -851,11 +1011,7 @@ function renderVotingComplete() {
             </div>`
           : ""
       }
-      ${
-        isHost
-          ? `<button id="revealResultsButton">Prikaži Varalicu</button>`
-          : `<p class="helper-text">Čeka se da host prikaže Varalicu.</p>`
-      }
+      ${isHost ? `<button id="revealResultsButton">Prikaži Varalicu</button>` : ""}
     </div>
   `;
 
@@ -958,10 +1114,17 @@ function renderPlayers() {
 
     const statusLabel = player.confirmed ? "Spreman" : "Nije vidio";
     const statusClass = player.confirmed ? "ready" : "waiting";
-    const connectionStatusLabel = player.connection_status === "idle" ? "Idle" : player.connection_status === "active" ? "Online" : "Offline";
+    const connectionLabels = {
+      active: "Active",
+      away: "Away",
+      idle: "Idle",
+      offline: "Offline",
+    };
+    const connectionStatusLabel = connectionLabels[player.connection_status] || "Offline";
     const disconnectedLabel = "";
     const connectedLabel = "";
-    const hostLabel = player.is_host ? `<span class="badge">Host</span>` : "";
+    const isViewerHost = roomState.viewer_id === roomState.host_id;
+    const hostLabel = player.is_host ? `<span class="badge">👑 Host</span>` : "";
     const currentLabel = player.is_current ? `<span class="badge active-turn">Na redu</span>` : "";
     const voteLabel = player.requested_vote ? `<span class="badge vote-requested">Trazi glasanje</span>` : "";
     const finalVoteLabel =
@@ -992,14 +1155,26 @@ function renderPlayers() {
             ? `<span class="badge ${statusClass}">${statusLabel}</span>`
             : ""
         }
+        ${
+          isViewerHost && player.id !== roomState.viewer_id
+            ? `<button class="small danger player-action-button" data-kick-id="${escapeHtml(player.id)}">Izbaci</button>`
+            : ""
+        }
       </div>
     `;
     playersList.appendChild(row);
   }
+
+  document.querySelectorAll("[data-kick-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const targetId = button.dataset.kickId;
+      showConfirmAction("Da li sigurno zelis izbaciti ovog igraca?", () => kickPlayer(targetId));
+    });
+  });
 }
 
 async function copyRoomLink() {
-  const link = `${window.location.origin}/room/${localRoomCode}`;
+  const link = inviteLink();
   try {
     await navigator.clipboard.writeText(link);
     copyLinkButton.textContent = "Kopirano";
@@ -1024,7 +1199,7 @@ async function copyRoomCode() {
 }
 
 function toggleQrPanel() {
-  const link = `${window.location.origin}/room/${localRoomCode}`;
+  const link = inviteLink();
   if (!qrPanel.classList.contains("hidden")) {
     qrPanel.classList.add("hidden");
     showQrButton.textContent = "QR";
@@ -1032,10 +1207,17 @@ function toggleQrPanel() {
   }
 
   qrPanel.innerHTML = `
-    <canvas id="roomQrCanvas" aria-label="QR kod za ulazak u sobu"></canvas>
+    <div class="qr-code-card">
+      <canvas id="roomQrCanvas" width="328" height="328" aria-label="QR kod za ulazak u sobu"></canvas>
+    </div>
     <p class="helper-text">Scan to join</p>
+    <p class="qr-link">${escapeHtml(link)}</p>
   `;
-  window.VaralicaQRCode.draw(document.querySelector("#roomQrCanvas"), link, { scale: 5 });
+  window.VaralicaQRCode.draw(document.querySelector("#roomQrCanvas"), link, {
+    scale: 8,
+    dark: "#000000",
+    light: "#ffffff",
+  });
   qrPanel.classList.remove("hidden");
   showQrButton.textContent = "Sakrij QR";
 }
@@ -1085,8 +1267,31 @@ function formatSeconds(totalSeconds) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-if (localRoomCode && localPlayerId && (!inviteRoomCode || inviteRoomCode === localRoomCode)) {
-  setupView.classList.add("hidden");
-  roomView.classList.remove("hidden");
-  connectSocket();
+async function bootstrapRoomSession() {
+  if (localRoomCode && localPlayerId && (!inviteRoomCode || inviteRoomCode === localRoomCode)) {
+    const exists = await validateRoomExists(localRoomCode);
+    if (!exists) {
+      handleExpiredRoom();
+      return;
+    }
+    setupView.classList.add("hidden");
+    roomView.classList.remove("hidden");
+    connectSocket();
+    return;
+  }
+
+  if (inviteRoomCode) {
+    const exists = await validateRoomExists(inviteRoomCode);
+    if (!exists) {
+      clearStoredSession();
+      inviteRoomCode = "";
+      roomCodeInput.value = "";
+      inviteNotice.classList.add("hidden");
+      createRoomButton.classList.remove("hidden");
+      window.history.replaceState({}, "", "/");
+      showToast("Soba je istekla", "error");
+    }
+  }
 }
+
+bootstrapRoomSession();

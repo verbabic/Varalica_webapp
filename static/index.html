@@ -14,7 +14,7 @@
           <h1>Varalica</h1>
         </div>
         <div class="top-status">
-          <button id="rulesButton" class="small secondary" type="button">? Pravila</button>
+          <button id="rulesButton" class="small secondary" type="button">📖 Pravila</button>
           <div id="connectionStatus" class="status-pill">Nije spojeno</div>
         </div>
       </section>
@@ -65,7 +65,7 @@
           </div>
           <div class="room-secondary-actions">
             <button id="resetRoomButton" class="small danger hidden">Resetuj sobu</button>
-            <button id="leaveRoomButton" class="small secondary leave-button">Leave room</button>
+            <button id="leaveRoomButton" class="small secondary leave-button">Napusti sobu</button>
           </div>
 
           <div id="phaseContent" class="phase-content"></div>
@@ -102,10 +102,21 @@
 
     <div id="leaveModal" class="modal-backdrop hidden">
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="leaveTitle">
-        <h2 id="leaveTitle">Da li sigurno zelis da napustis sobu?</h2>
+        <h2 id="leaveTitle">Da li sigurno želiš da napustiš sobu?</h2>
         <div class="modal-actions">
-          <button id="cancelLeaveButton" class="secondary" type="button">Cancel</button>
-          <button id="confirmLeaveButton" class="danger" type="button">Leave</button>
+          <button id="cancelLeaveButton" class="secondary" type="button">Odustani</button>
+          <button id="confirmLeaveButton" class="danger" type="button">Napusti sobu</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="confirmActionModal" class="modal-backdrop hidden">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirmActionTitle">
+        <h2 id="confirmActionTitle">Potvrdi akciju</h2>
+        <p id="confirmActionText" class="helper-text"></p>
+        <div class="modal-actions">
+          <button id="cancelActionButton" class="secondary" type="button">Cancel</button>
+          <button id="confirmActionButton" class="danger" type="button">Potvrdi</button>
         </div>
       </div>
     </div>

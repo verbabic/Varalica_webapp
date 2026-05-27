@@ -33,9 +33,12 @@ DISCUSSION_SECONDS = 180
 ALLOWED_DISCUSSION_SECONDS = {120, 180, 300}
 VOTING_LOCK_SECONDS = 100
 OVERTIME_SECONDS = 60
+ACTIVE_GRACE_SECONDS = 30
+AWAY_AFTER_SECONDS = 30
 IDLE_AFTER_SECONDS = 180
-RECONNECT_GRACE_SECONDS = 600
-EMPTY_ROOM_CLEANUP_SECONDS = 600
+REMOVE_AFTER_SECONDS = 300
+RECONNECT_GRACE_SECONDS = REMOVE_AFTER_SECONDS
+EMPTY_ROOM_CLEANUP_SECONDS = 300
 ALLOWED_AVATARS = [
     "😀", "😎", "🤓", "🥳", "😇", "🤠", "🐵", "🦊", "🐼", "🐸",
     "🐱", "🐶", "🦁", "🐯", "🦄", "🐧", "🐙", "🦖", "👽", "🤖",
@@ -58,6 +61,7 @@ async def startup() -> None:
             room.timer_task = asyncio.create_task(timer_loop(room.code))
         if not room.players and room.empty_since is not None:
             room.empty_cleanup_task = asyncio.create_task(empty_room_cleanup_loop(room.code))
+    asyncio.create_task(presence_monitor_loop())
 
 
 class NameRequest(BaseModel):
@@ -79,6 +83,10 @@ class VoteAction(BaseModel):
     target_id: str
 
 
+class TargetPlayerAction(PlayerAction):
+    target_id: str
+
+
 @dataclass
 class Player:
     id: str
@@ -90,7 +98,11 @@ class Player:
     confirmed: bool = False
     requested_vote: bool = False
     has_voted: bool = False
+    last_seen_at: float = field(default_factory=time.time)
+    connection_state: str = "active"
+    disconnect_started_at: float | None = None
     disconnected_at: float | None = None
+    joined_at: float = field(default_factory=time.time)
 
 
 @dataclass
@@ -101,6 +113,8 @@ class Room:
     host_id: str | None = None
     varalica_id: str | None = None
     word: dict | None = None
+    current_word_id: str | None = None
+    selected_hint: str | None = None
     used_word_indexes: set[int] = field(default_factory=set)
     round_player_ids: list[str] = field(default_factory=list)
     discussion_started_at: float | None = None
@@ -114,6 +128,7 @@ class Room:
     recent_varalica_ids: list[str] = field(default_factory=list)
     round_number: int = 1
     scoreboard: dict[str, dict[str, int]] = field(default_factory=dict)
+    kicked_player_ids: set[str] = field(default_factory=set)
     last_event: dict | None = None
     empty_since: float | None = None
     empty_cleanup_task: asyncio.Task | None = None
@@ -132,6 +147,18 @@ async def index() -> FileResponse:
 @app.get("/room/{room_code}")
 async def room_page(room_code: str) -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/api/rooms/{room_code}/status")
+async def room_status(room_code: str) -> dict:
+    room = rooms.get(room_code.upper())
+    if room is None or room.empty_since is not None and not room.players:
+        raise HTTPException(status_code=404, detail="Soba je istekla.")
+    cleanup_expired_disconnected_players(room)
+    lifecycle = room_lifecycle(room)
+    if lifecycle != "active":
+        raise HTTPException(status_code=404, detail="Soba je istekla.")
+    return {"ok": True, "room_code": room.code, "lifecycle": lifecycle}
 
 
 @app.post("/api/rooms")
@@ -159,9 +186,8 @@ async def create_room(request: NameRequest) -> dict:
 @app.post("/api/rooms/{room_code}/join")
 async def join_room(room_code: str, request: NameRequest) -> dict:
     room = get_room(room_code)
-    if not room.players:
-        cancel_empty_room_cleanup(room)
-        reset_room_to_lobby(room)
+    if not room.players and room.empty_since is not None:
+        raise HTTPException(status_code=404, detail="Soba je istekla.")
     if len(room.players) >= MAX_PLAYERS:
         raise HTTPException(status_code=400, detail="Soba je puna. Maksimalno 10 igraca.")
     if room.state != "lobby":
@@ -190,7 +216,8 @@ async def start_round(room_code: str, action: StartRoundAction) -> dict:
     if room.state != "lobby":
         raise HTTPException(status_code=400, detail="Runda je vec pokrenuta.")
 
-    active_players = [player for player in room.players.values() if player.connected]
+    cleanup_expired_disconnected_players(room)
+    active_players = [player for player in room.players.values() if is_player_active_for_round(player)]
     if len(active_players) < MIN_PLAYERS:
         raise HTTPException(status_code=400, detail="Potrebna su najmanje 4 igraca.")
     if len(active_players) > MAX_PLAYERS:
@@ -229,13 +256,21 @@ async def change_word(room_code: str, action: PlayerAction) -> dict:
     room = get_room(room_code)
     ensure_host(room, action.player_id)
     if room.state != "reveal":
-        raise HTTPException(status_code=400, detail="Rijec se moze promijeniti samo u fazi otkrivanja.")
-    if any(room.players[player_id].viewed_secret or room.players[player_id].confirmed for player_id in active_round_player_ids(room)):
-        raise HTTPException(status_code=400, detail="Rijec se ne moze promijeniti nakon sto je neko vidio ili potvrdio karticu.")
+        raise HTTPException(status_code=400, detail="Riječ se može promijeniti samo prije početka diskusije.")
     if room.varalica_id is None:
         raise HTTPException(status_code=400, detail="Runda nije spremna.")
 
+    room.current_word_id = None
+    room.selected_hint = None
     room.word = choose_word(room)
+    for player_id in active_round_player_ids(room):
+        player = room.players.get(player_id)
+        if player is not None:
+            player.viewed_secret = False
+            player.confirmed = False
+    if not selected_word_matches_room(room):
+        raise HTTPException(status_code=500, detail="Nova riječ i hint nisu usklađeni.")
+    set_room_event(room, "change_word", room.players[action.player_id])
     persist_room(room)
     await broadcast_room(room)
     return {"ok": True}
@@ -291,6 +326,48 @@ async def reset_room(room_code: str, action: PlayerAction) -> dict:
     room = get_room(room_code)
     ensure_host(room, action.player_id)
     reset_room_to_lobby(room)
+    persist_room(room)
+    await broadcast_room(room)
+    return {"ok": True}
+
+
+@app.post("/api/rooms/{room_code}/kick")
+async def kick_player(room_code: str, action: TargetPlayerAction) -> dict:
+    room = get_room(room_code)
+    ensure_host(room, action.player_id)
+    if action.player_id == action.target_id:
+        raise HTTPException(status_code=400, detail="Host ne moze izbaciti samog sebe.")
+    target = room.players.get(action.target_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Igrac nije u sobi.")
+
+    socket = room.sockets.get(action.target_id)
+    if socket is not None:
+        try:
+            await socket.send_json({"type": "kicked", "message": "Izbaceni ste iz sobe."})
+            await socket.close(code=1008)
+        except RuntimeError:
+            pass
+
+    room.kicked_player_ids.add(action.target_id)
+    remove_player_from_room(room, action.target_id)
+    await reconcile_after_player_removed(room)
+    if not room.players:
+        schedule_empty_room_cleanup(room)
+    persist_room(room)
+    await broadcast_room(room)
+    return {"ok": True}
+
+
+@app.post("/api/rooms/{room_code}/transfer-host")
+async def transfer_host(room_code: str, action: TargetPlayerAction) -> dict:
+    room = get_room(room_code)
+    ensure_host(room, action.player_id)
+    if action.target_id not in room.players:
+        raise HTTPException(status_code=404, detail="Igrac nije u sobi.")
+    if action.target_id in room.kicked_player_ids:
+        raise HTTPException(status_code=400, detail="Igrac vise nije u sobi.")
+    set_host(room, action.target_id)
     persist_room(room)
     await broadcast_room(room)
     return {"ok": True}
@@ -414,6 +491,7 @@ async def leave_room(room_code: str, action: PlayerAction) -> dict:
         raise HTTPException(status_code=404, detail="Igrac nije u sobi.")
 
     remove_player_from_room(room, action.player_id)
+    await reconcile_after_player_removed(room)
     if not room.players:
         schedule_empty_room_cleanup(room)
     persist_room(room)
@@ -425,13 +503,25 @@ async def leave_room(room_code: str, action: PlayerAction) -> dict:
 async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: str) -> None:
     await websocket.accept()
     room = rooms.get(room_code.upper())
+    if room is not None and player_id in room.kicked_player_ids:
+        await websocket.send_json({"type": "kicked", "message": "Izbaceni ste iz sobe."})
+        await websocket.close(code=1008)
+        return
     if room is None or player_id not in room.players:
+        await websocket.close(code=1008)
+        return
+    if time.time() - room.players[player_id].last_seen_at > RECONNECT_GRACE_SECONDS:
+        remove_player_from_room(room, player_id)
+        persist_room(room)
         await websocket.close(code=1008)
         return
 
     room.sockets[player_id] = websocket
     was_disconnected = not room.players[player_id].connected
     room.players[player_id].connected = True
+    room.players[player_id].last_seen_at = time.time()
+    room.players[player_id].connection_state = "active"
+    room.players[player_id].disconnect_started_at = None
     room.players[player_id].disconnected_at = None
     cancel_empty_room_cleanup(room)
     if was_disconnected:
@@ -442,12 +532,18 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: st
     try:
         while True:
             await websocket.receive_text()
+            if player_id in room.players:
+                room.players[player_id].last_seen_at = time.time()
+                room.players[player_id].connection_state = "active"
     except WebSocketDisconnect:
         if room.sockets.get(player_id) is websocket:
             del room.sockets[player_id]
         if player_id in room.players:
             room.players[player_id].connected = False
-            room.players[player_id].disconnected_at = time.time()
+            now = time.time()
+            room.players[player_id].disconnect_started_at = now
+            room.players[player_id].disconnected_at = now
+            room.players[player_id].connection_state = "away"
             asyncio.create_task(disconnected_player_status_loop(room.code, player_id))
         normalize_current_player(room)
         if room.state == "reveal" and all_active_players_confirmed(room):
@@ -509,6 +605,8 @@ def room_to_snapshot(room: Room) -> dict:
         "host_id": room.host_id,
         "varalica_id": room.varalica_id,
         "word": room.word,
+        "current_word_id": room.current_word_id,
+        "selected_hint": room.selected_hint,
         "round_player_ids": room.round_player_ids,
         "discussion_started_at": room.discussion_started_at,
         "current_player_index": room.current_player_index,
@@ -521,6 +619,7 @@ def room_to_snapshot(room: Room) -> dict:
         "recent_varalica_ids": room.recent_varalica_ids,
         "round_number": room.round_number,
         "scoreboard": room.scoreboard,
+        "kicked_player_ids": list(room.kicked_player_ids),
         "last_event": room.last_event,
         "empty_since": room.empty_since,
         "players": [
@@ -530,11 +629,15 @@ def room_to_snapshot(room: Room) -> dict:
                 "avatar": player.avatar,
                 "is_host": player.is_host,
                 "connected": player.connected,
+                "last_seen_at": player.last_seen_at,
+                "connection_state": player.connection_state,
+                "disconnect_started_at": player.disconnect_started_at,
                 "viewed_secret": player.viewed_secret,
                 "confirmed": player.confirmed,
                 "requested_vote": player.requested_vote,
                 "has_voted": player.has_voted,
                 "disconnected_at": player.disconnected_at,
+                "joined_at": player.joined_at,
             }
             for player in room.players.values()
         ],
@@ -549,6 +652,8 @@ def room_from_snapshot(snapshot: dict) -> Room:
         host_id=snapshot.get("host_id"),
         varalica_id=snapshot.get("varalica_id"),
         word=snapshot.get("word"),
+        current_word_id=snapshot.get("current_word_id") or (snapshot.get("word") or {}).get("id"),
+        selected_hint=snapshot.get("selected_hint") or (snapshot.get("word") or {}).get("hint"),
         used_word_indexes=load_used_word_indexes(room_code),
         round_player_ids=list(snapshot.get("round_player_ids", [])),
         discussion_started_at=snapshot.get("discussion_started_at"),
@@ -562,10 +667,18 @@ def room_from_snapshot(snapshot: dict) -> Room:
         recent_varalica_ids=list(snapshot.get("recent_varalica_ids", [])),
         round_number=int(snapshot.get("round_number", 1)),
         scoreboard=dict(snapshot.get("scoreboard", {})),
+        kicked_player_ids=set(snapshot.get("kicked_player_ids", [])),
         last_event=snapshot.get("last_event"),
         empty_since=snapshot.get("empty_since"),
     )
     used_avatars: set[str] = set()
+    if room.word is not None:
+        room.current_word_id = room.word.get("id")
+        hint_pool = room.word.get("hint_pool") or []
+        if not room.selected_hint or room.selected_hint not in (hint_pool or [room.word.get("hint")]):
+            room.selected_hint = choose_hint_for_word(room.word)
+        room.word["hint"] = room.selected_hint
+
     for player_data in snapshot.get("players", []):
         stored_avatar = player_data.get("avatar")
         avatar = stored_avatar if stored_avatar in ALLOWED_AVATARS else ""
@@ -579,11 +692,15 @@ def room_from_snapshot(snapshot: dict) -> Room:
             avatar=avatar,
             is_host=bool(player_data.get("is_host", False)),
             connected=False,
+            last_seen_at=float(player_data.get("last_seen_at", time.time())),
+            connection_state=str(player_data.get("connection_state", "offline")),
+            disconnect_started_at=player_data.get("disconnect_started_at"),
             viewed_secret=bool(player_data.get("viewed_secret", False)),
             confirmed=bool(player_data.get("confirmed", False)),
             requested_vote=bool(player_data.get("requested_vote", False)),
             has_voted=bool(player_data.get("has_voted", False)),
             disconnected_at=player_data.get("disconnected_at"),
+            joined_at=float(player_data.get("joined_at", time.time())),
         )
         room.players[player.id] = player
     return room
@@ -689,7 +806,29 @@ def choose_word(room: Room) -> dict:
     word_index = random.choice(available_indexes)
     room.used_word_indexes.add(word_index)
     save_used_word_index(room.code, word_index)
-    return STARTER_WORDS[word_index]
+    selected_word = dict(STARTER_WORDS[word_index])
+    selected_word["hint_pool"] = list(selected_word.get("hint_pool") or [])
+    room.current_word_id = selected_word["id"]
+    room.selected_hint = choose_hint_for_word(selected_word)
+    selected_word["hint"] = room.selected_hint
+    return selected_word
+
+
+def choose_hint_for_word(word: dict) -> str:
+    hint_pool = list(word.get("hint_pool") or [])
+    if hint_pool:
+        return random.choice(hint_pool)
+    return word.get("hint", "Razmišljaj o kategoriji i slušaj kako drugi opisuju riječ.")
+
+
+def selected_word_matches_room(room: Room) -> bool:
+    return (
+        room.word is not None
+        and room.current_word_id is not None
+        and room.word.get("id") == room.current_word_id
+        and bool(room.selected_hint)
+        and room.selected_hint in (room.word.get("hint_pool") or [room.word.get("hint")])
+    )
 
 
 def prepare_reveal_round(room: Room, active_players: list[Player]) -> None:
@@ -702,6 +841,8 @@ def prepare_reveal_round(room: Room, active_players: list[Player]) -> None:
     room.state = "reveal"
     room.round_player_ids = [player.id for player in active_players]
     room.varalica_id = choose_varalica_id(room, room.round_player_ids)
+    room.current_word_id = None
+    room.selected_hint = None
     room.word = choose_word(room)
     room.discussion_started_at = None
     room.current_player_index = 0
@@ -745,6 +886,8 @@ def reset_room_to_lobby(room: Room) -> None:
     room.state = "lobby"
     room.varalica_id = None
     room.word = None
+    room.current_word_id = None
+    room.selected_hint = None
     room.round_player_ids.clear()
     room.discussion_started_at = None
     room.current_player_index = 0
@@ -754,6 +897,7 @@ def reset_room_to_lobby(room: Room) -> None:
     room.overtime_used = False
     room.round_number = 1
     room.last_event = None
+    room.kicked_player_ids.clear()
     room.scoreboard = {
         player_id: {"discoveries": 0, "survivals": 0}
         for player_id in room.players
@@ -766,20 +910,21 @@ def reset_room_to_lobby(room: Room) -> None:
 
 
 def is_player_active_for_round(player: Player) -> bool:
-    if player.connected:
-        return True
-    if player.disconnected_at is None:
-        return False
-    return time.time() - player.disconnected_at <= RECONNECT_GRACE_SECONDS
+    return time.time() - player.last_seen_at <= REMOVE_AFTER_SECONDS
 
 
 def player_connection_status(player: Player) -> str:
-    if player.connected:
+    elapsed = time.time() - player.last_seen_at
+    if player.connected and elapsed <= ACTIVE_GRACE_SECONDS:
+        player.connection_state = "active"
         return "active"
-    if player.disconnected_at is None:
-        return "offline"
-    if time.time() - player.disconnected_at >= IDLE_AFTER_SECONDS:
+    if elapsed <= IDLE_AFTER_SECONDS:
+        player.connection_state = "away"
+        return "away"
+    if elapsed <= REMOVE_AFTER_SECONDS:
+        player.connection_state = "idle"
         return "idle"
+    player.connection_state = "offline"
     return "offline"
 
 
@@ -788,19 +933,22 @@ def cleanup_expired_disconnected_players(room: Room) -> None:
     expired_ids = [
         player_id
         for player_id, player in room.players.items()
-        if not player.connected
-        and player.disconnected_at is not None
-        and now - player.disconnected_at > RECONNECT_GRACE_SECONDS
+        if now - player.last_seen_at > REMOVE_AFTER_SECONDS
     ]
     for player_id in expired_ids:
         remove_player_from_room(room, player_id)
+    if expired_ids:
+        normalize_current_player(room)
     if expired_ids and not room.players:
         schedule_empty_room_cleanup(room)
 
 
 def remove_player_from_room(room: Room, player_id: str) -> None:
+    removed_player = room.players.get(player_id)
+    removed_joined_at = removed_player.joined_at if removed_player else None
     room.players.pop(player_id, None)
     room.sockets.pop(player_id, None)
+    room.scoreboard.pop(player_id, None)
     if player_id in room.round_player_ids:
         room.round_player_ids.remove(player_id)
     room.vote_request_player_ids.discard(player_id)
@@ -811,17 +959,59 @@ def remove_player_from_room(room: Room, player_id: str) -> None:
             if voter_id in room.players:
                 room.players[voter_id].has_voted = False
     if player_id == room.host_id:
-        assign_new_host(room)
+        assign_new_host(room, removed_joined_at)
+    normalize_current_player(room)
 
 
-def assign_new_host(room: Room) -> None:
+def assign_new_host(room: Room, after_joined_at: float | None = None) -> None:
     room.host_id = None
     for player in room.players.values():
         player.is_host = False
-    for player in room.players.values():
-        room.host_id = player.id
-        player.is_host = True
+    eligible_players = sorted(
+        [player for player in room.players.values() if player.id not in room.kicked_player_ids],
+        key=lambda player: player.joined_at,
+    )
+    if not eligible_players:
         return
+    if after_joined_at is not None:
+        for player in eligible_players:
+            if player.joined_at > after_joined_at:
+                set_host(room, player.id)
+                return
+    set_host(room, eligible_players[0].id)
+
+
+def set_host(room: Room, player_id: str) -> None:
+    for player in room.players.values():
+        player.is_host = player.id == player_id
+    room.host_id = player_id if player_id in room.players else None
+
+
+async def reconcile_after_player_removed(room: Room) -> None:
+    normalize_current_player(room)
+    if room.state == "reveal" and all_active_players_confirmed(room):
+        await enter_discussion(room)
+        return
+    if room.state == "discussion" and all_active_players_requested_vote(room):
+        room.state = "ready_for_final_voting"
+        stop_timer(room)
+        return
+    if room.state in {"final_voting", "overtime_voting"} and all_active_players_voted(room):
+        finish_voting(room)
+        return
+    if room.state == "voting_complete" and not all_active_players_voted(room):
+        room.state = "final_voting" if not room.overtime_used else "overtime_voting"
+        return
+
+
+def room_lifecycle(room: Room) -> str:
+    if room.code not in rooms:
+        return "deleted"
+    if not room.players:
+        return "idle" if room.empty_since is not None else "expired"
+    if all(player_connection_status(player) == "offline" for player in room.players.values()):
+        return "expired"
+    return "active"
 
 
 def active_round_player_ids(room: Room) -> list[str]:
@@ -933,27 +1123,33 @@ async def timer_loop(room_code: str) -> None:
 
 
 async def disconnected_player_status_loop(room_code: str, player_id: str) -> None:
-    await asyncio.sleep(IDLE_AFTER_SECONDS)
-    room = rooms.get(room_code)
-    if room is None:
-        return
-    player = room.players.get(player_id)
-    if player is None or player.connected:
-        return
-    persist_room(room)
-    await broadcast_room(room)
+    checkpoints = [AWAY_AFTER_SECONDS, IDLE_AFTER_SECONDS, REMOVE_AFTER_SECONDS]
+    started_at = time.time()
+    for checkpoint in checkpoints:
+        await asyncio.sleep(max(0, checkpoint - (time.time() - started_at)))
+        room = rooms.get(room_code)
+        if room is None:
+            return
+        player = room.players.get(player_id)
+        if player is None or time.time() - player.last_seen_at < checkpoint:
+            return
+        cleanup_expired_disconnected_players(room)
+        persist_room(room)
+        await broadcast_room(room)
 
-    remaining_seconds = max(0, RECONNECT_GRACE_SECONDS - IDLE_AFTER_SECONDS)
-    await asyncio.sleep(remaining_seconds)
-    room = rooms.get(room_code)
-    if room is None:
-        return
-    player = room.players.get(player_id)
-    if player is None or player.connected:
-        return
-    cleanup_expired_disconnected_players(room)
-    persist_room(room)
-    await broadcast_room(room)
+
+async def presence_monitor_loop() -> None:
+    while True:
+        await asyncio.sleep(10)
+        for room in list(rooms.values()):
+            before_ids = set(room.players)
+            cleanup_expired_disconnected_players(room)
+            if before_ids != set(room.players):
+                persist_room(room)
+                await broadcast_room(room)
+                continue
+            if room.players:
+                await broadcast_room(room)
 
 
 def stop_timer(room: Room) -> None:
@@ -1017,7 +1213,10 @@ def public_state(room: Room, viewer_id: str) -> dict:
         "min_players": MIN_PLAYERS,
         "max_players": MAX_PLAYERS,
         "idle_after_seconds": IDLE_AFTER_SECONDS,
+        "away_after_seconds": AWAY_AFTER_SECONDS,
+        "remove_after_seconds": REMOVE_AFTER_SECONDS,
         "reconnect_grace_seconds": RECONNECT_GRACE_SECONDS,
+        "lifecycle": room_lifecycle(room),
         "categories": ALLOWED_CATEGORIES,
         "selected_category": room.selected_category,
         "discussion_duration_seconds": room.discussion_duration_seconds,
@@ -1026,6 +1225,7 @@ def public_state(room: Room, viewer_id: str) -> dict:
         "scoreboard": scoreboard_state(room),
         "last_event": room.last_event,
         "player_count": len(room.players),
+        "not_enough_players_message": "Nema dovoljno igraca za nastavak igre." if 0 < len(active_round_player_ids(room)) < MIN_PLAYERS and room.state != "lobby" else "",
         "all_confirmed": all_confirmed,
         "discussion": discussion_state(room),
         "overtime": overtime_state(room),
@@ -1045,7 +1245,7 @@ def public_state(room: Room, viewer_id: str) -> dict:
                 "requested_vote": player.id in room.vote_request_player_ids,
                 "has_voted": player.id in room.final_votes if room.state in {"final_voting", "overtime_voting", "voting_complete", "results"} else False,
                 "is_active_round_player": player.id in active_round_player_ids(room),
-                "temporarily_disconnected": (not player.connected and is_player_active_for_round(player)),
+                "temporarily_disconnected": player_connection_status(player) in {"away", "idle"},
                 "vote_target": vote_target_for_player(room, player.id),
             }
             for player in room.players.values()
@@ -1184,17 +1384,23 @@ def private_state(room: Room, viewer_id: str) -> dict | None:
     if viewer_id == room.varalica_id:
         if room.word is None:
             return {"role": "varalica", "message": "Ti si Varalica"}
+        if not selected_word_matches_room(room):
+            raise HTTPException(status_code=500, detail="Runda nema usklađenu riječ i hint.")
         return {
             "role": "varalica",
             "message": "Ti si Varalica",
-            "hint": room.word.get("hint", "Razmišljaj o kategoriji i slušaj kako drugi opisuju riječ."),
+            "hint": room.selected_hint,
+            "word_id": room.current_word_id,
             "category": room.word["category"],
         }
     if room.word is None:
         return None
+    if not selected_word_matches_room(room):
+        raise HTTPException(status_code=500, detail="Runda nema usklađenu riječ i hint.")
     return {
         "role": "player",
         "word": {
+            "id": room.current_word_id,
             "hr": room.word["hr"],
             "sr": room.word["sr"],
             "category": room.word["category"],

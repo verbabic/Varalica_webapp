@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from collections import Counter, defaultdict
+import random
+import re
+import unicodedata
+
 DEFAULT_CATEGORY = "Sve kategorije"
-ALLOWED_CATEGORIES = [
-    DEFAULT_CATEGORY,
+WORD_CATEGORIES = [
     "Kuća",
     "Hrana",
     "Životinje",
@@ -16,1071 +21,4763 @@ ALLOWED_CATEGORIES = [
     "Odeća",
     "Zdravlje",
     "Zabava",
-    "Balkan",
+    "Balkan"
 ]
+ALLOWED_CATEGORIES = [DEFAULT_CATEGORY, *WORD_CATEGORIES]
+ALLOWED_DIFFICULTIES = {"easy", "normal", "hard"}
 
 SUSPICIOUS_PREFIXES = (
-    "svakodnevni ", "profesionalni ", "mali ", "veliki ", "moderni ",
-    "svakodnevna ", "profesionalna ", "mala ", "velika ", "moderna ",
+    "svakodnevni ", "svakodnevna ", "svakodnevno ",
+    "profesionalni ", "profesionalna ", "profesionalno ",
+    "mali ", "mala ", "malo ", "veliki ", "velika ", "veliko ",
+    "moderni ", "moderna ", "moderno ", "zanimljiv ", "zanimljiva ",
+    "poseban ", "posebna ", "brzi ", "brza ", "brzo ",
 )
 
-RAW_WORDS = [
-    {'id': 'w0001', 'sr': 'sto', 'hr': 'stol', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0002', 'sr': 'sta', 'hr': 'stoli', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0003', 'sr': 'stolica', 'hr': 'stolica', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0004', 'sr': 'stolice', 'hr': 'stolice', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0005', 'sr': 'kauč', 'hr': 'kauč', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0006', 'sr': 'kauči', 'hr': 'kauči', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0007', 'sr': 'orman', 'hr': 'ormar', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0008', 'sr': 'ormani', 'hr': 'ormari', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0009', 'sr': 'krevet', 'hr': 'krevet', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0010', 'sr': 'kreveti', 'hr': 'kreveti', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0011', 'sr': 'jastuk', 'hr': 'jastuk', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0012', 'sr': 'jastukovi', 'hr': 'jastukovi', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0013', 'sr': 'ćebe', 'hr': 'deka', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0014', 'sr': 'ćeba', 'hr': 'deke', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0015', 'sr': 'prozor', 'hr': 'prozor', 'category': 'Kuća', 'hint': 'kuća'},
-    {'id': 'w0016', 'sr': 'prozori', 'hr': 'prozori', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0017', 'sr': 'vrata', 'hr': 'vrata', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0018', 'sr': 'vrate', 'hr': 'vrate', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0019', 'sr': 'ključ', 'hr': 'ključ', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0020', 'sr': 'ključi', 'hr': 'ključi', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0021', 'sr': 'tepih', 'hr': 'tepih', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0022', 'sr': 'tepihi', 'hr': 'tepihi', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0023', 'sr': 'zavesa', 'hr': 'zavjesa', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0024', 'sr': 'zavese', 'hr': 'zavjese', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0025', 'sr': 'polica', 'hr': 'polica', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0026', 'sr': 'police', 'hr': 'police', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0027', 'sr': 'fioka', 'hr': 'ladica', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0028', 'sr': 'fioke', 'hr': 'ladice', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0029', 'sr': 'ogledalo', 'hr': 'ogledalo', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0030', 'sr': 'ogledala', 'hr': 'ogledala', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0031', 'sr': 'lampa', 'hr': 'svjetiljka', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0032', 'sr': 'lampe', 'hr': 'svjetiljke', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0033', 'sr': 'peškir', 'hr': 'ručnik', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0034', 'sr': 'peškiri', 'hr': 'ručnikovi', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0035', 'sr': 'sapun', 'hr': 'sapun', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0036', 'sr': 'sapuni', 'hr': 'sapuni', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0037', 'sr': 'tanjir', 'hr': 'tanjur', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0038', 'sr': 'tanjiri', 'hr': 'tanjuri', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0039', 'sr': 'kašika', 'hr': 'žlica', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0040', 'sr': 'kašike', 'hr': 'žlice', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0041', 'sr': 'viljuška', 'hr': 'vilica', 'category': 'Kuća', 'hint': 'pribor za jelo'},
-    {'id': 'w0042', 'sr': 'viljuške', 'hr': 'vilice', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0043', 'sr': 'čaša', 'hr': 'čaša', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0044', 'sr': 'čaše', 'hr': 'čaše', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0045', 'sr': 'šerpa', 'hr': 'lonac', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0046', 'sr': 'šerpe', 'hr': 'lonaci', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0047', 'sr': 'metla', 'hr': 'metla', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0048', 'sr': 'metle', 'hr': 'metle', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0049', 'sr': 'usisivač', 'hr': 'usisavač', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0050', 'sr': 'usisivači', 'hr': 'usisavači', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0051', 'sr': 'hleb', 'hr': 'kruh', 'category': 'Hrana', 'hint': 'pekara'},
-    {'id': 'w0052', 'sr': 'hlebi', 'hr': 'kruhi', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0053', 'sr': 'sir', 'hr': 'sir', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0054', 'sr': 'siri', 'hr': 'siri', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0055', 'sr': 'mleko', 'hr': 'mlijeko', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0056', 'sr': 'mleka', 'hr': 'mlijeka', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0057', 'sr': 'jaje', 'hr': 'jaje', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0058', 'sr': 'jaja', 'hr': 'jaja', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0059', 'sr': 'puter', 'hr': 'maslac', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0060', 'sr': 'puteri', 'hr': 'maslaci', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0061', 'sr': 'jabuka', 'hr': 'jabuka', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0062', 'sr': 'jabuke', 'hr': 'jabuke', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0063', 'sr': 'banana', 'hr': 'banana', 'category': 'Hrana', 'hint': 'voce'},
-    {'id': 'w0064', 'sr': 'banane', 'hr': 'banane', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0065', 'sr': 'pomorandža', 'hr': 'naranča', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0066', 'sr': 'pomorandže', 'hr': 'naranče', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0067', 'sr': 'paradajz', 'hr': 'rajčica', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0068', 'sr': 'paradajzi', 'hr': 'rajčice', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0069', 'sr': 'krompir', 'hr': 'krumpir', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0070', 'sr': 'krompiri', 'hr': 'krumpiri', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0071', 'sr': 'šargarepa', 'hr': 'mrkva', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0072', 'sr': 'šargarepe', 'hr': 'mrkve', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0073', 'sr': 'luk', 'hr': 'luk', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0074', 'sr': 'lukovi', 'hr': 'lukovi', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0075', 'sr': 'pirinač', 'hr': 'riža', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0076', 'sr': 'pirinači', 'hr': 'riže', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0077', 'sr': 'testenina', 'hr': 'tjestenina', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0078', 'sr': 'testenine', 'hr': 'tjestenine', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0079', 'sr': 'supa', 'hr': 'juha', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0080', 'sr': 'supe', 'hr': 'juhe', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0081', 'sr': 'salata', 'hr': 'salata', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0082', 'sr': 'salate', 'hr': 'salate', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0083', 'sr': 'piletina', 'hr': 'piletina', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0084', 'sr': 'piletine', 'hr': 'piletine', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0085', 'sr': 'riba', 'hr': 'riba', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0086', 'sr': 'ribe', 'hr': 'ribe', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0087', 'sr': 'kolač', 'hr': 'kolač', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0088', 'sr': 'kolači', 'hr': 'kolači', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0089', 'sr': 'sladoled', 'hr': 'sladoled', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0090', 'sr': 'sladoledi', 'hr': 'sladoledi', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0091', 'sr': 'palačinka', 'hr': 'palačinka', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0092', 'sr': 'palačinke', 'hr': 'palačinke', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0093', 'sr': 'čokolada', 'hr': 'čokolada', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0094', 'sr': 'čokolade', 'hr': 'čokolade', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0095', 'sr': 'med', 'hr': 'med', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0096', 'sr': 'medi', 'hr': 'medi', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0097', 'sr': 'jogurt', 'hr': 'jogurt', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0098', 'sr': 'jogurti', 'hr': 'jogurti', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0099', 'sr': 'lubenica', 'hr': 'lubenica', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0100', 'sr': 'lubenice', 'hr': 'lubenice', 'category': 'Hrana', 'hint': 'jelo ili pice'},
-    {'id': 'w0101', 'sr': 'fudbal', 'hr': 'nogomet', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0102', 'sr': 'fudbali', 'hr': 'nogometi', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0103', 'sr': 'košarka', 'hr': 'košarka', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0104', 'sr': 'košarke', 'hr': 'košarke', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0105', 'sr': 'rukomet', 'hr': 'rukomet', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0106', 'sr': 'rukometi', 'hr': 'rukometi', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0107', 'sr': 'odbojka', 'hr': 'odbojka', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0108', 'sr': 'odbojke', 'hr': 'odbojke', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0109', 'sr': 'tenis', 'hr': 'tenis', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0110', 'sr': 'tenisi', 'hr': 'tenisi', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0111', 'sr': 'plivanje', 'hr': 'plivanje', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0112', 'sr': 'plivanja', 'hr': 'plivanja', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0113', 'sr': 'trčanje', 'hr': 'trčanje', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0114', 'sr': 'trčanja', 'hr': 'trčanja', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0115', 'sr': 'bicikl', 'hr': 'bicikl', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0116', 'sr': 'bicikli', 'hr': 'bicikli', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0117', 'sr': 'lopta', 'hr': 'lopta', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0118', 'sr': 'lopte', 'hr': 'lopte', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0119', 'sr': 'gol', 'hr': 'gol', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0120', 'sr': 'goli', 'hr': 'goli', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0121', 'sr': 'mreža', 'hr': 'mreža', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0122', 'sr': 'mreže', 'hr': 'mreže', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0123', 'sr': 'teren', 'hr': 'teren', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0124', 'sr': 'tereni', 'hr': 'tereni', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0125', 'sr': 'stadion', 'hr': 'stadion', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0126', 'sr': 'stadioni', 'hr': 'stadioni', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0127', 'sr': 'sudija', 'hr': 'sudac', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0128', 'sr': 'sudije', 'hr': 'sudaci', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0129', 'sr': 'trener', 'hr': 'trener', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0130', 'sr': 'treneri', 'hr': 'treneri', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0131', 'sr': 'igrač', 'hr': 'igrač', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0132', 'sr': 'igrači', 'hr': 'igrači', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0133', 'sr': 'utakmica', 'hr': 'utakmica', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0134', 'sr': 'utakmice', 'hr': 'utakmice', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0135', 'sr': 'medalja', 'hr': 'medalja', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0136', 'sr': 'medalje', 'hr': 'medalje', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0137', 'sr': 'dres', 'hr': 'dres', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0138', 'sr': 'dresi', 'hr': 'dresi', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0139', 'sr': 'patika', 'hr': 'tenisica', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0140', 'sr': 'patike', 'hr': 'tenisice', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0141', 'sr': 'skijanje', 'hr': 'skijanje', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0142', 'sr': 'skijanja', 'hr': 'skijanja', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0143', 'sr': 'klizanje', 'hr': 'klizanje', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0144', 'sr': 'klizanja', 'hr': 'klizanja', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0145', 'sr': 'veslanje', 'hr': 'veslanje', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0146', 'sr': 'veslanja', 'hr': 'veslanja', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0147', 'sr': 'boks', 'hr': 'boks', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0148', 'sr': 'boksi', 'hr': 'boksi', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0149', 'sr': 'gimnastika', 'hr': 'gimnastika', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0150', 'sr': 'gimnastike', 'hr': 'gimnastike', 'category': 'Sport', 'hint': 'igra ili kretanje'},
-    {'id': 'w0151', 'sr': 'kompjuter', 'hr': 'računalo', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0152', 'sr': 'kompjuteri', 'hr': 'računala', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0153', 'sr': 'laptop', 'hr': 'laptop', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0154', 'sr': 'laptopi', 'hr': 'laptopi', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0155', 'sr': 'mobilni telefon', 'hr': 'mobitel', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0156', 'sr': 'pergola', 'hr': 'pergola', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0157', 'sr': 'tablet', 'hr': 'tablet', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0158', 'sr': 'tableti', 'hr': 'tableti', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0159', 'sr': 'tastatura', 'hr': 'tipkovnica', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0160', 'sr': 'tastature', 'hr': 'tipkovnice', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0161', 'sr': 'miš', 'hr': 'miš', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0162', 'sr': 'miši', 'hr': 'miši', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0163', 'sr': 'ekran', 'hr': 'zaslon', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0164', 'sr': 'ekrani', 'hr': 'zasloni', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0165', 'sr': 'punjač', 'hr': 'punjač', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0166', 'sr': 'punjači', 'hr': 'punjači', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0167', 'sr': 'baterija', 'hr': 'baterija', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0168', 'sr': 'baterije', 'hr': 'baterije', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0169', 'sr': 'kamera', 'hr': 'kamera', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0170', 'sr': 'kamere', 'hr': 'kamere', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0171', 'sr': 'zvučnik', 'hr': 'zvučnik', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0172', 'sr': 'zvučnikovi', 'hr': 'zvučnikovi', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0173', 'sr': 'slušalice', 'hr': 'slušalice', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0174', 'sr': 'slušalica', 'hr': 'slušalica', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0175', 'sr': 'štampač', 'hr': 'printer', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0176', 'sr': 'štampači', 'hr': 'printeri', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0177', 'sr': 'kabl', 'hr': 'kabel', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0178', 'sr': 'kabli', 'hr': 'kabeli', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0179', 'sr': 'ruter', 'hr': 'router', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0180', 'sr': 'ruteri', 'hr': 'routeri', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0181', 'sr': 'aplikacija', 'hr': 'aplikacija', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0182', 'sr': 'aplikacije', 'hr': 'aplikacije', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0183', 'sr': 'program', 'hr': 'program', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0184', 'sr': 'programi', 'hr': 'programi', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0185', 'sr': 'fajl', 'hr': 'datoteka', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0186', 'sr': 'fajli', 'hr': 'datoteke', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0187', 'sr': 'folder', 'hr': 'mapa', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0188', 'sr': 'folderi', 'hr': 'mape', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0189', 'sr': 'poruka', 'hr': 'poruka', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0190', 'sr': 'poruke', 'hr': 'poruke', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0191', 'sr': 'šifra', 'hr': 'lozinka', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0192', 'sr': 'šifre', 'hr': 'lozinke', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0193', 'sr': 'nalog', 'hr': 'račun', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0194', 'sr': 'nalogi', 'hr': 'računi', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0195', 'sr': 'klaud', 'hr': 'oblak', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0196', 'sr': 'klaudi', 'hr': 'oblakovi', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0197', 'sr': 'robot', 'hr': 'robot', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0198', 'sr': 'roboti', 'hr': 'roboti', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0199', 'sr': 'dron', 'hr': 'dron', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0200', 'sr': 'droni', 'hr': 'droni', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0201', 'sr': 'škola', 'hr': 'škola', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0202', 'sr': 'škole', 'hr': 'škole', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0203', 'sr': 'učionica', 'hr': 'učionica', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0204', 'sr': 'učionice', 'hr': 'učionice', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0205', 'sr': 'klupa', 'hr': 'klupa', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0206', 'sr': 'klupe', 'hr': 'klupe', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0207', 'sr': 'tabla', 'hr': 'ploča', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0208', 'sr': 'table', 'hr': 'ploče', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0209', 'sr': 'kreda', 'hr': 'kreda', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0210', 'sr': 'krede', 'hr': 'krede', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0211', 'sr': 'marker', 'hr': 'marker', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0212', 'sr': 'markeri', 'hr': 'markeri', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0213', 'sr': 'sveska', 'hr': 'bilježnica', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0214', 'sr': 'sveske', 'hr': 'bilježnice', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0215', 'sr': 'olovka', 'hr': 'olovka', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0216', 'sr': 'olovke', 'hr': 'olovke', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0217', 'sr': 'hemijska', 'hr': 'kemijska', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0218', 'sr': 'hemijske', 'hr': 'kemijske', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0219', 'sr': 'lenjir', 'hr': 'ravnalo', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0220', 'sr': 'lenjiri', 'hr': 'ravnala', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0221', 'sr': 'torba', 'hr': 'torba', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0222', 'sr': 'torbe', 'hr': 'torbe', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0223', 'sr': 'knjiga', 'hr': 'knjiga', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0224', 'sr': 'knjige', 'hr': 'knjige', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0225', 'sr': 'udžbenik', 'hr': 'udžbenik', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0226', 'sr': 'udžbenikovi', 'hr': 'udžbenikovi', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0227', 'sr': 'domaći', 'hr': 'zadaća', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0228', 'sr': 'basta', 'hr': 'vrt', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0229', 'sr': 'test', 'hr': 'ispit', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0230', 'sr': 'testi', 'hr': 'ispiti', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0231', 'sr': 'ocena', 'hr': 'ocjena', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0232', 'sr': 'ocene', 'hr': 'ocjene', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0233', 'sr': 'učitelj', 'hr': 'učitelj', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0234', 'sr': 'učitelji', 'hr': 'učitelji', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0235', 'sr': 'profesor', 'hr': 'profesor', 'category': 'Škola', 'hint': 'Škola'},
-    {'id': 'w0236', 'sr': 'profesori', 'hr': 'profesori', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0237', 'sr': 'direktor', 'hr': 'ravnatelj', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0238', 'sr': 'direktori', 'hr': 'ravnatelji', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0239', 'sr': 'pauza', 'hr': 'odmor', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0240', 'sr': 'pauze', 'hr': 'odmori', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0241', 'sr': 'hodnik', 'hr': 'hodnik', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0242', 'sr': 'hodnikovi', 'hr': 'hodnikovi', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0243', 'sr': 'biblioteka', 'hr': 'knjižnica', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0244', 'sr': 'biblioteke', 'hr': 'knjižnice', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0245', 'sr': 'raspored', 'hr': 'raspored', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0246', 'sr': 'rasporedi', 'hr': 'rasporedi', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0247', 'sr': 'odeljenje', 'hr': 'razred', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0248', 'sr': 'odeljenja', 'hr': 'razredi', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0249', 'sr': 'lekcija', 'hr': 'lekcija', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0250', 'sr': 'lekcije', 'hr': 'lekcije', 'category': 'Škola', 'hint': 'ucenje'},
-    {'id': 'w0251', 'sr': 'pasoš', 'hr': 'putovnica', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0252', 'sr': 'pasoši', 'hr': 'putovnice', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0253', 'sr': 'karta', 'hr': 'karta', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0254', 'sr': 'karte', 'hr': 'karte', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0255', 'sr': 'kofer', 'hr': 'kofer', 'category': 'Putovanja', 'hint': 'siri pojam'},
-    {'id': 'w0256', 'sr': 'koferi', 'hr': 'koferi', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0257', 'sr': 'ranac', 'hr': 'ruksak', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0258', 'sr': 'ranaci', 'hr': 'ruksakovi', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0259', 'sr': 'hotel', 'hr': 'hotel', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0260', 'sr': 'hoteli', 'hr': 'hoteli', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0261', 'sr': 'apartman', 'hr': 'apartman', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0262', 'sr': 'apartmani', 'hr': 'apartmani', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0263', 'sr': 'plaža', 'hr': 'plaža', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0264', 'sr': 'plaže', 'hr': 'plaže', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0265', 'sr': 'aerodrom', 'hr': 'aerodrom', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0266', 'sr': 'aerodromi', 'hr': 'aerodromi', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0267', 'sr': 'avion', 'hr': 'zrakoplov', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0268', 'sr': 'avioni', 'hr': 'zrakoplovi', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0269', 'sr': 'voz', 'hr': 'vlak', 'category': 'Putovanja', 'hint': 'prevoz'},
-    {'id': 'w0270', 'sr': 'vozi', 'hr': 'vlakovi', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0271', 'sr': 'autobus', 'hr': 'autobus', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0272', 'sr': 'autobusi', 'hr': 'autobusi', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0273', 'sr': 'stanica', 'hr': 'kolodvor', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0274', 'sr': 'stanice', 'hr': 'kolodvori', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0275', 'sr': 'luka', 'hr': 'luka', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0276', 'sr': 'luke', 'hr': 'luke', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0277', 'sr': 'brod', 'hr': 'brod', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0278', 'sr': 'brodi', 'hr': 'brodi', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0279', 'sr': 'taksi', 'hr': 'taxi', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0280', 'sr': 'zardinjera', 'hr': 'zardinjera', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0281', 'sr': 'vodič', 'hr': 'vodič', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0282', 'sr': 'vodiči', 'hr': 'vodiči', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0283', 'sr': 'mapa', 'hr': 'mapa', 'category': 'Putovanja', 'hint': 'siri pojam'},
-    {'id': 'w0284', 'sr': 'mape', 'hr': 'mape', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0285', 'sr': 'izlet', 'hr': 'izlet', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0286', 'sr': 'izleti', 'hr': 'izleti', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0287', 'sr': 'odmor', 'hr': 'odmor', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0288', 'sr': 'odmori', 'hr': 'odmori', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0289', 'sr': 'granica', 'hr': 'granica', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0290', 'sr': 'granice', 'hr': 'granice', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0291', 'sr': 'valuta', 'hr': 'valuta', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0292', 'sr': 'valute', 'hr': 'valute', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0293', 'sr': 'suvenir', 'hr': 'suvenir', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0294', 'sr': 'suveniri', 'hr': 'suveniri', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0295', 'sr': 'rezervacija', 'hr': 'rezervacija', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0296', 'sr': 'rezervacije', 'hr': 'rezervacije', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0297', 'sr': 'recepcija', 'hr': 'recepcija', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0298', 'sr': 'recepcije', 'hr': 'recepcije', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0299', 'sr': 'putnik', 'hr': 'putnik', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0300', 'sr': 'putnikovi', 'hr': 'putnikovi', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0301', 'sr': 'pas', 'hr': 'pas', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0302', 'sr': 'pasi', 'hr': 'pasi', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0303', 'sr': 'mačka', 'hr': 'mačka', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0304', 'sr': 'mačke', 'hr': 'mačke', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0305', 'sr': 'konj', 'hr': 'konj', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0306', 'sr': 'konji', 'hr': 'konji', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0307', 'sr': 'krava', 'hr': 'krava', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0308', 'sr': 'krave', 'hr': 'krave', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0309', 'sr': 'ovca', 'hr': 'ovca', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0310', 'sr': 'ovce', 'hr': 'ovce', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0311', 'sr': 'koza', 'hr': 'koza', 'category': 'Životinje', 'hint': 'farma'},
-    {'id': 'w0312', 'sr': 'koze', 'hr': 'koze', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0313', 'sr': 'svinja', 'hr': 'svinja', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0314', 'sr': 'svinje', 'hr': 'svinje', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0315', 'sr': 'kokoška', 'hr': 'kokoš', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0316', 'sr': 'kokoške', 'hr': 'kokoši', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0317', 'sr': 'patka', 'hr': 'patka', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0318', 'sr': 'patke', 'hr': 'patke', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0319', 'sr': 'guska', 'hr': 'guska', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0320', 'sr': 'guske', 'hr': 'guske', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0321', 'sr': 'komarnik', 'hr': 'komarnik', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0322', 'sr': 'terasa', 'hr': 'terasa', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0323', 'sr': 'ptica', 'hr': 'ptica', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0324', 'sr': 'ptice', 'hr': 'ptice', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0325', 'sr': 'zec', 'hr': 'zec', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0326', 'sr': 'zeci', 'hr': 'zeci', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0327', 'sr': 'vuk', 'hr': 'vuk', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0328', 'sr': 'vukovi', 'hr': 'vukovi', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0329', 'sr': 'lisica', 'hr': 'lisica', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0330', 'sr': 'lisice', 'hr': 'lisice', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0331', 'sr': 'medved', 'hr': 'medvjed', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0332', 'sr': 'medvedi', 'hr': 'medvjedi', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0333', 'sr': 'lav', 'hr': 'lav', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0334', 'sr': 'lavi', 'hr': 'lavi', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0335', 'sr': 'tigar', 'hr': 'tigar', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0336', 'sr': 'tigari', 'hr': 'tigari', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0337', 'sr': 'slon', 'hr': 'slon', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0338', 'sr': 'sloni', 'hr': 'sloni', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0339', 'sr': 'majmun', 'hr': 'majmun', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0340', 'sr': 'majmuni', 'hr': 'majmuni', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0341', 'sr': 'žaba', 'hr': 'žaba', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0342', 'sr': 'žabe', 'hr': 'žabe', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0343', 'sr': 'zmija', 'hr': 'zmija', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0344', 'sr': 'zmije', 'hr': 'zmije', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0345', 'sr': 'pčela', 'hr': 'pčela', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0346', 'sr': 'pčele', 'hr': 'pčele', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0347', 'sr': 'mrav', 'hr': 'mrav', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0348', 'sr': 'mravi', 'hr': 'mravi', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0349', 'sr': 'leptir', 'hr': 'leptir', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0350', 'sr': 'leptiri', 'hr': 'leptiri', 'category': 'Životinje', 'hint': 'zivo bice'},
-    {'id': 'w0351', 'sr': 'doktor', 'hr': 'liječnik', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0352', 'sr': 'doktori', 'hr': 'liječnikovi', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0353', 'sr': 'medicinska sestra', 'hr': 'medicinska sestra', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0354', 'sr': 'nadstresnica', 'hr': 'nadstresnica', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0355', 'sr': 'kapija', 'hr': 'kapija', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0356', 'sr': 'interfon', 'hr': 'portafon', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0357', 'sr': 'zvoncic', 'hr': 'zvonce', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0358', 'sr': 'sanduk za postu', 'hr': 'postanski sanducic', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0359', 'sr': 'kuvar', 'hr': 'kuhar', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0360', 'sr': 'kuvari', 'hr': 'kuhari', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0361', 'sr': 'konobar', 'hr': 'konobar', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0362', 'sr': 'konobari', 'hr': 'konobari', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0363', 'sr': 'vozač', 'hr': 'vozač', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0364', 'sr': 'vozači', 'hr': 'vozači', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0365', 'sr': 'policajac', 'hr': 'policajac', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0366', 'sr': 'policajaci', 'hr': 'policajaci', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0367', 'sr': 'vatrogasac', 'hr': 'vatrogasac', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0368', 'sr': 'vatrogasaci', 'hr': 'vatrogasaci', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0369', 'sr': 'pekara', 'hr': 'pekara', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0370', 'sr': 'pekare', 'hr': 'pekare', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0371', 'sr': 'frizer', 'hr': 'frizer', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0372', 'sr': 'frizeri', 'hr': 'frizeri', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0373', 'sr': 'prodavac', 'hr': 'prodavač', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0374', 'sr': 'prodavaci', 'hr': 'prodavači', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0375', 'sr': 'programer', 'hr': 'programer', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0376', 'sr': 'programeri', 'hr': 'programeri', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0377', 'sr': 'inženjer', 'hr': 'inženjer', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0378', 'sr': 'inženjeri', 'hr': 'inženjeri', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0379', 'sr': 'glumac', 'hr': 'glumac', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0380', 'sr': 'glumaci', 'hr': 'glumaci', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0381', 'sr': 'pevač', 'hr': 'pjevač', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0382', 'sr': 'pevači', 'hr': 'pjevači', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0383', 'sr': 'novinar', 'hr': 'novinar', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0384', 'sr': 'novinari', 'hr': 'novinari', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0385', 'sr': 'fotograf', 'hr': 'fotograf', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0386', 'sr': 'fotografi', 'hr': 'fotografi', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0387', 'sr': 'mehaničar', 'hr': 'mehaničar', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0388', 'sr': 'mehaničari', 'hr': 'mehaničari', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0389', 'sr': 'zubar', 'hr': 'zubar', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0390', 'sr': 'zubari', 'hr': 'zubari', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0391', 'sr': 'poštar', 'hr': 'poštar', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0392', 'sr': 'poštari', 'hr': 'poštari', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0393', 'sr': 'čistač', 'hr': 'čistač', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0394', 'sr': 'čistači', 'hr': 'čistači', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0395', 'sr': 'obezbeđenje', 'hr': 'zaštitar', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0396', 'sr': 'obezbeđenja', 'hr': 'zaštitari', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0397', 'sr': 'advokat', 'hr': 'odvjetnik', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0398', 'sr': 'advokati', 'hr': 'odvjetnikovi', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0399', 'sr': 'pita', 'hr': 'pita', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0400', 'sr': 'gibanica', 'hr': 'gibanica', 'category': 'Posao', 'hint': 'radni dan'},
-    {'id': 'w0401', 'sr': 'igra', 'hr': 'igra', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0402', 'sr': 'igre', 'hr': 'igre', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0403', 'sr': 'koncert', 'hr': 'koncert', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0404', 'sr': 'koncerti', 'hr': 'koncerti', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0405', 'sr': 'festival', 'hr': 'festival', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0406', 'sr': 'festivali', 'hr': 'festivali', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0407', 'sr': 'predstava', 'hr': 'predstava', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0408', 'sr': 'predstave', 'hr': 'predstave', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0409', 'sr': 'pozorište', 'hr': 'kazalište', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0410', 'sr': 'pozorišta', 'hr': 'kazališta', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0411', 'sr': 'cirkus', 'hr': 'cirkus', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0412', 'sr': 'cirkusi', 'hr': 'cirkusi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0413', 'sr': 'karaoke', 'hr': 'karaoke', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0414', 'sr': 'karaoka', 'hr': 'karaoka', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0415', 'sr': 'kviz', 'hr': 'kviz', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0416', 'sr': 'kvizi', 'hr': 'kvizi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0417', 'sr': 'rođendan', 'hr': 'rođendan', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0418', 'sr': 'rođendani', 'hr': 'rođendani', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0419', 'sr': 'žurka', 'hr': 'zabava', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0420', 'sr': 'žurke', 'hr': 'zabave', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0421', 'sr': 'ples', 'hr': 'ples', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0422', 'sr': 'plesi', 'hr': 'plesi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0423', 'sr': 'šala', 'hr': 'šala', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0424', 'sr': 'šale', 'hr': 'šale', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0425', 'sr': 'smeh', 'hr': 'smijeh', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0426', 'sr': 'smehi', 'hr': 'smijehi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0427', 'sr': 'ulaznica', 'hr': 'ulaznica', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0428', 'sr': 'ulaznice', 'hr': 'ulaznice', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0429', 'sr': 'bina', 'hr': 'pozornica', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0430', 'sr': 'bine', 'hr': 'pozornice', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0431', 'sr': 'publika', 'hr': 'publika', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0432', 'sr': 'publike', 'hr': 'publike', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0433', 'sr': 'voditelj', 'hr': 'voditelj', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0434', 'sr': 'voditelji', 'hr': 'voditelji', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0435', 'sr': 'nagrada', 'hr': 'nagrada', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0436', 'sr': 'nagrade', 'hr': 'nagrade', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0437', 'sr': 'balon', 'hr': 'balon', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0438', 'sr': 'baloni', 'hr': 'baloni', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0439', 'sr': 'kostim', 'hr': 'kostim', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0440', 'sr': 'kostimi', 'hr': 'kostimi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0441', 'sr': 'maskota', 'hr': 'maskota', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0442', 'sr': 'maskote', 'hr': 'maskote', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0443', 'sr': 'magija', 'hr': 'čarolija', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0444', 'sr': 'magije', 'hr': 'čarolije', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0445', 'sr': 'mađioničar', 'hr': 'mađioničar', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0446', 'sr': 'mađioničari', 'hr': 'mađioničari', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0447', 'sr': 'lunapark', 'hr': 'lunapark', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0448', 'sr': 'lunaparkovi', 'hr': 'lunaparkovi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0449', 'sr': 'vatromet', 'hr': 'vatromet', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0450', 'sr': 'vatrometi', 'hr': 'vatrometi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0451', 'sr': 'sunce', 'hr': 'sunce', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0452', 'sr': 'sunca', 'hr': 'sunca', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0453', 'sr': 'mesec', 'hr': 'mjesec', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0454', 'sr': 'meseci', 'hr': 'mjeseci', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0455', 'sr': 'zvezda', 'hr': 'zvijezda', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0456', 'sr': 'zvezde', 'hr': 'zvijezde', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0457', 'sr': 'oblak', 'hr': 'oblak', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0458', 'sr': 'oblakovi', 'hr': 'oblakovi', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0459', 'sr': 'kiša', 'hr': 'kiša', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0460', 'sr': 'kiše', 'hr': 'kiše', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0461', 'sr': 'sneg', 'hr': 'snijeg', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0462', 'sr': 'snegi', 'hr': 'snijegi', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0463', 'sr': 'vetar', 'hr': 'vjetar', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0464', 'sr': 'vetari', 'hr': 'vjetari', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0465', 'sr': 'more', 'hr': 'more', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0466', 'sr': 'mora', 'hr': 'mora', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0467', 'sr': 'reka', 'hr': 'rijeka', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0468', 'sr': 'reke', 'hr': 'rijeke', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0469', 'sr': 'jezero', 'hr': 'jezero', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0470', 'sr': 'jezera', 'hr': 'jezera', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0471', 'sr': 'planina', 'hr': 'planina', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0472', 'sr': 'planine', 'hr': 'planine', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0473', 'sr': 'brdo', 'hr': 'brdo', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0474', 'sr': 'brda', 'hr': 'brda', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0475', 'sr': 'šuma', 'hr': 'šuma', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0476', 'sr': 'šume', 'hr': 'šume', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0477', 'sr': 'drvo', 'hr': 'drvo', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0478', 'sr': 'drva', 'hr': 'drva', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0479', 'sr': 'cvet', 'hr': 'cvijet', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0480', 'sr': 'cveti', 'hr': 'cvijeti', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0481', 'sr': 'trava', 'hr': 'trava', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0482', 'sr': 'trave', 'hr': 'trave', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0483', 'sr': 'kamen', 'hr': 'kamen', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0484', 'sr': 'kameni', 'hr': 'kameni', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0485', 'sr': 'pesak', 'hr': 'pijesak', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0486', 'sr': 'pesakovi', 'hr': 'pijesakovi', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0487', 'sr': 'ostrvo', 'hr': 'otok', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0488', 'sr': 'ostrva', 'hr': 'otokovi', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0489', 'sr': 'musaka', 'hr': 'musaka', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0490', 'sr': 'gulas', 'hr': 'gulas', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0491', 'sr': 'polje', 'hr': 'polje', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0492', 'sr': 'polja', 'hr': 'polja', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0493', 'sr': 'livada', 'hr': 'livada', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0494', 'sr': 'livade', 'hr': 'livade', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0495', 'sr': 'dolina', 'hr': 'dolina', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0496', 'sr': 'doline', 'hr': 'doline', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0497', 'sr': 'izvor', 'hr': 'izvor', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0498', 'sr': 'izvori', 'hr': 'izvori', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0499', 'sr': 'duga', 'hr': 'duga', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0500', 'sr': 'duge', 'hr': 'duge', 'category': 'Priroda', 'hint': 'napolju'},
-    {'id': 'w0501', 'sr': 'sat', 'hr': 'sat', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0502', 'sr': 'sati', 'hr': 'sati', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0503', 'sr': 'paprikas', 'hr': 'paprikas', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0504', 'sr': 'knedla', 'hr': 'okruglica', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0505', 'sr': 'novčanik', 'hr': 'novčanik', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0506', 'sr': 'novčanikovi', 'hr': 'novčanikovi', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0507', 'sr': 'kišobran', 'hr': 'kišobran', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0508', 'sr': 'kišobrani', 'hr': 'kišobrani', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0509', 'sr': 'flaša', 'hr': 'boca', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0510', 'sr': 'flaše', 'hr': 'boce', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0511', 'sr': 'kutija', 'hr': 'kutija', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0512', 'sr': 'kutije', 'hr': 'kutije', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0513', 'sr': 'makaze', 'hr': 'škare', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0514', 'sr': 'makaza', 'hr': 'škara', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0515', 'sr': 'lepak', 'hr': 'ljepilo', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0516', 'sr': 'lepakovi', 'hr': 'ljepila', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0517', 'sr': 'traka', 'hr': 'traka', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0518', 'sr': 'trake', 'hr': 'trake', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0519', 'sr': 'papir', 'hr': 'papir', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0520', 'sr': 'papiri', 'hr': 'papiri', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0521', 'sr': 'przenice', 'hr': 'pohani kruh', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0522', 'sr': 'kajgana', 'hr': 'kajgana', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0523', 'sr': 'upaljač', 'hr': 'upaljač', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0524', 'sr': 'upaljači', 'hr': 'upaljači', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0525', 'sr': 'sveća', 'hr': 'svijeća', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0526', 'sr': 'sveće', 'hr': 'svijeće', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0527', 'sr': 'češalj', 'hr': 'češalj', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0528', 'sr': 'češalji', 'hr': 'češalji', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0529', 'sr': 'četka', 'hr': 'četka', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0530', 'sr': 'četke', 'hr': 'četke', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0531', 'sr': 'igla', 'hr': 'igla', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0532', 'sr': 'igle', 'hr': 'igle', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0533', 'sr': 'konac', 'hr': 'konac', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0534', 'sr': 'konaci', 'hr': 'konaci', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0535', 'sr': 'lopata', 'hr': 'lopata', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0536', 'sr': 'lopate', 'hr': 'lopate', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0537', 'sr': 'čekić', 'hr': 'čekić', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0538', 'sr': 'čekići', 'hr': 'čekići', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0539', 'sr': 'šrafciger', 'hr': 'odvijač', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0540', 'sr': 'šrafcigeri', 'hr': 'odvijači', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0541', 'sr': 'šraf', 'hr': 'vijak', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0542', 'sr': 'šrafi', 'hr': 'vijakovi', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0543', 'sr': 'ekser', 'hr': 'čavao', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0544', 'sr': 'ekseri', 'hr': 'čavaa', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0545', 'sr': 'kanta', 'hr': 'kanta', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0546', 'sr': 'kante', 'hr': 'kante', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0547', 'sr': 'kesica', 'hr': 'vrećica', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0548', 'sr': 'kesice', 'hr': 'vrećice', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0549', 'sr': 'kaiš', 'hr': 'remen', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0550', 'sr': 'kaiši', 'hr': 'remeni', 'category': 'Kuća', 'hint': 'dom'},
-    {'id': 'w0551', 'sr': 'sreća', 'hr': 'sreća', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0552', 'sr': 'sreće', 'hr': 'sreće', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0553', 'sr': 'tuga', 'hr': 'tuga', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0554', 'sr': 'tuge', 'hr': 'tuge', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0555', 'sr': 'strah', 'hr': 'strah', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0556', 'sr': 'strahi', 'hr': 'strahi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0557', 'sr': 'bes', 'hr': 'ljutnja', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0558', 'sr': 'besi', 'hr': 'ljutnje', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0559', 'sr': 'mir', 'hr': 'mir', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0560', 'sr': 'miri', 'hr': 'miri', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0561', 'sr': 'nada', 'hr': 'nada', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0562', 'sr': 'nade', 'hr': 'nade', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0563', 'sr': 'ponos', 'hr': 'ponos', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0564', 'sr': 'ponosi', 'hr': 'ponosi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0565', 'sr': 'sramota', 'hr': 'sram', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0566', 'sr': 'sramote', 'hr': 'srami', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0567', 'sr': 'dosada', 'hr': 'dosada', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0568', 'sr': 'dosade', 'hr': 'dosade', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0569', 'sr': 'uzbuđenje', 'hr': 'uzbuđenje', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0570', 'sr': 'uzbuđenja', 'hr': 'uzbuđenja', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0571', 'sr': 'iznenađenje', 'hr': 'iznenađenje', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0572', 'sr': 'iznenađenja', 'hr': 'iznenađenja', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0573', 'sr': 'briga', 'hr': 'zabrinutost', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0574', 'sr': 'brige', 'hr': 'zabrinutosti', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0575', 'sr': 'ljubav', 'hr': 'ljubav', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0576', 'sr': 'ljubavi', 'hr': 'ljubavi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0577', 'sr': 'mržnja', 'hr': 'mržnja', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0578', 'sr': 'mržnje', 'hr': 'mržnje', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0579', 'sr': 'zavist', 'hr': 'zavist', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0580', 'sr': 'zavisti', 'hr': 'zavisti', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0581', 'sr': 'zahvalnost', 'hr': 'zahvalnost', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0582', 'sr': 'zahvalnosti', 'hr': 'zahvalnosti', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0583', 'sr': 'poverenje', 'hr': 'povjerenje', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0584', 'sr': 'poverenja', 'hr': 'povjerenja', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0585', 'sr': 'sumnja', 'hr': 'sumnja', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0586', 'sr': 'sumnje', 'hr': 'sumnje', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0587', 'sr': 'olakšanje', 'hr': 'olakšanje', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0588', 'sr': 'olakšanja', 'hr': 'olakšanja', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0589', 'sr': 'krivica', 'hr': 'krivnja', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0590', 'sr': 'krivice', 'hr': 'krivnje', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0591', 'sr': 'nervoza', 'hr': 'nervoza', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0592', 'sr': 'nervoze', 'hr': 'nervoze', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0593', 'sr': 'hrabrost', 'hr': 'hrabrost', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0594', 'sr': 'hrabrosti', 'hr': 'hrabrosti', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0595', 'sr': 'umor', 'hr': 'umor', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0596', 'sr': 'umori', 'hr': 'umori', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0597', 'sr': 'radost', 'hr': 'radost', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0598', 'sr': 'radosti', 'hr': 'radosti', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0599', 'sr': 'želja', 'hr': 'želja', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0600', 'sr': 'želje', 'hr': 'želje', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0601', 'sr': 'prodavnica', 'hr': 'trgovina', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0602', 'sr': 'prodavnice', 'hr': 'trgovine', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0603', 'sr': 'bolnica', 'hr': 'bolnica', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0604', 'sr': 'bolnice', 'hr': 'bolnice', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0605', 'sr': 'apoteka', 'hr': 'ljekarna', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0606', 'sr': 'apoteke', 'hr': 'ljekarne', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0607', 'sr': 'pošta', 'hr': 'pošta', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0608', 'sr': 'pošte', 'hr': 'pošte', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0609', 'sr': 'banka', 'hr': 'banka', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0610', 'sr': 'banke', 'hr': 'banke', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0611', 'sr': 'park', 'hr': 'park', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0612', 'sr': 'parkovi', 'hr': 'parkovi', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0613', 'sr': 'restoran', 'hr': 'restoran', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0614', 'sr': 'restorani', 'hr': 'restorani', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0615', 'sr': 'kafić', 'hr': 'kafić', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0616', 'sr': 'kafići', 'hr': 'kafići', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0617', 'sr': 'bioskop', 'hr': 'kino', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0618', 'sr': 'bioskopi', 'hr': 'kina', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0619', 'sr': 'muzej', 'hr': 'muzej', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0620', 'sr': 'muzeji', 'hr': 'muzeji', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0621', 'sr': 'virsla', 'hr': 'hrenovka', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0622', 'sr': 'semenke', 'hr': 'sjemenke', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0623', 'sr': 'ris', 'hr': 'ris', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0624', 'sr': 'jazavac', 'hr': 'jazavac', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0625', 'sr': 'fakultet', 'hr': 'fakultet', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0626', 'sr': 'fakulteti', 'hr': 'fakulteti', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0627', 'sr': 'igralište', 'hr': 'igralište', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0628', 'sr': 'igrališta', 'hr': 'igrališta', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0629', 'sr': 'pijaca', 'hr': 'tržnica', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0630', 'sr': 'pijace', 'hr': 'tržnice', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0631', 'sr': 'crkva', 'hr': 'crkva', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0632', 'sr': 'crkve', 'hr': 'crkve', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0633', 'sr': 'džamija', 'hr': 'džamija', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0634', 'sr': 'džamije', 'hr': 'džamije', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0635', 'sr': 'tvor', 'hr': 'tvor', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0636', 'sr': 'lasica', 'hr': 'lasica', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0637', 'sr': 'vidra', 'hr': 'vidra', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0638', 'sr': 'foka', 'hr': 'tuljan', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0639', 'sr': 'meduza', 'hr': 'meduza', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0640', 'sr': 'skoljka', 'hr': 'skoljka', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0641', 'sr': 'ulica', 'hr': 'ulica', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0642', 'sr': 'ulice', 'hr': 'ulice', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0643', 'sr': 'trg', 'hr': 'trg', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0644', 'sr': 'trgi', 'hr': 'trgi', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0645', 'sr': 'most', 'hr': 'most', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0646', 'sr': 'mosti', 'hr': 'mosti', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0647', 'sr': 'krpelj', 'hr': 'krpelj', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0648', 'sr': 'svitac', 'hr': 'krijesnica', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0649', 'sr': 'kancelarija', 'hr': 'ured', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0650', 'sr': 'kancelarije', 'hr': 'uredi', 'category': 'Putovanja', 'hint': 'kofer ili mapa'},
-    {'id': 'w0651', 'sr': 'majica', 'hr': 'majica', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0652', 'sr': 'majice', 'hr': 'majice', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0653', 'sr': 'košulja', 'hr': 'košulja', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0654', 'sr': 'košulje', 'hr': 'košulje', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0655', 'sr': 'pantalone', 'hr': 'hlače', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0656', 'sr': 'pantalona', 'hr': 'hlača', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0657', 'sr': 'farmerke', 'hr': 'traperice', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0658', 'sr': 'farmerka', 'hr': 'traperica', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0659', 'sr': 'suknja', 'hr': 'suknja', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0660', 'sr': 'suknje', 'hr': 'suknje', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0661', 'sr': 'haljina', 'hr': 'haljina', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0662', 'sr': 'haljine', 'hr': 'haljine', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0663', 'sr': 'jakna', 'hr': 'jakna', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0664', 'sr': 'jakne', 'hr': 'jakne', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0665', 'sr': 'kaput', 'hr': 'kaput', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0666', 'sr': 'kaputi', 'hr': 'kaputi', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0667', 'sr': 'džemper', 'hr': 'džemper', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0668', 'sr': 'džemperi', 'hr': 'džemperi', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0669', 'sr': 'čarapa', 'hr': 'čarapa', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0670', 'sr': 'čarape', 'hr': 'čarape', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0671', 'sr': 'cipela', 'hr': 'cipela', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0672', 'sr': 'cipele', 'hr': 'cipele', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0673', 'sr': 'bejzbol', 'hr': 'bejzbol', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0674', 'sr': 'ragbi', 'hr': 'ragbi', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0675', 'sr': 'čizma', 'hr': 'čizma', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0676', 'sr': 'čizme', 'hr': 'čizme', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0677', 'sr': 'kapa', 'hr': 'kapa', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0678', 'sr': 'kape', 'hr': 'kape', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0679', 'sr': 'šešir', 'hr': 'šešir', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0680', 'sr': 'šeširi', 'hr': 'šeširi', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0681', 'sr': 'rukavica', 'hr': 'rukavica', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0682', 'sr': 'rukavice', 'hr': 'rukavice', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0683', 'sr': 'šal', 'hr': 'šal', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0684', 'sr': 'šali', 'hr': 'šali', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0685', 'sr': 'hokej', 'hr': 'hokej', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0686', 'sr': 'vaterpolo', 'hr': 'vaterpolo', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0687', 'sr': 'kravata', 'hr': 'kravata', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0688', 'sr': 'kravate', 'hr': 'kravate', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0689', 'sr': 'pidžama', 'hr': 'pidžama', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0690', 'sr': 'pidžame', 'hr': 'pidžame', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0691', 'sr': 'kupaći kostim', 'hr': 'kupaći kostim', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0692', 'sr': 'ronjenje', 'hr': 'ronjenje', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0693', 'sr': 'odelo', 'hr': 'odijelo', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0694', 'sr': 'odela', 'hr': 'odijela', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0695', 'sr': 'uniforma', 'hr': 'uniforma', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0696', 'sr': 'uniforme', 'hr': 'uniforme', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0697', 'sr': 'prsluk', 'hr': 'prsluk', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0698', 'sr': 'prslukovi', 'hr': 'prslukovi', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0699', 'sr': 'papuča', 'hr': 'papuča', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0700', 'sr': 'papuče', 'hr': 'papuče', 'category': 'Odeća', 'hint': 'nosi se'},
-    {'id': 'w0701', 'sr': 'glava', 'hr': 'glava', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0702', 'sr': 'glave', 'hr': 'glave', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0703', 'sr': 'zub', 'hr': 'zub', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0704', 'sr': 'zubi', 'hr': 'zubi', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0705', 'sr': 'oko', 'hr': 'oko', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0706', 'sr': 'oka', 'hr': 'oka', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0707', 'sr': 'uvo', 'hr': 'uho', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0708', 'sr': 'uva', 'hr': 'uha', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0709', 'sr': 'ruka', 'hr': 'ruka', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0710', 'sr': 'ruke', 'hr': 'ruke', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0711', 'sr': 'noga', 'hr': 'noga', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0712', 'sr': 'noge', 'hr': 'noge', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0713', 'sr': 'srce', 'hr': 'srce', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0714', 'sr': 'srca', 'hr': 'srca', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0715', 'sr': 'stomak', 'hr': 'trbuh', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0716', 'sr': 'stomakovi', 'hr': 'trbuhi', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0717', 'sr': 'leđa', 'hr': 'leđa', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0718', 'sr': 'leđe', 'hr': 'leđe', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0719', 'sr': 'temperatura', 'hr': 'temperatura', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0720', 'sr': 'temperature', 'hr': 'temperature', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0721', 'sr': 'kašalj', 'hr': 'kašalj', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0722', 'sr': 'kašalji', 'hr': 'kašalji', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0723', 'sr': 'prehlada', 'hr': 'prehlada', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0724', 'sr': 'prehlade', 'hr': 'prehlade', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0725', 'sr': 'lek', 'hr': 'lijek', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0726', 'sr': 'lekovi', 'hr': 'lijekovi', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0727', 'sr': 'tableta', 'hr': 'tableta', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0728', 'sr': 'tablete', 'hr': 'tablete', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0729', 'sr': 'sirup', 'hr': 'sirup', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0730', 'sr': 'sirupi', 'hr': 'sirupi', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0731', 'sr': 'zavoj', 'hr': 'zavoj', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0732', 'sr': 'zavoji', 'hr': 'zavoji', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0733', 'sr': 'flaster', 'hr': 'flaster', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0734', 'sr': 'flasteri', 'hr': 'flasteri', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0735', 'sr': 'injekcija', 'hr': 'injekcija', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0736', 'sr': 'injekcije', 'hr': 'injekcije', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0737', 'sr': 'pregled', 'hr': 'pregled', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0738', 'sr': 'pregledi', 'hr': 'pregledi', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0739', 'sr': 'ambulanta', 'hr': 'ambulanta', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0740', 'sr': 'ambulante', 'hr': 'ambulante', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0741', 'sr': 'surfovanje', 'hr': 'surfanje', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0742', 'sr': 'strelicarstvo', 'hr': 'strelicarstvo', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0743', 'sr': 'macevanje', 'hr': 'macevanje', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0744', 'sr': 'rvanje', 'hr': 'hrvanje', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0745', 'sr': 'zubobolja', 'hr': 'zubobolja', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0746', 'sr': 'zubobolje', 'hr': 'zubobolje', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0747', 'sr': 'vitamin', 'hr': 'vitamin', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0748', 'sr': 'vitamini', 'hr': 'vitamini', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0749', 'sr': 'bilijar', 'hr': 'biljar', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0750', 'sr': 'geometrija', 'hr': 'geometrija', 'category': 'Zdravlje', 'hint': 'briga o sebi'},
-    {'id': 'w0751', 'sr': 'auto', 'hr': 'auto', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0752', 'sr': 'auta', 'hr': 'auta', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0753', 'sr': 'algebra', 'hr': 'algebra', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0754', 'sr': 'atlas', 'hr': 'atlas', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0755', 'sr': 'enciklopedija', 'hr': 'enciklopedija', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0756', 'sr': 'citaonica', 'hr': 'citaonica', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0757', 'sr': 'tramvaj', 'hr': 'tramvaj', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0758', 'sr': 'tramvaji', 'hr': 'tramvaji', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0759', 'sr': 'kabinet', 'hr': 'kabinet', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0760', 'sr': 'zbornica', 'hr': 'zbornica', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0761', 'sr': 'svedocanstvo', 'hr': 'svjedodzba', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0762', 'sr': 'prijemni', 'hr': 'prijemni', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0763', 'sr': 'motor', 'hr': 'motor', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0764', 'sr': 'motori', 'hr': 'motori', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0765', 'sr': 'skuter', 'hr': 'skuter', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0766', 'sr': 'skuteri', 'hr': 'skuteri', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0767', 'sr': 'racunovodja', 'hr': 'racunovodja', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0768', 'sr': 'blagajnik', 'hr': 'blagajnik', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0769', 'sr': 'trajekt', 'hr': 'trajekt', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0770', 'sr': 'trajekti', 'hr': 'trajekti', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0771', 'sr': 'menadzer', 'hr': 'menadzer', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0772', 'sr': 'sekretar', 'hr': 'tajnik', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0773', 'sr': 'helikopter', 'hr': 'helikopter', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0774', 'sr': 'helikopteri', 'hr': 'helikopteri', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0775', 'sr': 'kamion', 'hr': 'kamion', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0776', 'sr': 'kamioni', 'hr': 'kamioni', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0777', 'sr': 'kombi', 'hr': 'kombi', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0778', 'sr': 'prevodilac', 'hr': 'prevoditelj', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0779', 'sr': 'metro', 'hr': 'metro', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0780', 'sr': 'metra', 'hr': 'metra', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0781', 'sr': 'bibliotekar', 'hr': 'knjiznicar', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0782', 'sr': 'cuvar', 'hr': 'cuvar', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0783', 'sr': 'portir', 'hr': 'vratar', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0784', 'sr': 'kurir', 'hr': 'dostavljac', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0785', 'sr': 'semafor', 'hr': 'semafor', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0786', 'sr': 'semafori', 'hr': 'semafori', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0787', 'sr': 'put', 'hr': 'cesta', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0788', 'sr': 'puti', 'hr': 'ceste', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0789', 'sr': 'ekstenzija', 'hr': 'prosirenje', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0790', 'sr': 'pretrazivac', 'hr': 'trazilica', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0791', 'sr': 'tunel', 'hr': 'tunel', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0792', 'sr': 'tuneli', 'hr': 'tuneli', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0793', 'sr': 'točak', 'hr': 'kotač', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0794', 'sr': 'točakovi', 'hr': 'kotači', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0795', 'sr': 'volan', 'hr': 'volan', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0796', 'sr': 'volani', 'hr': 'volani', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0797', 'sr': 'gorivo', 'hr': 'gorivo', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0798', 'sr': 'goriva', 'hr': 'goriva', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0799', 'sr': 'algoritam', 'hr': 'algoritam', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0800', 'sr': 'kod', 'hr': 'kod', 'category': 'Prevoz', 'hint': 'kretanje'},
-    {'id': 'w0801', 'sr': 'terminal', 'hr': 'terminal', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0802', 'sr': 'senzor', 'hr': 'senzor', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0803', 'sr': 'pesma', 'hr': 'pjesma', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0804', 'sr': 'pesme', 'hr': 'pjesme', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0805', 'sr': 'slika', 'hr': 'slika', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0806', 'sr': 'slike', 'hr': 'slike', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0807', 'sr': 'spomenik', 'hr': 'kip', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0808', 'sr': 'spomenikovi', 'hr': 'kipi', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0809', 'sr': 'procesor', 'hr': 'procesor', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0810', 'sr': 'memorija', 'hr': 'memorija', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0811', 'sr': 'galerija', 'hr': 'galerija', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0812', 'sr': 'galerije', 'hr': 'galerije', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0813', 'sr': 'bluetooth', 'hr': 'bluetooth', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0814', 'sr': 'satelit', 'hr': 'satelit', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0815', 'sr': 'običaj', 'hr': 'običaj', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0816', 'sr': 'običaji', 'hr': 'običaji', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0817', 'sr': 'tradicija', 'hr': 'tradicija', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0818', 'sr': 'tradicije', 'hr': 'tradicije', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0819', 'sr': 'jezik', 'hr': 'jezik', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0820', 'sr': 'jezikovi', 'hr': 'jezikovi', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0821', 'sr': 'pismo', 'hr': 'pismo', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0822', 'sr': 'pisma', 'hr': 'pisma', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0823', 'sr': 'zastava', 'hr': 'zastava', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0824', 'sr': 'zastave', 'hr': 'zastave', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0825', 'sr': 'praznik', 'hr': 'praznik', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0826', 'sr': 'praznikovi', 'hr': 'praznikovi', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0827', 'sr': 'narod', 'hr': 'narod', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0828', 'sr': 'narodi', 'hr': 'narodi', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0829', 'sr': 'itinerer', 'hr': 'itinerar', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0830', 'sr': 'odrediste', 'hr': 'odrediste', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0831', 'sr': 'nošnja', 'hr': 'nošnja', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0832', 'sr': 'nošnje', 'hr': 'nošnje', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0833', 'sr': 'bajka', 'hr': 'bajka', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0834', 'sr': 'bajke', 'hr': 'bajke', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0835', 'sr': 'legenda', 'hr': 'legenda', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0836', 'sr': 'legende', 'hr': 'legende', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0837', 'sr': 'polazak', 'hr': 'polazak', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0838', 'sr': 'dolazak', 'hr': 'dolazak', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0839', 'sr': 'izložba', 'hr': 'izložba', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0840', 'sr': 'izložbe', 'hr': 'izložbe', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0841', 'sr': 'viza', 'hr': 'viza', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0842', 'sr': 'carina', 'hr': 'carina', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0843', 'sr': 'dvorac', 'hr': 'dvorac', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0844', 'sr': 'dvoraci', 'hr': 'dvoraci', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0845', 'sr': 'arhiva', 'hr': 'arhiva', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0846', 'sr': 'arhive', 'hr': 'arhive', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0847', 'sr': 'rukopis', 'hr': 'rukopis', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0848', 'sr': 'rukopisi', 'hr': 'rukopisi', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0849', 'sr': 'umetnost', 'hr': 'umjetnost', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0850', 'sr': 'umetnosti', 'hr': 'umjetnosti', 'category': 'Balkan', 'hint': 'lokalno'},
-    {'id': 'w0851', 'sr': 'veb stranica', 'hr': 'web stranica', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0852', 'sr': 'putarina', 'hr': 'cestarina', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0853', 'sr': 'link', 'hr': 'link', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0854', 'sr': 'linkovi', 'hr': 'linkovi', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0855', 'sr': 'profil', 'hr': 'profil', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0856', 'sr': 'profili', 'hr': 'profili', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0857', 'sr': 'objava', 'hr': 'objava', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0858', 'sr': 'objave', 'hr': 'objave', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0859', 'sr': 'komentar', 'hr': 'komentar', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0860', 'sr': 'komentari', 'hr': 'komentari', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0861', 'sr': 'lajk', 'hr': 'lajk', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0862', 'sr': 'lajkovi', 'hr': 'lajkovi', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0863', 'sr': 'pratilac', 'hr': 'pratitelj', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0864', 'sr': 'pratilaci', 'hr': 'pratitelji', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0865', 'sr': 'hešteg', 'hr': 'hashtag', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0866', 'sr': 'heštegi', 'hr': 'hashtagi', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0867', 'sr': 'menjacnica', 'hr': 'mjenjacnica', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0868', 'sr': 'suvenirnica', 'hr': 'suvenirnica', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0869', 'sr': 'korisnik', 'hr': 'korisnik', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0870', 'sr': 'korisnikovi', 'hr': 'korisnikovi', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0871', 'sr': 'pretraga', 'hr': 'pretraga', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0872', 'sr': 'pretrage', 'hr': 'pretrage', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0873', 'sr': 'imejl', 'hr': 'email', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0874', 'sr': 'imejli', 'hr': 'emaili', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0875', 'sr': 'čet', 'hr': 'chat', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0876', 'sr': 'četi', 'hr': 'chati', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0877', 'sr': 'kanjon', 'hr': 'kanjon', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0878', 'sr': 'klif', 'hr': 'litica', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0879', 'sr': 'grupa', 'hr': 'grupa', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0880', 'sr': 'grupe', 'hr': 'grupe', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0881', 'sr': 'greben', 'hr': 'greben', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0882', 'sr': 'zaliv', 'hr': 'zaljev', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0883', 'sr': 'video', 'hr': 'video', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0884', 'sr': 'videa', 'hr': 'videa', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0885', 'sr': 'strim', 'hr': 'stream', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0886', 'sr': 'strimi', 'hr': 'streami', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0887', 'sr': 'preuzimanje', 'hr': 'download', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0888', 'sr': 'preuzimanja', 'hr': 'downloadi', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0889', 'sr': 'otpremanje', 'hr': 'upload', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0890', 'sr': 'otpremanja', 'hr': 'uploadi', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0891', 'sr': 'pregledač', 'hr': 'browser', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0892', 'sr': 'pregledači', 'hr': 'browseri', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0893', 'sr': 'server', 'hr': 'server', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0894', 'sr': 'serveri', 'hr': 'serveri', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0895', 'sr': 'uvala', 'hr': 'uvala', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0896', 'sr': 'rt', 'hr': 'rt', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0897', 'sr': 'vajfaj', 'hr': 'wifi', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0898', 'sr': 'vajfaji', 'hr': 'wifii', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0899', 'sr': 'lavina', 'hr': 'lavina', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0900', 'sr': 'rosa', 'hr': 'rosa', 'category': 'Tehnologija', 'hint': 'uredjaj ili mreza'},
-    {'id': 'w0901', 'sr': 'inje', 'hr': 'inje', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0902', 'sr': 'horizont', 'hr': 'horizont', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0903', 'sr': 'gitara', 'hr': 'gitara', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0904', 'sr': 'gitare', 'hr': 'gitare', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0905', 'sr': 'klavir', 'hr': 'klavir', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0906', 'sr': 'klaviri', 'hr': 'klaviri', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0907', 'sr': 'bubanj', 'hr': 'bubanj', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0908', 'sr': 'bubanji', 'hr': 'bubanji', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0909', 'sr': 'violina', 'hr': 'violina', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0910', 'sr': 'violine', 'hr': 'violine', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0911', 'sr': 'truba', 'hr': 'truba', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0912', 'sr': 'trube', 'hr': 'trube', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0913', 'sr': 'harmonika', 'hr': 'harmonika', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0914', 'sr': 'harmonike', 'hr': 'harmonike', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0915', 'sr': 'mikrofon', 'hr': 'mikrofon', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0916', 'sr': 'mikrofoni', 'hr': 'mikrofoni', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0917', 'sr': 'brisac', 'hr': 'brisac', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0918', 'sr': 'far', 'hr': 'svjetlo', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0919', 'sr': 'gepek', 'hr': 'prtljaznik', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0920', 'sr': 'hauba', 'hr': 'hauba', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0921', 'sr': 'album', 'hr': 'album', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0922', 'sr': 'albumi', 'hr': 'albumi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0923', 'sr': 'refren', 'hr': 'refren', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0924', 'sr': 'refreni', 'hr': 'refreni', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0925', 'sr': 'ritam', 'hr': 'ritam', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0926', 'sr': 'ritami', 'hr': 'ritami', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0927', 'sr': 'melodija', 'hr': 'melodija', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0928', 'sr': 'melodije', 'hr': 'melodije', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0929', 'sr': 'note', 'hr': 'note', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0930', 'sr': 'nota', 'hr': 'nota', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0931', 'sr': 'retrovizor', 'hr': 'retrovizor', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0932', 'sr': 'kruzni tok', 'hr': 'kruzni tok', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0933', 'sr': 'bend', 'hr': 'bend', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0934', 'sr': 'bendi', 'hr': 'bendi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0935', 'sr': 'orkestar', 'hr': 'orkestar', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0936', 'sr': 'orkestari', 'hr': 'orkestari', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0937', 'sr': 'pesacki prelaz', 'hr': 'pjesacki prijelaz', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0938', 'sr': 'trotoar', 'hr': 'nogostup', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0939', 'sr': 'raskrsnica', 'hr': 'raskrizje', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0940', 'sr': 'kolona', 'hr': 'kolona', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0941', 'sr': 'mantil', 'hr': 'mantil', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0942', 'sr': 'blejzer', 'hr': 'sako', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0943', 'sr': 'radio', 'hr': 'radio', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0944', 'sr': 'radia', 'hr': 'radia', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0945', 'sr': 'plejlista', 'hr': 'playlist', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0946', 'sr': 'plejliste', 'hr': 'playlisti', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0947', 'sr': 'spot', 'hr': 'spot', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0948', 'sr': 'spoti', 'hr': 'spoti', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0949', 'sr': 'glas', 'hr': 'glas', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0950', 'sr': 'glasi', 'hr': 'glasi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0951', 'sr': 'film', 'hr': 'film', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0952', 'sr': 'filmi', 'hr': 'filmi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0953', 'sr': 'serija', 'hr': 'serija', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0954', 'sr': 'serije', 'hr': 'serije', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0955', 'sr': 'rolka', 'hr': 'dolcevita', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0956', 'sr': 'helanke', 'hr': 'tajice', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0957', 'sr': 'glumica', 'hr': 'glumica', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0958', 'sr': 'glumice', 'hr': 'glumice', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0959', 'sr': 'režiser', 'hr': 'redatelj', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0960', 'sr': 'režiseri', 'hr': 'redatelji', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0961', 'sr': 'trenerka', 'hr': 'trenirka', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0962', 'sr': 'bermude', 'hr': 'bermude', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0963', 'sr': 'scena', 'hr': 'scena', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0964', 'sr': 'scene', 'hr': 'scene', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0965', 'sr': 'kadar', 'hr': 'kadar', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0966', 'sr': 'kadari', 'hr': 'kadari', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0967', 'sr': 'uloga', 'hr': 'uloga', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0968', 'sr': 'uloge', 'hr': 'uloge', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0969', 'sr': 'junak', 'hr': 'junak', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0970', 'sr': 'junakovi', 'hr': 'junakovi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0971', 'sr': 'negativac', 'hr': 'negativac', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0972', 'sr': 'negativaci', 'hr': 'negativaci', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0973', 'sr': 'komedija', 'hr': 'komedija', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0974', 'sr': 'komedije', 'hr': 'komedije', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0975', 'sr': 'drama', 'hr': 'drama', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0976', 'sr': 'drame', 'hr': 'drame', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0977', 'sr': 'akcija', 'hr': 'akcija', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0978', 'sr': 'akcije', 'hr': 'akcije', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0979', 'sr': 'horor', 'hr': 'horor', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0980', 'sr': 'horori', 'hr': 'horori', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0981', 'sr': 'animacija', 'hr': 'animacija', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0982', 'sr': 'animacije', 'hr': 'animacije', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0983', 'sr': 'bros', 'hr': 'bros', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0984', 'sr': 'rajf', 'hr': 'rajf', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0985', 'sr': 'kokice', 'hr': 'kokice', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0986', 'sr': 'kokica', 'hr': 'kokica', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0987', 'sr': 'lan', 'hr': 'lan', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0988', 'sr': 'svila', 'hr': 'svila', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0989', 'sr': 'premijera', 'hr': 'premijera', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0990', 'sr': 'premijere', 'hr': 'premijere', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0991', 'sr': 'trejler', 'hr': 'trailer', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0992', 'sr': 'trejleri', 'hr': 'traileri', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0993', 'sr': 'prevod', 'hr': 'titlovi', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0994', 'sr': 'prevodi', 'hr': 'titlovii', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0995', 'sr': 'scenario', 'hr': 'scenarij', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0996', 'sr': 'scenaria', 'hr': 'scenariji', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0997', 'sr': 'alergija', 'hr': 'alergija', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0998', 'sr': 'rana', 'hr': 'rana', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w0999', 'sr': 'poster', 'hr': 'plakat', 'category': 'Zabava', 'hint': 'slobodno vreme'},
-    {'id': 'w1000', 'sr': 'posteri', 'hr': 'plakati', 'category': 'Zabava', 'hint': 'slobodno vreme'},
+BANNED_DIRECT_HINTS = {
+    "prevod", "prevođenje", "tekst", "slova", "subtitles", "subtitle",
+    "sinonim", "prijevod", "definicija", "tačan naziv", "točan naziv",
+    "zaštita od kiše", "osoba koja predaje", "uređaj", "predmet",
+}
 
-]
+ASCII_DIACRITIC_EXPECTATIONS = {
+    "kuca": "kuća", "vozac": "vozač", "cebe": "ćebe", "djak": "đak",
+    "zivotinja": "životinja", "macka": "mačka", "casa": "čaša",
+    "rucak": "ručak", "suma": "šuma", "zaba": "žaba", "noz": "nož",
+    "sesir": "šešir", "kisobran": "kišobran", "carapa": "čarapa",
+}
+
+EXACT_HINT_POOLS = {
+    "kuća": ["porodica", "ključ", "dvorište", "večer"],
+    "stan": ["zgrada", "lift", "komšije", "balkon"],
+    "soba": ["prozor", "vrata", "tišina", "svjetlo"],
+    "kuhinja": ["ručak", "miris", "šporet", "stol"],
+    "kupatilo": ["pločice", "para", "ručnik", "jutro"],
+    "dnevni boravak": ["kauč", "televizor", "gosti", "večer"],
+    "spavaća soba": ["noć", "ormar", "jastuk", "tišina"],
+    "hodnik": ["cipele", "ključevi", "vrata", "žurba"],
+    "balkon": ["biljke", "kafa", "sunce", "pogled"],
+    "stol": ["ručak", "stolice", "porodica", "tanjir"],
+    "krevet": ["san", "noć", "jastuk", "spavaća soba"],
+    "ormar": ["odjeća", "vješalice", "ladice", "spavaća soba"],
+    "stolica": ["sjedenje", "kuhinja", "učionica", "naslon"],
+    "lampa": ["večer", "svjetlo", "noćni ormarić", "soba"],
+    "kanta za smeće": ["čišćenje", "kuhinja", "vreća", "miris"],
+    "kanta za đubre": ["čišćenje", "kuhinja", "vreća", "miris"],
+    "žlica": ["supa", "tanjir", "ručak", "kuhinja"],
+    "kašika": ["supa", "tanjir", "ručak", "kuhinja"],
+    "vilica": ["ručak", "tanjir", "restoran", "stol"],
+    "viljuška": ["ručak", "tanjir", "restoran", "stol"],
+    "nož": ["ručak", "daska", "kuhinja", "oprez"],
+    "čaša": ["voda", "stol", "kuhinja", "gost"],
+    "šalica": ["jutro", "kafa", "čaj", "pauza"],
+    "šolja": ["jutro", "kafa", "čaj", "pauza"],
+    "jastuk": ["san", "noć", "krevet", "glava"],
+    "tepih": ["pod", "dnevna soba", "bosonogo", "usisavanje"],
+    "zavjesa": ["prozor", "jutro", "svjetlost", "soba"],
+    "zavesa": ["prozor", "jutro", "svetlost", "soba"],
+    "ključ": ["vrata", "džep", "brava", "povratak"],
+    "prozor": ["kuća", "svjetlost", "soba", "zavjesa"],
+    "kruh": ["doručak", "pekara", "namaz", "sendvič"],
+    "hleb": ["doručak", "pekara", "namaz", "sendvič"],
+    "sir": ["doručak", "sendvič", "frižider", "pijaca"],
+    "mlijeko": ["doručak", "čaša", "frižider", "kafa"],
+    "mleko": ["doručak", "čaša", "frižider", "kafa"],
+    "jaje": ["doručak", "tava", "kuhinja", "ljuska"],
+    "maslac": ["namaz", "doručak", "frižider", "kruh"],
+    "puter": ["namaz", "doručak", "frižider", "hleb"],
+    "jabuka": ["voće", "škola", "torba", "užina"],
+    "naranča": ["zima", "sok", "miris", "vitamin"],
+    "pomorandža": ["zima", "sok", "miris", "vitamin"],
+    "krumpir": ["ručak", "pećnica", "prilog", "selo"],
+    "krompir": ["ručak", "rerna", "prilog", "selo"],
+    "čokolada": ["slatko", "poklon", "film", "poslastica"],
+    "kava": ["jutro", "šoljica", "razgovor", "pauza"],
+    "kafa": ["jutro", "šoljica", "razgovor", "pauza"],
+    "banana": ["voće", "užina", "pijaca", "žuto"],
+    "jogurt": ["doručak", "frižider", "kašika", "voće"],
+    "lubenica": ["ljeto", "plaža", "nož", "sok"],
+    "burek": ["jutro", "pekara", "jogurt", "red"],
+    "ćevapi": ["roštilj", "lepinja", "društvo", "dim"],
+    "sarma": ["praznik", "porodica", "lonac", "zima"],
+    "ajvar": ["zimnica", "paprika", "tegla", "roštilj"],
+    "pas": ["šetnja", "povodac", "dvorište", "lavež"],
+    "mačka": ["kauč", "prozor", "noć", "šapa"],
+    "konj": ["selo", "sedlo", "trka", "štala"],
+    "koza": ["selo", "brdo", "mlijeko", "stado"],
+    "zec": ["mrkva", "livada", "uši", "tišina"],
+    "lav": ["savana", "rikanje", "griva", "zoološki vrt"],
+    "slon": ["savana", "surla", "veličina", "zoološki vrt"],
+    "pčela": ["cvijet", "med", "košnica", "ljeto"],
+    "nogomet": ["stadion", "lopta", "navijanje", "gol"],
+    "fudbal": ["stadion", "lopta", "navijanje", "gol"],
+    "košarka": ["parket", "obruč", "patike", "utakmica"],
+    "tenis": ["reket", "mreža", "teren", "servis"],
+    "šah": ["tišina", "tabla", "potez", "koncentracija"],
+    "plivanje": ["bazen", "voda", "ljeto", "trening"],
+    "posao": ["jutro", "kafa", "rok", "sastanak"],
+    "ured": ["kancelarija", "stol", "računar", "pauza"],
+    "kancelarija": ["stol", "računar", "pauza", "telefon"],
+    "radni stol": ["laptop", "papiri", "kafa", "rok"],
+    "radni sto": ["laptop", "papiri", "kafa", "rok"],
+    "sastanak": ["kafa", "stol", "plan", "kolege"],
+    "pauza": ["kafa", "hodnik", "razgovor", "sendvič"],
+    "kalendar": ["datum", "rok", "zid", "plan"],
+    "plaća": ["mjesec", "banka", "račun", "posao"],
+    "plata": ["mesec", "banka", "račun", "posao"],
+    "profesor": ["škola", "učionica", "ispit", "tabla"],
+    "učitelj": ["razred", "dnevnik", "tabla", "ocjena"],
+    "matematika": ["brojevi", "zadatak", "ispit", "bilježnica"],
+    "fizika": ["eksperiment", "formula", "laboratorij", "tabla"],
+    "kemija": ["laboratorij", "epruveta", "miris", "zaštitne naočale"],
+    "hemija": ["laboratorija", "epruveta", "miris", "zaštitne naočare"],
+    "ravnalo": ["crta", "geometrija", "pernica", "škola"],
+    "lenjir": ["crta", "geometrija", "pernica", "škola"],
+    "odvjetnik": ["sud", "dokumenti", "odijelo", "sastanak"],
+    "advokat": ["sud", "dokumenti", "odijelo", "sastanak"],
+    "vozač": ["volan", "cesta", "smjena", "gorivo"],
+    "kuhar": ["tava", "restoran", "miris", "večera"],
+    "kuvar": ["tiganj", "restoran", "miris", "večera"],
+    "frizer": ["ogledalo", "škare", "stolica", "termin"],
+    "liječnik": ["pregled", "čekaonica", "bijeli mantil", "termin"],
+    "lekar": ["pregled", "čekaonica", "beli mantil", "termin"],
+    "zub": ["osmijeh", "četkica", "bol", "pasta"],
+    "ljekarna": ["recept", "red", "tablete", "savjet"],
+    "apoteka": ["recept", "red", "tablete", "savjet"],
+    "naočale": ["vid", "knjiga", "ekran", "okvir"],
+    "naočare": ["vid", "knjiga", "ekran", "okvir"],
+    "jakna": ["zima", "vješalica", "rukav", "izlazak"],
+    "cipela": ["ulica", "pertle", "hodanje", "ormar"],
+    "kapa": ["glava", "sunce", "zima", "stil"],
+    "čarapa": ["stopala", "ladica", "pranje", "par"],
+    "kišobran": ["jesen", "ulica", "oblaci", "torba"],
+    "sunce": ["ljeto", "plaža", "svjetlost", "nebo"],
+    "kiša": ["oblaci", "ulica", "jesen", "kapljice"],
+    "šuma": ["drveće", "hlad", "staza", "mir"],
+    "rijeka": ["most", "obala", "voda", "šetnja"],
+    "reka": ["most", "obala", "voda", "šetnja"],
+    "hotel": ["recepcija", "kofer", "ključ", "doručak"],
+    "autocesta": ["radio", "brzina", "gorivo", "odmor"],
+    "auto-put": ["radio", "brzina", "gorivo", "odmor"],
+    "putovnica": ["granica", "aerodrom", "kontrola", "torba"],
+    "pasoš": ["granica", "aerodrom", "kontrola", "torba"],
+    "plaža": ["more", "peškir", "sunce", "odmor"],
+    "karta grada": ["put", "orijentacija", "grad", "telefon"],
+    "mapa grada": ["put", "orijentacija", "grad", "telefon"],
+    "automobil": ["parking", "volan", "put", "gorivo"],
+    "auto": ["parking", "volan", "put", "gorivo"],
+    "autobus": ["stanica", "karta", "gužva", "jutro"],
+    "metro": ["podzemlje", "stanica", "karta", "grad"],
+    "vlak": ["peron", "karta", "putovanje", "pruga"],
+    "voz": ["peron", "karta", "putovanje", "pruga"],
+    "bicikl": ["pedale", "park", "lanac", "vožnja"],
+    "baterija": ["punjenje", "daljinski", "telefon", "struja"],
+    "računalo": ["tastatura", "posao", "ekran", "stol"],
+    "računar": ["tastatura", "posao", "ekran", "sto"],
+    "laptop": ["posao", "torba", "tastatura", "sastanak"],
+    "tablet": ["kauč", "ekran", "crtanje", "putovanje"],
+    "kamera": ["slika", "putovanje", "uspomena", "objektiv"],
+    "aplikacija": ["telefon", "ikonica", "poruka", "ekran"],
+    "web stranica": ["preglednik", "link", "ekran", "internet"],
+    "veb stranica": ["pregledač", "link", "ekran", "internet"],
+    "router": ["Wi-Fi", "stan", "lozinka", "signal"],
+    "ruter": ["Wi-Fi", "stan", "lozinka", "signal"],
+    "telefon": ["poruka", "poziv", "džep", "aplikacija"],
+    "mobitel": ["poruka", "poziv", "džep", "aplikacija"],
+    "kod": ["programiranje", "ekran", "lozinka", "greška"],
+    "kôd": ["programiranje", "ekran", "lozinka", "greška"],
+    "titlovi": ["bioskop", "epizoda", "Netflix", "ekran"],
+    "film": ["kokice", "mrak", "kauč", "večer"],
+    "serija": ["epizoda", "kauč", "Netflix", "vikend"],
+    "kino": ["kokice", "film", "mrak", "platno"],
+    "bioskop": ["kokice", "film", "mrak", "platno"],
+    "kazalište": ["scena", "publika", "glumci", "aplauz"],
+    "pozorište": ["scena", "publika", "glumci", "aplauz"],
+    "koncert": ["publika", "svjetla", "muzika", "večer"],
+    "gitara": ["pjesma", "koncert", "žica", "društvo"],
+    "poklon": ["rođendan", "iznenađenje", "slavlje", "kutija"],
+    "društvena igra": ["smijeh", "ekipa", "večer", "izazov"],
+    "kafana": ["muzika", "društvo", "čaša", "noć"],
+    "pekara": ["jutro", "burek", "miris", "red"],
+    "tržnica": ["tezga", "voće", "subota", "gužva"],
+    "pijaca": ["tezga", "voće", "subota", "gužva"],
+    "susjed": ["zgrada", "dvorište", "pozdrav", "vrata"],
+    "komšija": ["zgrada", "dvorište", "pozdrav", "vrata"],
+    "dijaspora": ["granica", "kofer", "praznici", "porodica"],
+    "sok od bazge": ["ljeto", "dvorište", "čaša", "domaće"],
+    "sok od zove": ["leto", "dvorište", "čaša", "domaće"],
+    "košulja": ["dugmad", "ormar", "posao", "pegla"],
+    "poraz": ["utakmica", "tišina", "svlačionica", "razočaranje"],
+    "krava": ["selo", "štala", "mlijeko", "livada"],
+    "medicinske rukavice": ["pregled", "ordinacija", "maska", "higijena"],
+    "rukavice medicinske": ["pregled", "ordinacija", "maska", "higijena"],
+}
 
 
-def _hint_reveals_word(hint: str, word: str) -> bool:
-    return bool(set(hint.casefold().split()) & set(word.casefold().split()))
+# Targeted repairs for weak generated hint pools found in the full 1000-word audit.
+# Keys are ascii-folded (category, HR word), so they are stable across diacritics/case.
+CATEGORY_EXACT_HINT_POOLS = {
+    ("balkan", "djed"): ["priča","dvorište","novine","porodica"],
+    ("balkan", "dzezva"): ["kafa","šporet","miris","jutro"],
+    ("balkan", "kafana"): ["muzika","društvo","čaša","noć"],
+    ("balkan", "kajmak na stolu"): ["trpeza","lepinja","doručak","selo"],
+    ("balkan", "kuma"): ["kuhinja","ručak","ruke","stol"],
+    ("balkan", "papirnati rucnik"): ["priča","dvorište","novine","porodica"],
+    ("balkan", "priganice"): ["tijesto","ulje","doručak","porodica"],
+    ("balkan", "rakija"): ["čašica","slavlje","gost","zima"],
+    ("balkan", "seoski vrt"): ["dvorište","povrće","ljeto","selo"],
+    ("balkan", "zimnica"): ["kuhinja","ručak","ruke","stol"],
+    ("hrana", "kruska"): ["čaša","žeđ","ljeto","trening"],
+    ("hrana", "kukuruz"): ["klip","roštilj","ljeto","putar"],
+    ("hrana", "kupus"): ["sendvič","doručak","frižider","narezano"],
+    ("hrana", "paprika"): ["klip","roštilj","ljeto","putar"],
+    ("hrana", "salata"): ["sendvič","doručak","frižider","narezano"],
+    ("hrana", "sunka"): ["zdjela","ljeto","povrće","ručak"],
+    ("hrana", "voda"): ["sendvič","doručak","frižider","narezano"],
+    ("odeca", "cizma"): ["pegla","košulja","para","daska"],
+    ("odeca", "donje rublje"): ["pegla","košulja","para","daska"],
+    ("odeca", "duks"): ["zima","vješalica","hladnoća","izlazak"],
+    ("odeca", "kaput"): ["haljina","meko","sjaj","svečano"],
+    ("odeca", "majica"): ["džemper","pletivo","toplina","zima"],
+    ("odeca", "nausnica"): ["uho","nakit","ogledalo","kutija"],
+    ("odeca", "peglanje"): ["rukav","ljeto","ormar","pranje"],
+    ("odeca", "pidzama"): ["kapuljača","jesen","trening","ormar"],
+    ("odeca", "sal"): ["džemper","pletivo","toplina","zima"],
+    ("odeca", "svila"): ["ladica","pranje","jutro","privatno"],
+    ("odeca", "vuna"): ["ladica","pranje","jutro","privatno"],
+    ("posao", "alat"): ["radionica","popravka","majstor","garaža"],
+    ("posao", "blagajnik"): ["garaža","popravka","majstor","ulje"],
+    ("posao", "direktor"): ["ured","sastanak","odluka","potpis"],
+    ("posao", "kaciga na gradilistu"): ["ured","odluka","sastanak","potpis"],
+    ("posao", "kava na poslu"): ["pauza","šoljica","kolege","jutro"],
+    ("posao", "poljoprivrednik"): ["pauza","šoljica","kolege","jutro"],
+    ("posao", "programer"): ["kod","laptop","kafa","bug"],
+    ("posao", "sef"): ["kancelarija","odluka","sastanak","rok"],
+    ("posao", "stolar"): ["drvo","radionica","pila","namještaj"],
+    ("posao", "sudac na poslu"): ["ugovor","potpis","pravila","dokumenti"],
+    ("posao", "ugovor"): ["potpis","dokument","sastanak","pravila"],
+    ("posao", "vizitka"): ["sastanak","džep","ime","kontakt"],
+    ("prevoz", "benzin"): ["stanica","karta","čekanje","kofer"],
+    ("prevoz", "bicikl za prevoz"): ["nebo","buka","propeler","spasavanje"],
+    ("prevoz", "brodska luka"): ["more","brodovi","obala","putnici"],
+    ("prevoz", "cesta"): ["asfalt","auto","krivina","putovanje"],
+    ("prevoz", "cestovni tunel"): ["mrak","cesta","svjetla","planina"],
+    ("prevoz", "helikopter"): ["nebo","buka","propeler","spasavanje"],
+    ("prevoz", "kolodvor za prevoz"): ["pumpa","auto","cijena","miris"],
+    ("prevoz", "kolona"): ["gužva","auta","čekanje","granica"],
+    ("prevoz", "kruzni tok"): ["raskrsnica","grad","skretanje","vozač"],
+    ("prevoz", "mjenjac"): ["auto","ruka","brzina","vožnja"],
+    ("prevoz", "motor vozila"): ["auto","ulje","buka","garaža"],
+    ("prevoz", "navigacija u autu"): ["raskrsnica","grad","skretanje","vozač"],
+    ("prevoz", "peron za voz"): ["stanica","pruga","karta","čekanje"],
+    ("prevoz", "prometni semafor"): ["raskrsnica","crveno","pješaci","grad"],
+    ("prevoz", "pruga"): ["šine","peron","vlak","putovanje"],
+    ("prevoz", "putnik"): ["kofer","karta","stanica","sjedalo"],
+    ("prevoz", "sjediste"): ["asfalt","auto","krivina","putovanje"],
+    ("prevoz", "skretanje"): ["raskrsnica","grad","žmigavac","vozač"],
+    ("prevoz", "skuter"): ["stanica","karta","čekanje","kofer"],
+    ("prevoz", "tablica"): ["auto","parking","policija","brojevi"],
+    ("prevoz", "taksi vozilo"): ["pojas","prozor","vožnja","putnik"],
+    ("prevoz", "tramvaj"): ["pedale","park","lanac","vožnja"],
+    ("putovanja", "autobusna karta za put"): ["mapa","telefon","raskrsnica","adresa"],
+    ("putovanja", "avionska karta"): ["peron","pruga","kofer","prozor"],
+    ("putovanja", "dorucak u hotelu"): ["jutro","švedski sto","recepcija","putovanje"],
+    ("putovanja", "granica"): ["šator","vatra","šuma","noć"],
+    ("putovanja", "izlet za vikend"): ["ruksak","društvo","priroda","subota"],
+    ("putovanja", "kamp"): ["šator","vatra","šuma","vreća"],
+    ("putovanja", "kampiranje"): ["hotel","ključ","recepcija","doručak"],
+    ("putovanja", "kofer"): ["aerodrom","odjeća","hotel","točkići"],
+    ("putovanja", "ljetovanje"): ["more","plaža","apartman","sunce"],
+    ("putovanja", "luka"): ["vrijeme","tabla","čekanje","stanica"],
+    ("putovanja", "most"): ["brodovi","obala","putnici","luka"],
+    ("putovanja", "navigacija za put"): ["hotel","ključ","recepcija","doručak"],
+    ("putovanja", "plan puta"): ["more","plaža","apartman","sunce"],
+    ("putovanja", "putna torba"): ["šator","vatra","šuma","noć"],
+    ("putovanja", "putnicki vlak"): ["peron","pruga","kofer","prozor"],
+    ("putovanja", "raspored"): ["more","plaža","apartman","sunce"],
+    ("putovanja", "recepcija hotela"): ["hotel","ključ","prijava","kofer"],
+    ("putovanja", "rent-a-car"): ["ključevi","parking","ugovor","putovanje"],
+    ("putovanja", "rezervacija"): ["datum","hotel","potvrda","telefon"],
+    ("putovanja", "sator"): ["ruksak","društvo","priroda","subota"],
+    ("putovanja", "soba u hotelu"): ["magnet","uspomena","grad","poklon"],
+    ("putovanja", "suvenir"): ["magnet","uspomena","grad","poklon"],
+    ("putovanja", "taksi"): ["adresa","aplikacija","noć","vožnja"],
+    ("putovanja", "tunel"): ["mrak","cesta","svjetla","planina"],
+    ("putovanja", "valuta"): ["mjenjačnica","novčanik","putovanje","račun"],
+    ("putovanja", "vodic"): ["šator","vatra","šuma","noć"],
+    ("putovanja", "vozna karta za put"): ["vrijeme","tabla","čekanje","stanica"],
+    ("putovanja", "zimovanje"): ["snijeg","planina","skije","rukavice"],
+    ("skola", "biologija"): ["riječi","izgovor","knjiga","čas"],
+    ("skola", "engleski"): ["brojevi","zadatak","torba","tipke"],
+    ("skola", "hrvatski"): ["lektira","gramatika","učionica","sveska"],
+    ("skola", "kalkulator"): ["boje","tabla","pernica","prezentacija"],
+    ("skola", "markeri"): ["ispit","tabla","učionica","škola"],
+    ("skola", "njemacki"): ["torba","klupa","razred","odmor"],
+    ("skola", "profesor"): ["boje","tabla","pernica","prezentacija"],
+    ("skola", "skola"): ["zvono","tabla","učionica","torba"],
+    ("skola", "ucenik"): ["brojevi","zadatak","torba","tipke"],
+    ("sport", "atletika"): ["cesta","pedale","kaciga","trka"],
+    ("sport", "biciklizam"): ["teren","navijanje","rezultat","ekipa"],
+    ("sport", "boks"): ["ring","rukavice","znoj","sudija"],
+    ("sport", "gol"): ["mreža","stadion","navijanje","lopta"],
+    ("sport", "jedrenje"): ["more","vjetar","jedro","luka"],
+    ("sport", "judo"): ["tatami","kimono","pojas","borba"],
+    ("sport", "kladivo"): ["atletika","bacanje","teren","mjerenje"],
+    ("sport", "kopacke"): ["trava","svlačionica","pertle","utakmica"],
+    ("sport", "kup"): ["trofej","finale","ekipa","slavlje"],
+    ("sport", "liga"): ["sezona","tabela","klub","utakmica"],
+    ("sport", "lopta"): ["ring","rukavice","sudija","publika"],
+    ("sport", "nerijeseno"): ["rezultat","semafor","kraj","utakmica"],
+    ("sport", "obrana"): ["stadion","staza","start","znoj"],
+    ("sport", "palica"): ["teren","lopta","udarac","oprema"],
+    ("sport", "pecat pobjede"): ["trofej","slavlje","finale","uspomena"],
+    ("sport", "pikado"): ["meta","strelica","koncentracija","pub"],
+    ("sport", "pobjeda"): ["slavlje","ekipa","rezultat","svlačionica"],
+    ("sport", "poraz"): ["svlačionica","tišina","rezultat","razočaranje"],
+    ("sport", "rezerva"): ["klupa","trener","dres","utakmica"],
+    ("sport", "ronjenje"): ["zviždaljka","pravila","teren","pritisak"],
+    ("sport", "rukavice"): ["ring","trening","oprema","torba"],
+    ("sport", "semafor"): ["rezultat","dvorana","utakmica","svjetla"],
+    ("sport", "skijanje"): ["zviždaljka","pravila","teren","pritisak"],
+    ("sport", "sprint"): ["start","staza","brzina","dah"],
+    ("sport", "stitnici"): ["koljena","oprema","trening","torba"],
+    ("sport", "sudac"): ["zviždaljka","pravila","teren","utakmica"],
+    ("sport", "trcanje"): ["snijeg","staza","kaciga","planina"],
+    ("sport", "utakmica"): ["teren","navijanje","ekipa","rezultat"],
+    ("sport", "vaterpolo"): ["bazen","lopta","gol","kapica"],
+    ("tehnologija", "cloud servis"): ["podaci","kablovi","noć","server"],
+    ("tehnologija", "konzola"): ["ruter","lozinka","signal","stan"],
+    ("tehnologija", "poruka"): ["kamera","sastanak","ekran","poziv"],
+    ("tehnologija", "pretraga"): ["kamera","sastanak","ekran","poziv"],
+    ("tehnologija", "server"): ["podaci","fajlovi","internet","backup"],
+    ("tehnologija", "signal"): ["preglednik","link","stranica","ekran"],
+    ("tehnologija", "video poziv"): ["kamera","sastanak","ekran","poziv"],
+    ("tehnologija", "web stranica"): ["Wi-Fi","telefon","brdo","mreža"],
+    ("tehnologija", "wi-fi"): ["igrica","kontroler","kauč","ekran"],
+    ("zabava", "audio emisija"): ["red","koncert","džep","kontrola"],
+    ("zabava", "diskoteka"): ["muzika","svjetla","ples","noć"],
+    ("zabava", "glazba"): ["vikend","radost","ekipa","hobi"],
+    ("zabava", "hobi"): ["slobodno vrijeme","vikend","radost","ekipa"],
+    ("zabava", "igraca konzola"): ["mikrofon","pjesma","društvo","smijeh"],
+    ("zabava", "karaoke"): ["slušalice","glas","epizoda","šetnja"],
+    ("zabava", "klovn"): ["igrica","kontroler","kauč","ekran"],
+    ("zabava", "kokice u kinu"): ["torta","poklon","svijeće","slavlje"],
+    ("zabava", "pjesma"): ["radio","glas","refren","društvo"],
+    ("zabava", "rođendan"): ["cirkus","smijeh","djeca","kostim"],
+    ("zabava", "sajam"): ["štand","gužva","ulaznica","vikend"],
+    ("zabava", "serija"): ["slušalice","glas","epizoda","šetnja"],
+    ("zabava", "sjedalo u kinu"): ["cirkus","smijeh","djeca","kostim"],
+    ("zabava", "titlovi"): ["cirkus","smijeh","djeca","kostim"],
+    ("zabava", "ulaznica"): ["mikrofon","pjesma","društvo","smijeh"],
+    ("zabava", "zabava"): ["red","koncert","džep","kontrola"],
+    ("zdravlje", "alergija"): ["proljeće","kihanje","polen","apoteka"],
+    ("zdravlje", "ambulanta"): ["čekaonica","pregled","termin","bijeli mantil"],
+    ("zdravlje", "caj za grlo"): ["apoteka","papir","savjet","red"],
+    ("zdravlje", "disanje"): ["čekaonica","termin","stolica","pitanja"],
+    ("zdravlje", "glava"): ["kapa","jastuk","misli","bol"],
+    ("zdravlje", "grlo"): ["čaj","zima","glas","šal"],
+    ("zdravlje", "higijena"): ["tanjir","navika","povrće","energija"],
+    ("zdravlje", "joga"): ["prostirka","tišina","disanje","jutro"],
+    ("zdravlje", "kontrola"): ["park","patike","jutro","dah"],
+    ("zdravlje", "kratak odmor"): ["pauza","kauč","voda","tišina"],
+    ("zdravlje", "lagano trcanje"): ["park","patike","jutro","dah"],
+    ("zdravlje", "lijecnik opce prakse"): ["čekaonica","termin","bijeli mantil","recept"],
+    ("zdravlje", "masaza"): ["opuštanje","stol","ulje","termin"],
+    ("zdravlje", "med za grlo"): ["park","patike","jutro","dah"],
+    ("zdravlje", "naocale za vid"): ["prostirka","tišina","disanje","jutro"],
+    ("zdravlje", "nos"): ["torbica","koljeno","flaster","prst"],
+    ("zdravlje", "oko"): ["pogled","naočale","svjetlo","lice"],
+    ("zdravlje", "ordinacija"): ["čekaonica","pregled","stolica","termin"],
+    ("zdravlje", "pregled"): ["čekaonica","termin","stolica","pitanja"],
+    ("zdravlje", "prehlada"): ["zima","čaj","maramice","krevet"],
+    ("zdravlje", "prehrana"): ["tanjir","navika","povrće","energija"],
+    ("zdravlje", "puls"): ["zglob","sat","ritam","trčanje"],
+    ("zdravlje", "recept"): ["apoteka","papir","lijek","doktor"],
+    ("zdravlje", "rucnik za zdravlje"): ["tuš","kupatilo","voda","torba"],
+    ("zdravlje", "ruka"): ["tanjir","navika","povrće","energija"],
+    ("zdravlje", "san"): ["torbica","koljeno","flaster","prst"],
+    ("zdravlje", "sapunjanje"): ["kupatilo","voda","tuš","peškir"],
+    ("zdravlje", "setnja"): ["park","koraci","zrak","veče"],
+    ("zdravlje", "sluh"): ["uho","zvuk","tišina","muzika"],
+    ("zdravlje", "srce"): ["emocija","trčanje","grudi","ritam"],
+    ("zdravlje", "stomak"): ["ručak","čaj","pojas","mir"],
+    ("zdravlje", "uho"): ["zvuk","slušalice","muzika","tišina"],
+    ("zdravlje", "vjezba"): ["čekaonica","termin","stolica","pitanja"],
+    ("zdravlje", "zavoj"): ["dlan","rukav","pozdrav","sat"],
+    ("zivotinje", "bubamara"): ["trava","tišina","koža","oprez"],
+    ("zivotinje", "dabar"): ["rijeka","brana","drvo","zubi"],
+    ("zivotinje", "dupin"): ["trg","mrvice","grad","krila"],
+    ("zivotinje", "flamingo"): ["lišće","bodlje","vrt","noć"],
+    ("zivotinje", "golub"): ["trg","mrvice","grad","krila"],
+    ("zivotinje", "jez"): ["lišće","bodlje","vrt","noć"],
+    ("zivotinje", "kokos"): ["dvorište","jaje","perje","selo"],
+    ("zivotinje", "komarac"): ["plaža","pijesak","talasi","more"],
+    ("zivotinje", "labud"): ["jezero","bijelo","vrat","mir"],
+    ("zivotinje", "muha"): ["trg","mrvice","grad","krila"],
+    ("zivotinje", "noj"): ["ljeto","zujanje","noć","ubod"],
+    ("zivotinje", "ovca"): ["vuna","stado","livada","selo"],
+    ("zivotinje", "papiga"): ["list","crveno","tačkice","vrt"],
+    ("zivotinje", "skoljka"): ["trava","tišina","koža","oprez"],
+    ("zivotinje", "srna"): ["šuma","livada","tišina","jutro"],
+    ("zivotinje", "svinja"): ["blato","farma","korito","selo"],
+    ("zivotinje", "tigar"): ["ljeto","zujanje","noć","ubod"],
+    ("zivotinje", "zmija"): ["jezero","perje","voda","mir"],
+}
+
+def category_exact_hint_pool(category: str, hr: str, sr: str) -> list[str] | None:
+    category_fold = ascii_fold(category)
+    return (
+        CATEGORY_EXACT_HINT_POOLS.get((category_fold, ascii_fold(hr)))
+        or CATEGORY_EXACT_HINT_POOLS.get((category_fold, ascii_fold(sr)))
+    )
+
+CATEGORY_HINT_BANKS = {
+    "Kuća": [
+        ["jutro", "kuhinja", "miris", "stol"], ["večer", "kauč", "svjetlo", "tišina"],
+        ["čišćenje", "vreća", "pod", "vikend"], ["spavaća soba", "noć", "ladice", "ormar"],
+        ["kupatilo", "pločice", "para", "ručnik"], ["hodnik", "ključevi", "cipele", "žurba"],
+        ["dnevna soba", "gosti", "televizor", "grickalice"], ["balkon", "biljke", "sunce", "kafa"],
+        ["popravka", "alat", "vijak", "strpljenje"], ["porodični ručak", "tanjir", "stol", "razgovor"],
+        ["zima", "deka", "čaj", "prozor"], ["selidba", "kutije", "namještaj", "prašina"],
+    ],
+    "Hrana": [
+        ["doručak", "tanjir", "miris", "jutro"], ["ručak", "lonac", "kuhinja", "porodica"],
+        ["večera", "stol", "gosti", "razgovor"], ["pijaca", "tezga", "boje", "subota"],
+        ["frižider", "čaša", "hladno", "užina"], ["slatko", "film", "poklon", "poslastica"],
+        ["roštilj", "dim", "dvorište", "društvo"], ["pekara", "red", "miris", "jutro"],
+        ["ljeto", "voće", "sok", "plaža"], ["zima", "lonac", "toplo", "porodica"],
+        ["sendvič", "pauza", "torba", "škola"], ["restoran", "konobar", "meni", "večer"],
+    ],
+    "Životinje": [
+        ["selo", "dvorište", "jutro", "stado"], ["šuma", "tragovi", "tišina", "staza"],
+        ["zoološki vrt", "djeca", "ograda", "vikend"], ["kućni ljubimac", "kauč", "igra", "zdjelica"],
+        ["more", "talasi", "dubina", "brod"], ["livada", "trava", "sunce", "mir"],
+        ["noć", "zvuk", "sjena", "prozor"], ["farma", "štala", "hrana", "blato"],
+        ["park", "šetnja", "povodac", "djeca"], ["planina", "kamen", "vjetar", "sloboda"],
+        ["vrt", "cvijet", "ljeto", "zuji"], ["rijeka", "obala", "voda", "kamen"],
+    ],
+    "Sport": [
+        ["stadion", "navijanje", "lopta", "večer"], ["dvorana", "patike", "znoj", "trening"],
+        ["teren", "ekipa", "sudija", "utakmica"], ["bazen", "voda", "ljeto", "trka"],
+        ["parket", "semafor", "publika", "pauza"], ["reket", "mreža", "servis", "tišina"],
+        ["planina", "staza", "ranac", "umor"], ["teretana", "tegovi", "ogledalo", "znoj"],
+        ["medalja", "postolje", "ponos", "aplauz"], ["svlačionica", "dres", "voda", "nervoza"],
+    ],
+    "Škola": [
+        ["učionica", "tabla", "dnevnik", "odmor"], ["pernica", "bilježnica", "zadatak", "tišina"],
+        ["ispit", "nervoza", "klupa", "sat"], ["laboratorij", "eksperiment", "miris", "zaštita"],
+        ["biblioteka", "police", "tišina", "lektira"], ["hodnik", "zvono", "gužva", "torba"],
+        ["geometrija", "crta", "papir", "olovka"], ["matura", "odijelo", "slikanje", "uzbuđenje"],
+        ["prezentacija", "plakat", "grupa", "projekt"], ["školski izlet", "autobus", "sendvič", "smijeh"],
+    ],
+    "Posao": [
+        ["kancelarija", "sastanak", "kafa", "rok"], ["uniforma", "smjena", "jutro", "umor"],
+        ["radionica", "alat", "prašina", "popravka"], ["restoran", "narudžba", "miris", "večer"],
+        ["sud", "dokumenti", "odijelo", "ozbiljnost"], ["gradilište", "kaciga", "buka", "pauza"],
+        ["recepcija", "telefon", "osmijeh", "gosti"], ["tim", "plan", "laptop", "poruka"],
+        ["prodavnica", "račun", "red", "kasa"], ["salon", "ogledalo", "termin", "makaze"],
+    ],
+    "Tehnologija": [
+        ["telefon", "poruka", "džep", "notifikacija"], ["kabl", "utičnica", "noćni ormarić", "struja"],
+        ["laptop", "tastatura", "sastanak", "torba"], ["Wi-Fi", "lozinka", "signal", "stan"],
+        ["kamera", "slika", "uspomena", "putovanje"], ["igrica", "kontroler", "kauč", "večer"],
+        ["aplikacija", "ikonica", "ekran", "poruka"], ["server", "mreža", "tišina", "lampice"],
+        ["slušalice", "muzika", "autobus", "šetnja"], ["projektor", "prezentacija", "zid", "mrak"],
+    ],
+    "Putovanja": [
+        ["kofer", "recepcija", "ključ", "doručak"], ["aerodrom", "kontrola", "torba", "red"],
+        ["plaža", "peškir", "sunce", "odmor"], ["mapa", "grad", "šetnja", "telefon"],
+        ["granica", "dokument", "auto", "čekanje"], ["peron", "karta", "putovanje", "prozor"],
+        ["kamp", "šator", "vatra", "noć"], ["suvenir", "razglednica", "fotografija", "poklon"],
+        ["hotel", "lift", "hodnik", "tišina"], ["planina", "ranac", "staza", "umor"],
+    ],
+    "Priroda": [
+        ["nebo", "svjetlost", "toplina", "ljeto"], ["oblaci", "ulica", "jesen", "kapljice"],
+        ["šuma", "drveće", "hlad", "staza"], ["rijeka", "most", "obala", "šetnja"],
+        ["planina", "vjetar", "pogled", "tišina"], ["livada", "trava", "cvijet", "pčele"],
+        ["more", "valovi", "obala", "sol"], ["zima", "snijeg", "rukavice", "mir"],
+        ["vrt", "zemlja", "zalijevanje", "jutro"], ["noć", "mjesec", "zvijezde", "hladno"],
+    ],
+    "Prevoz": [
+        ["stanica", "karta", "gužva", "jutro"], ["parking", "volan", "put", "gorivo"],
+        ["peron", "pruga", "prozor", "putovanje"], ["pedale", "park", "lanac", "vožnja"],
+        ["semafor", "raskrsnica", "žurba", "sirena"], ["aerodrom", "terminal", "kofer", "let"],
+        ["luka", "talasi", "brod", "vjetar"], ["autocesta", "odmor", "radio", "brzina"],
+        ["taksi", "aplikacija", "adresa", "noć"], ["tramvaj", "šine", "centar", "stanica"],
+    ],
+    "Odeća": [
+        ["ormar", "vješalica", "izlazak", "ogledalo"], ["zima", "rukav", "kaput", "hladno"],
+        ["ulica", "pertle", "hodanje", "kiša"], ["ladica", "pranje", "par", "stopala"],
+        ["svečanost", "odijelo", "fotografija", "večer"], ["plaža", "sunce", "torba", "ljeto"],
+        ["sport", "patike", "trening", "znoj"], ["moda", "boja", "stil", "izlog"],
+        ["kiša", "kapuljača", "autobus", "jesen"], ["nakit", "poklon", "kutija", "svjetlo"],
+    ],
+    "Zdravlje": [
+        ["čekaonica", "pregled", "termin", "mantil"], ["apoteka", "recept", "red", "savjet"],
+        ["jutro", "voda", "šetnja", "navika"], ["zub", "osmijeh", "četkica", "pasta"],
+        ["odmor", "san", "tišina", "jastuk"], ["trening", "disanje", "znoj", "energija"],
+        ["ekran", "vid", "okvir", "knjiga"], ["čaj", "med", "toplo", "grlo"],
+        ["higijena", "sapun", "ručnik", "kupatilo"], ["masaža", "leđa", "opuštanje", "mir"],
+    ],
+    "Zabava": [
+        ["bioskop", "kokice", "mrak", "platno"], ["koncert", "publika", "svjetla", "večer"],
+        ["ekipa", "smijeh", "izazov", "stol"], ["rođendan", "poklon", "balon", "slavlje"],
+        ["scena", "aplauz", "kostim", "ulaznica"], ["kauč", "serija", "epizoda", "grickalice"],
+        ["festival", "gužva", "muzika", "ljeto"], ["hobi", "boje", "mir", "vikend"],
+        ["igrica", "kontroler", "ekran", "noć"], ["karaoke", "mikrofon", "društvo", "pjesma"],
+    ],
+    "Balkan": [
+        ["muzika", "društvo", "čaša", "noć"], ["jutro", "burek", "miris", "red"],
+        ["tezga", "voće", "subota", "gužva"], ["zgrada", "dvorište", "pozdrav", "vrata"],
+        ["praznik", "porodica", "sto", "gosti"], ["selo", "bašta", "hlad", "priča"],
+        ["kafana", "dim", "harmonika", "smijeh"], ["ljeto", "riva", "šetnja", "more"],
+        ["zimnica", "tegla", "paprika", "podrum"], ["svadba", "kolo", "muzika", "kolona"],
+    ],
+}
+
+RAW_CATEGORY_WORDS = {
+    "Kuća": [
+        [
+            "Kuća",
+            "kuća"
+        ],
+        [
+            "Stan",
+            "stan"
+        ],
+        [
+            "Soba",
+            "soba"
+        ],
+        [
+            "Kuhinja",
+            "kuhinja"
+        ],
+        [
+            "Kupatilo",
+            "kupatilo"
+        ],
+        [
+            "Dnevni boravak",
+            "dnevna soba"
+        ],
+        [
+            "Spavaća soba",
+            "spavaća soba"
+        ],
+        [
+            "Hodnik",
+            "hodnik"
+        ],
+        [
+            "Balkon",
+            "balkon"
+        ],
+        [
+            "Terasa",
+            "terasa"
+        ],
+        [
+            "Vrata",
+            "vrata"
+        ],
+        [
+            "Prozor",
+            "prozor"
+        ],
+        [
+            "Zid",
+            "zid"
+        ],
+        [
+            "Pod",
+            "pod"
+        ],
+        [
+            "Strop",
+            "plafon"
+        ],
+        [
+            "Krov",
+            "krov"
+        ],
+        [
+            "Stol",
+            "sto"
+        ],
+        [
+            "Stolica",
+            "stolica"
+        ],
+        [
+            "Krevet",
+            "krevet"
+        ],
+        [
+            "Jastuk",
+            "jastuk"
+        ],
+        [
+            "Pokrivač",
+            "pokrivač"
+        ],
+        [
+            "Deka",
+            "ćebe"
+        ],
+        [
+            "Ormar",
+            "ormar"
+        ],
+        [
+            "Ladica",
+            "fioka"
+        ],
+        [
+            "Polica",
+            "polica"
+        ],
+        [
+            "Kauč",
+            "kauč"
+        ],
+        [
+            "Fotelja",
+            "fotelja"
+        ],
+        [
+            "Tepih",
+            "tepih"
+        ],
+        [
+            "Zavjesa",
+            "zavesa"
+        ],
+        [
+            "Lampa",
+            "lampa"
+        ],
+        [
+            "Svjetiljka",
+            "svetiljka"
+        ],
+        [
+            "Ogledalo",
+            "ogledalo"
+        ],
+        [
+            "Slika",
+            "slika"
+        ],
+        [
+            "Sat",
+            "sat"
+        ],
+        [
+            "Vaza",
+            "vaza"
+        ],
+        [
+            "Tanjur",
+            "tanjir"
+        ],
+        [
+            "Čaša",
+            "čaša"
+        ],
+        [
+            "Šalica",
+            "šolja"
+        ],
+        [
+            "Žlica",
+            "kašika"
+        ],
+        [
+            "Vilica",
+            "viljuška"
+        ],
+        [
+            "Nož",
+            "nož"
+        ],
+        [
+            "Lonac",
+            "lonac"
+        ],
+        [
+            "Tava",
+            "tiganj"
+        ],
+        [
+            "Pećnica",
+            "rerna"
+        ],
+        [
+            "Hladnjak",
+            "frižider"
+        ],
+        [
+            "Zamrzivač",
+            "zamrzivač"
+        ],
+        [
+            "Sudoper",
+            "sudopera"
+        ],
+        [
+            "Spužva",
+            "sunđer"
+        ],
+        [
+            "Metla",
+            "metla"
+        ],
+        [
+            "Krpa",
+            "krpa"
+        ],
+        [
+            "Usisavač",
+            "usisivač"
+        ],
+        [
+            "Perilica rublja",
+            "veš mašina"
+        ],
+        [
+            "Sušilica",
+            "sušilica"
+        ],
+        [
+            "Pegla",
+            "pegla"
+        ],
+        [
+            "Daska za peglanje",
+            "daska za peglanje"
+        ],
+        [
+            "Ključ",
+            "ključ"
+        ],
+        [
+            "Brava",
+            "brava"
+        ],
+        [
+            "Zvono",
+            "zvono"
+        ],
+        [
+            "Kanta",
+            "kanta"
+        ],
+        [
+            "Kanta za smeće",
+            "kanta za đubre"
+        ],
+        [
+            "Daljinski upravljač",
+            "daljinski"
+        ],
+        [
+            "Televizor",
+            "televizor"
+        ],
+        [
+            "Radio",
+            "radio"
+        ],
+        [
+            "Punjač",
+            "punjač"
+        ],
+        [
+            "Utičnica",
+            "utičnica"
+        ],
+        [
+            "Prekidač",
+            "prekidač"
+        ],
+        [
+            "Stepenice",
+            "stepenice"
+        ],
+        [
+            "Dvorište",
+            "dvorište"
+        ],
+        [
+            "Garaža",
+            "garaža"
+        ],
+        [
+            "Podrum",
+            "podrum"
+        ],
+        [
+            "Tavan",
+            "tavan"
+        ],
+        [
+            "Komoda",
+            "komoda"
+        ]
+    ],
+    "Hrana": [
+        [
+            "Kruh",
+            "hleb"
+        ],
+        [
+            "Sir",
+            "sir"
+        ],
+        [
+            "Mlijeko",
+            "mleko"
+        ],
+        [
+            "Jaje",
+            "jaje"
+        ],
+        [
+            "Maslac",
+            "puter"
+        ],
+        [
+            "Jabuka",
+            "jabuka"
+        ],
+        [
+            "Banana",
+            "banana"
+        ],
+        [
+            "Naranča",
+            "pomorandža"
+        ],
+        [
+            "Rajčica",
+            "paradajz"
+        ],
+        [
+            "Krumpir",
+            "krompir"
+        ],
+        [
+            "Mrkva",
+            "šargarepa"
+        ],
+        [
+            "Luk",
+            "luk"
+        ],
+        [
+            "Riža",
+            "pirinač"
+        ],
+        [
+            "Tjestenina",
+            "testenina"
+        ],
+        [
+            "Juha",
+            "supa"
+        ],
+        [
+            "Čorba",
+            "čorba"
+        ],
+        [
+            "Salata",
+            "salata"
+        ],
+        [
+            "Piletina",
+            "piletina"
+        ],
+        [
+            "Riba",
+            "riba"
+        ],
+        [
+            "Kolač",
+            "kolač"
+        ],
+        [
+            "Sladoled",
+            "sladoled"
+        ],
+        [
+            "Palačinka",
+            "palačinka"
+        ],
+        [
+            "Čokolada",
+            "čokolada"
+        ],
+        [
+            "Med",
+            "med"
+        ],
+        [
+            "Jogurt",
+            "jogurt"
+        ],
+        [
+            "Lubenica",
+            "lubenica"
+        ],
+        [
+            "Grožđe",
+            "grožđe"
+        ],
+        [
+            "Jagoda",
+            "jagoda"
+        ],
+        [
+            "Kruška",
+            "kruška"
+        ],
+        [
+            "Breskva",
+            "breskva"
+        ],
+        [
+            "Limun",
+            "limun"
+        ],
+        [
+            "Krastavac",
+            "krastavac"
+        ],
+        [
+            "Paprika",
+            "paprika"
+        ],
+        [
+            "Grah",
+            "pasulj"
+        ],
+        [
+            "Grašak",
+            "grašak"
+        ],
+        [
+            "Kupus",
+            "kupus"
+        ],
+        [
+            "Gljiva",
+            "pečurka"
+        ],
+        [
+            "Kukuruz",
+            "kukuruz"
+        ],
+        [
+            "Kobasica",
+            "kobasica"
+        ],
+        [
+            "Šunka",
+            "šunka"
+        ],
+        [
+            "Tost",
+            "tost"
+        ],
+        [
+            "Sendvič",
+            "sendvič"
+        ],
+        [
+            "Pizza",
+            "pica"
+        ],
+        [
+            "Pljeskavica",
+            "pljeskavica"
+        ],
+        [
+            "Ćevapi",
+            "ćevapi"
+        ],
+        [
+            "Sarma",
+            "sarma"
+        ],
+        [
+            "Burek",
+            "burek"
+        ],
+        [
+            "Gibanica",
+            "gibanica"
+        ],
+        [
+            "Pita",
+            "pita"
+        ],
+        [
+            "Ajvar",
+            "ajvar"
+        ],
+        [
+            "Kajmak",
+            "kajmak"
+        ],
+        [
+            "Kiselo vrhnje",
+            "kisela pavlaka"
+        ],
+        [
+            "Kava",
+            "kafa"
+        ],
+        [
+            "Čaj",
+            "čaj"
+        ],
+        [
+            "Sok",
+            "sok"
+        ],
+        [
+            "Voda",
+            "voda"
+        ],
+        [
+            "Mineralna voda",
+            "kisela voda"
+        ],
+        [
+            "Limunada",
+            "limunada"
+        ],
+        [
+            "Roštilj",
+            "roštilj"
+        ],
+        [
+            "Omlet",
+            "omlet"
+        ],
+        [
+            "Musaka",
+            "musaka"
+        ],
+        [
+            "Krofna",
+            "krofna"
+        ],
+        [
+            "Keks",
+            "keks"
+        ],
+        [
+            "Čips",
+            "čips"
+        ],
+        [
+            "Kokice",
+            "kokice"
+        ],
+        [
+            "Orasi",
+            "orasi"
+        ],
+        [
+            "Bademi",
+            "bademi"
+        ],
+        [
+            "Lješnjak",
+            "lešnik"
+        ],
+        [
+            "Slanina",
+            "slanina"
+        ],
+        [
+            "Maslina",
+            "maslina"
+        ],
+        [
+            "Špinat",
+            "spanać"
+        ]
+    ],
+    "Životinje": [
+        [
+            "Pas",
+            "pas"
+        ],
+        [
+            "Mačka",
+            "mačka"
+        ],
+        [
+            "Konj",
+            "konj"
+        ],
+        [
+            "Krava",
+            "krava"
+        ],
+        [
+            "Koza",
+            "koza"
+        ],
+        [
+            "Ovca",
+            "ovca"
+        ],
+        [
+            "Svinja",
+            "svinja"
+        ],
+        [
+            "Kokoš",
+            "kokoška"
+        ],
+        [
+            "Pijetao",
+            "petao"
+        ],
+        [
+            "Patka",
+            "patka"
+        ],
+        [
+            "Guska",
+            "guska"
+        ],
+        [
+            "Zec",
+            "zec"
+        ],
+        [
+            "Hrčak",
+            "hrčak"
+        ],
+        [
+            "Papiga",
+            "papagaj"
+        ],
+        [
+            "Riba",
+            "ribica"
+        ],
+        [
+            "Kornjača",
+            "kornjača"
+        ],
+        [
+            "Zmija",
+            "zmija"
+        ],
+        [
+            "Gušter",
+            "gušter"
+        ],
+        [
+            "Žaba",
+            "žaba"
+        ],
+        [
+            "Miš",
+            "miš"
+        ],
+        [
+            "Štakor",
+            "pacov"
+        ],
+        [
+            "Vjeverica",
+            "veverica"
+        ],
+        [
+            "Jež",
+            "jež"
+        ],
+        [
+            "Lisica",
+            "lisica"
+        ],
+        [
+            "Vuk",
+            "vuk"
+        ],
+        [
+            "Medvjed",
+            "medved"
+        ],
+        [
+            "Lav",
+            "lav"
+        ],
+        [
+            "Tigar",
+            "tigar"
+        ],
+        [
+            "Slon",
+            "slon"
+        ],
+        [
+            "Žirafa",
+            "žirafa"
+        ],
+        [
+            "Majmun",
+            "majmun"
+        ],
+        [
+            "Zebra",
+            "zebra"
+        ],
+        [
+            "Klokan",
+            "kengur"
+        ],
+        [
+            "Panda",
+            "panda"
+        ],
+        [
+            "Pingvin",
+            "pingvin"
+        ],
+        [
+            "Dupin",
+            "delfin"
+        ],
+        [
+            "Kit",
+            "kit"
+        ],
+        [
+            "Morski pas",
+            "ajkula"
+        ],
+        [
+            "Hobotnica",
+            "hobotnica"
+        ],
+        [
+            "Rak",
+            "rak"
+        ],
+        [
+            "Školjka",
+            "školjka"
+        ],
+        [
+            "Puž",
+            "puž"
+        ],
+        [
+            "Pčela",
+            "pčela"
+        ],
+        [
+            "Mrav",
+            "mrav"
+        ],
+        [
+            "Leptir",
+            "leptir"
+        ],
+        [
+            "Muha",
+            "muva"
+        ],
+        [
+            "Komarac",
+            "komarac"
+        ],
+        [
+            "Pauk",
+            "pauk"
+        ],
+        [
+            "Bubamara",
+            "bubamara"
+        ],
+        [
+            "Orao",
+            "orao"
+        ],
+        [
+            "Sova",
+            "sova"
+        ],
+        [
+            "Golub",
+            "golub"
+        ],
+        [
+            "Vrana",
+            "vrana"
+        ],
+        [
+            "Labud",
+            "labud"
+        ],
+        [
+            "Roda",
+            "roda"
+        ],
+        [
+            "Flamingo",
+            "flamingo"
+        ],
+        [
+            "Deva",
+            "kamila"
+        ],
+        [
+            "Magarac",
+            "magarac"
+        ],
+        [
+            "Jelen",
+            "jelen"
+        ],
+        [
+            "Srna",
+            "srna"
+        ],
+        [
+            "Divlja svinja",
+            "divlja svinja"
+        ],
+        [
+            "Ris",
+            "ris"
+        ],
+        [
+            "Tuljan",
+            "foka"
+        ],
+        [
+            "Vidra",
+            "vidra"
+        ],
+        [
+            "Jazavac",
+            "jazavac"
+        ],
+        [
+            "Dabar",
+            "dabar"
+        ],
+        [
+            "Noj",
+            "noj"
+        ],
+        [
+            "Paun",
+            "paun"
+        ],
+        [
+            "Kengur",
+            "kengur"
+        ],
+        [
+            "Koala",
+            "koala"
+        ],
+        [
+            "Aligator",
+            "aligator"
+        ],
+        [
+            "Krokodil",
+            "krokodil"
+        ]
+    ],
+    "Sport": [
+        [
+            "Nogomet",
+            "fudbal"
+        ],
+        [
+            "Košarka",
+            "košarka"
+        ],
+        [
+            "Rukomet",
+            "rukomet"
+        ],
+        [
+            "Odbojka",
+            "odbojka"
+        ],
+        [
+            "Tenis",
+            "tenis"
+        ],
+        [
+            "Stolni tenis",
+            "stoni tenis"
+        ],
+        [
+            "Plivanje",
+            "plivanje"
+        ],
+        [
+            "Trčanje",
+            "trčanje"
+        ],
+        [
+            "Biciklizam",
+            "biciklizam"
+        ],
+        [
+            "Skijanje",
+            "skijanje"
+        ],
+        [
+            "Klizanje",
+            "klizanje"
+        ],
+        [
+            "Boks",
+            "boks"
+        ],
+        [
+            "Karate",
+            "karate"
+        ],
+        [
+            "Judo",
+            "džudo"
+        ],
+        [
+            "Gimnastika",
+            "gimnastika"
+        ],
+        [
+            "Atletika",
+            "atletika"
+        ],
+        [
+            "Golf",
+            "golf"
+        ],
+        [
+            "Šah",
+            "šah"
+        ],
+        [
+            "Biljar",
+            "bilijar"
+        ],
+        [
+            "Pikado",
+            "pikado"
+        ],
+        [
+            "Lopta",
+            "lopta"
+        ],
+        [
+            "Gol",
+            "gol"
+        ],
+        [
+            "Koš",
+            "koš"
+        ],
+        [
+            "Mreža",
+            "mreža"
+        ],
+        [
+            "Reket",
+            "reket"
+        ],
+        [
+            "Palica",
+            "palica"
+        ],
+        [
+            "Kopačke",
+            "kopačke"
+        ],
+        [
+            "Tenisice",
+            "patike"
+        ],
+        [
+            "Dres",
+            "dres"
+        ],
+        [
+            "Trener",
+            "trener"
+        ],
+        [
+            "Sudac",
+            "sudija"
+        ],
+        [
+            "Navijač",
+            "navijač"
+        ],
+        [
+            "Stadion",
+            "stadion"
+        ],
+        [
+            "Dvorana",
+            "hala"
+        ],
+        [
+            "Teren",
+            "teren"
+        ],
+        [
+            "Utakmica",
+            "utakmica"
+        ],
+        [
+            "Trening",
+            "trening"
+        ],
+        [
+            "Medalja",
+            "medalja"
+        ],
+        [
+            "Pečat pobjede",
+            "pečat pobede"
+        ],
+        [
+            "Semafor",
+            "semafor"
+        ],
+        [
+            "Zviždaljka",
+            "pištaljka"
+        ],
+        [
+            "Kaciga za sport",
+            "sportska kaciga"
+        ],
+        [
+            "Štitnici",
+            "štitnici"
+        ],
+        [
+            "Rukavice",
+            "rukavice"
+        ],
+        [
+            "Skateboard",
+            "skejtbord"
+        ],
+        [
+            "Surfanje",
+            "surfovanje"
+        ],
+        [
+            "Vaterpolo",
+            "vaterpolo"
+        ],
+        [
+            "Kuglanje",
+            "kuglanje"
+        ],
+        [
+            "Planinarenje",
+            "planinarenje"
+        ],
+        [
+            "Ronjenje",
+            "ronjenje"
+        ],
+        [
+            "Jedrenje",
+            "jedrenje"
+        ],
+        [
+            "Maraton",
+            "maraton"
+        ],
+        [
+            "Sprint",
+            "sprint"
+        ],
+        [
+            "Skok u dalj",
+            "skok udalj"
+        ],
+        [
+            "Skok u vis",
+            "skok uvis"
+        ],
+        [
+            "Bacanje kugle",
+            "bacanje kugle"
+        ],
+        [
+            "Kladivo",
+            "kladivo"
+        ],
+        [
+            "Disk",
+            "disk"
+        ],
+        [
+            "Bazen",
+            "bazen"
+        ],
+        [
+            "Svlačionica",
+            "svlačionica"
+        ],
+        [
+            "Tabela",
+            "tabela"
+        ],
+        [
+            "Liga",
+            "liga"
+        ],
+        [
+            "Kup",
+            "kup"
+        ],
+        [
+            "Kapetan",
+            "kapiten"
+        ],
+        [
+            "Rezerva",
+            "rezerva"
+        ],
+        [
+            "Napad",
+            "napad"
+        ],
+        [
+            "Obrana",
+            "odbrana"
+        ],
+        [
+            "Pobjeda",
+            "pobeda"
+        ],
+        [
+            "Poraz",
+            "poraz"
+        ],
+        [
+            "Neriješeno",
+            "nerešeno"
+        ],
+        [
+            "Penal",
+            "penal"
+        ],
+        [
+            "Aut",
+            "aut"
+        ]
+    ],
+    "Škola": [
+        [
+            "Škola",
+            "škola"
+        ],
+        [
+            "Učionica",
+            "učionica"
+        ],
+        [
+            "Klupa",
+            "klupa"
+        ],
+        [
+            "Stolica u učionici",
+            "stolica u učionici"
+        ],
+        [
+            "Tabla",
+            "tabla"
+        ],
+        [
+            "Kreda",
+            "kreda"
+        ],
+        [
+            "Spužva za tablu",
+            "sunđer za tablu"
+        ],
+        [
+            "Profesor",
+            "profesor"
+        ],
+        [
+            "Učitelj",
+            "učitelj"
+        ],
+        [
+            "Učenik",
+            "učenik"
+        ],
+        [
+            "Učenica",
+            "učenica"
+        ],
+        [
+            "Razred",
+            "odeljenje"
+        ],
+        [
+            "Dnevnik",
+            "dnevnik"
+        ],
+        [
+            "Bilježnica",
+            "sveska"
+        ],
+        [
+            "Knjiga",
+            "knjiga"
+        ],
+        [
+            "Udžbenik",
+            "udžbenik"
+        ],
+        [
+            "Olovka",
+            "olovka"
+        ],
+        [
+            "Kemijska olovka",
+            "hemijska olovka"
+        ],
+        [
+            "Gumica",
+            "gumica"
+        ],
+        [
+            "Šiljilo",
+            "rezač"
+        ],
+        [
+            "Ravnalo",
+            "lenjir"
+        ],
+        [
+            "Šestar",
+            "šestar"
+        ],
+        [
+            "Kalkulator",
+            "kalkulator"
+        ],
+        [
+            "Mapa",
+            "fascikla"
+        ],
+        [
+            "Torba za školu",
+            "školska torba"
+        ],
+        [
+            "Ruksak za školu",
+            "školski ranac"
+        ],
+        [
+            "Zadaća",
+            "domaći zadatak"
+        ],
+        [
+            "Ispit",
+            "ispit"
+        ],
+        [
+            "Test",
+            "test"
+        ],
+        [
+            "Ocjena",
+            "ocena"
+        ],
+        [
+            "Svjedodžba",
+            "svedočanstvo"
+        ],
+        [
+            "Odmor",
+            "odmor"
+        ],
+        [
+            "Zvono za školu",
+            "školsko zvono"
+        ],
+        [
+            "Knjižnica",
+            "biblioteka"
+        ],
+        [
+            "Laboratorij",
+            "laboratorija"
+        ],
+        [
+            "Dvorana za tjelesni",
+            "sala za fizičko"
+        ],
+        [
+            "Likovni",
+            "likovno"
+        ],
+        [
+            "Glazbeni",
+            "muzičko"
+        ],
+        [
+            "Matematika",
+            "matematika"
+        ],
+        [
+            "Povijest",
+            "istorija"
+        ],
+        [
+            "Zemljopis",
+            "geografija"
+        ],
+        [
+            "Priroda i društvo",
+            "priroda i društvo"
+        ],
+        [
+            "Biologija",
+            "biologija"
+        ],
+        [
+            "Kemija",
+            "hemija"
+        ],
+        [
+            "Fizika",
+            "fizika"
+        ],
+        [
+            "Informatika",
+            "informatika"
+        ],
+        [
+            "Engleski",
+            "engleski"
+        ],
+        [
+            "Njemački",
+            "nemački"
+        ],
+        [
+            "Hrvatski",
+            "srpski"
+        ],
+        [
+            "Lektira",
+            "lektira"
+        ],
+        [
+            "Esej",
+            "esej"
+        ],
+        [
+            "Prezentacija",
+            "prezentacija"
+        ],
+        [
+            "Projekt",
+            "projekat"
+        ],
+        [
+            "Grupa",
+            "grupa"
+        ],
+        [
+            "Hodnik škole",
+            "školski hodnik"
+        ],
+        [
+            "Zbornica",
+            "zbornica"
+        ],
+        [
+            "Ravnatelj",
+            "direktor"
+        ],
+        [
+            "Izlet",
+            "ekskurzija"
+        ],
+        [
+            "Matura",
+            "matura"
+        ],
+        [
+            "Svjedočanstvo",
+            "svedočanstvo"
+        ],
+        [
+            "Prvašić",
+            "prvak"
+        ],
+        [
+            "Abeceda",
+            "azbuka"
+        ],
+        [
+            "Slovo",
+            "slovo"
+        ],
+        [
+            "Broj",
+            "broj"
+        ],
+        [
+            "Geometrija",
+            "geometrija"
+        ],
+        [
+            "Atlas",
+            "atlas"
+        ],
+        [
+            "Globus",
+            "globus"
+        ],
+        [
+            "Mikroskop",
+            "mikroskop"
+        ],
+        [
+            "Eksperiment",
+            "eksperiment"
+        ],
+        [
+            "Flomaster",
+            "flomaster"
+        ],
+        [
+            "Markeri",
+            "markeri"
+        ],
+        [
+            "Plakat",
+            "plakat"
+        ]
+    ],
+    "Posao": [
+        [
+            "Posao",
+            "posao"
+        ],
+        [
+            "Ured",
+            "kancelarija"
+        ],
+        [
+            "Radni stol",
+            "radni sto"
+        ],
+        [
+            "Sastanak",
+            "sastanak"
+        ],
+        [
+            "Pauza",
+            "pauza"
+        ],
+        [
+            "Kolega",
+            "kolega"
+        ],
+        [
+            "Kolegica",
+            "koleginica"
+        ],
+        [
+            "Šef",
+            "šef"
+        ],
+        [
+            "Direktor",
+            "direktor"
+        ],
+        [
+            "Radnik",
+            "radnik"
+        ],
+        [
+            "Radnica",
+            "radnica"
+        ],
+        [
+            "Liječnik",
+            "lekar"
+        ],
+        [
+            "Medicinska sestra",
+            "medicinska sestra"
+        ],
+        [
+            "Učiteljica",
+            "učiteljica"
+        ],
+        [
+            "Profesorica",
+            "profesorka"
+        ],
+        [
+            "Inženjer",
+            "inženjer"
+        ],
+        [
+            "Programer",
+            "programer"
+        ],
+        [
+            "Dizajner",
+            "dizajner"
+        ],
+        [
+            "Konobar",
+            "konobar"
+        ],
+        [
+            "Kuhar",
+            "kuvar"
+        ],
+        [
+            "Pekar",
+            "pekar"
+        ],
+        [
+            "Vozač",
+            "vozač"
+        ],
+        [
+            "Policajac",
+            "policajac"
+        ],
+        [
+            "Vatrogasac",
+            "vatrogasac"
+        ],
+        [
+            "Poštar",
+            "poštar"
+        ],
+        [
+            "Frizer",
+            "frizer"
+        ],
+        [
+            "Krojač",
+            "krojač"
+        ],
+        [
+            "Stolar",
+            "stolar"
+        ],
+        [
+            "Vodoinstalater",
+            "vodoinstalater"
+        ],
+        [
+            "Električar",
+            "električar"
+        ],
+        [
+            "Mehaničar",
+            "mehaničar"
+        ],
+        [
+            "Prodavač",
+            "prodavac"
+        ],
+        [
+            "Blagajnik",
+            "kasir"
+        ],
+        [
+            "Čistač",
+            "čistač"
+        ],
+        [
+            "Zaštitar",
+            "obezbeđenje"
+        ],
+        [
+            "Novinar",
+            "novinar"
+        ],
+        [
+            "Fotograf",
+            "fotograf"
+        ],
+        [
+            "Glumac",
+            "glumac"
+        ],
+        [
+            "Pjevač",
+            "pevač"
+        ],
+        [
+            "Slikar",
+            "slikar"
+        ],
+        [
+            "Vrtlar",
+            "baštovan"
+        ],
+        [
+            "Poljoprivrednik",
+            "poljoprivrednik"
+        ],
+        [
+            "Ribar",
+            "ribar"
+        ],
+        [
+            "Pilot",
+            "pilot"
+        ],
+        [
+            "Stjuardesa",
+            "stjuardesa"
+        ],
+        [
+            "Odvjetnik",
+            "advokat"
+        ],
+        [
+            "Sudac na poslu",
+            "sudija na poslu"
+        ],
+        [
+            "Računovođa",
+            "računovođa"
+        ],
+        [
+            "Tajnica",
+            "sekretarica"
+        ],
+        [
+            "Recepcija",
+            "recepcija"
+        ],
+        [
+            "Vizitka",
+            "vizitkarta"
+        ],
+        [
+            "Ugovor",
+            "ugovor"
+        ],
+        [
+            "Plaća",
+            "plata"
+        ],
+        [
+            "Radno vrijeme",
+            "radno vreme"
+        ],
+        [
+            "Smjena",
+            "smena"
+        ],
+        [
+            "Uniforma",
+            "uniforma"
+        ],
+        [
+            "Kaciga na gradilištu",
+            "šlem na gradilištu"
+        ],
+        [
+            "Alat",
+            "alat"
+        ],
+        [
+            "Kutija za alat",
+            "kutija za alat"
+        ],
+        [
+            "Laptop za posao",
+            "poslovni laptop"
+        ],
+        [
+            "Službeni mobitel",
+            "službeni telefon"
+        ],
+        [
+            "E-mail",
+            "imejl"
+        ],
+        [
+            "Dokument",
+            "dokument"
+        ],
+        [
+            "Pečat",
+            "pečat"
+        ],
+        [
+            "Potpis",
+            "potpis"
+        ],
+        [
+            "Kalendar",
+            "kalendar"
+        ],
+        [
+            "Rok",
+            "rok"
+        ],
+        [
+            "Plan",
+            "plan"
+        ],
+        [
+            "Zadatak",
+            "zadatak"
+        ],
+        [
+            "Tim",
+            "tim"
+        ],
+        [
+            "Kava na poslu",
+            "kafa na poslu"
+        ],
+        [
+            "Kopirni uređaj",
+            "kopir aparat"
+        ]
+    ],
+    "Tehnologija": [
+        [
+            "Računalo",
+            "računar"
+        ],
+        [
+            "Laptop",
+            "laptop"
+        ],
+        [
+            "Tablet",
+            "tablet"
+        ],
+        [
+            "Mobitel",
+            "mobilni telefon"
+        ],
+        [
+            "Telefon",
+            "telefon"
+        ],
+        [
+            "Ekran",
+            "ekran"
+        ],
+        [
+            "Tipkovnica",
+            "tastatura"
+        ],
+        [
+            "Miš za računar",
+            "miš za računar"
+        ],
+        [
+            "Kamera",
+            "kamera"
+        ],
+        [
+            "Slušalice",
+            "slušalice"
+        ],
+        [
+            "Zvučnik",
+            "zvučnik"
+        ],
+        [
+            "Mikrofon",
+            "mikrofon"
+        ],
+        [
+            "Punjač za uređaj",
+            "punjač za uređaj"
+        ],
+        [
+            "Baterija",
+            "baterija"
+        ],
+        [
+            "Kabel",
+            "kabl"
+        ],
+        [
+            "USB",
+            "USB"
+        ],
+        [
+            "Internet",
+            "internet"
+        ],
+        [
+            "Wi-Fi",
+            "vaj-faj"
+        ],
+        [
+            "Lozinka",
+            "lozinka"
+        ],
+        [
+            "Aplikacija",
+            "aplikacija"
+        ],
+        [
+            "Poruka",
+            "poruka"
+        ],
+        [
+            "Poziv",
+            "poziv"
+        ],
+        [
+            "Video poziv",
+            "video poziv"
+        ],
+        [
+            "Fotografija",
+            "fotografija"
+        ],
+        [
+            "Snimka",
+            "snimak"
+        ],
+        [
+            "Datoteka",
+            "fajl"
+        ],
+        [
+            "Mapa na računaru",
+            "folder na računaru"
+        ],
+        [
+            "Printer",
+            "štampač"
+        ],
+        [
+            "Skener",
+            "skener"
+        ],
+        [
+            "Router",
+            "ruter"
+        ],
+        [
+            "Server",
+            "server"
+        ],
+        [
+            "Cloud servis",
+            "cloud servis"
+        ],
+        [
+            "Preglednik",
+            "pregledač"
+        ],
+        [
+            "Web stranica",
+            "veb stranica"
+        ],
+        [
+            "Link",
+            "link"
+        ],
+        [
+            "Profil",
+            "profil"
+        ],
+        [
+            "Avatar",
+            "avatar"
+        ],
+        [
+            "Emoji",
+            "emodži"
+        ],
+        [
+            "Igrica",
+            "igrica"
+        ],
+        [
+            "Konzola",
+            "konzola"
+        ],
+        [
+            "Kontroler",
+            "kontroler"
+        ],
+        [
+            "Pametni televizor",
+            "pametni televizor"
+        ],
+        [
+            "Daljinski za TV",
+            "daljinski za TV"
+        ],
+        [
+            "Pametni sat",
+            "pametni sat"
+        ],
+        [
+            "Dron",
+            "dron"
+        ],
+        [
+            "Robot",
+            "robot"
+        ],
+        [
+            "Čip",
+            "čip"
+        ],
+        [
+            "Ažuriranje",
+            "ažuriranje"
+        ],
+        [
+            "Signal",
+            "signal"
+        ],
+        [
+            "Računalna mreža",
+            "računarska mreža"
+        ],
+        [
+            "Bluetooth",
+            "blutut"
+        ],
+        [
+            "Navigacija digitalna",
+            "digitalna navigacija"
+        ],
+        [
+            "GPS",
+            "GPS"
+        ],
+        [
+            "Mapa u telefonu",
+            "mapa u telefonu"
+        ],
+        [
+            "Ekran osjetljiv na dodir",
+            "ekran na dodir"
+        ],
+        [
+            "Notifikacija",
+            "obaveštenje"
+        ],
+        [
+            "Alarm",
+            "alarm"
+        ],
+        [
+            "Kalendar u telefonu",
+            "kalendar u telefonu"
+        ],
+        [
+            "Bilješka",
+            "beleška"
+        ],
+        [
+            "Pretraga",
+            "pretraga"
+        ],
+        [
+            "Kôd",
+            "kod"
+        ],
+        [
+            "Lozinka za Wi-Fi",
+            "lozinka za Wi-Fi"
+        ],
+        [
+            "Snimanje",
+            "snimanje"
+        ],
+        [
+            "Streaming",
+            "striming"
+        ],
+        [
+            "Podcast",
+            "podkast"
+        ],
+        [
+            "Selfie",
+            "selfi"
+        ],
+        [
+            "Filter za sliku",
+            "filter za sliku"
+        ],
+        [
+            "Memorija",
+            "memorija"
+        ],
+        [
+            "Procesor",
+            "procesor"
+        ],
+        [
+            "Tvrdi disk",
+            "hard disk"
+        ],
+        [
+            "Monitor",
+            "monitor"
+        ],
+        [
+            "Projektor",
+            "projektor"
+        ]
+    ],
+    "Putovanja": [
+        [
+            "Putovanje",
+            "putovanje"
+        ],
+        [
+            "Kofer",
+            "kofer"
+        ],
+        [
+            "Putna torba",
+            "putna torba"
+        ],
+        [
+            "Putovnica",
+            "pasoš"
+        ],
+        [
+            "Osobna iskaznica",
+            "lična karta"
+        ],
+        [
+            "Avionska karta",
+            "avionska karta"
+        ],
+        [
+            "Vozna karta za put",
+            "vozna karta za put"
+        ],
+        [
+            "Autobusna karta za put",
+            "autobuska karta za put"
+        ],
+        [
+            "Hotel",
+            "hotel"
+        ],
+        [
+            "Apartman",
+            "apartman"
+        ],
+        [
+            "Recepcija hotela",
+            "recepcija hotela"
+        ],
+        [
+            "Soba u hotelu",
+            "hotelska soba"
+        ],
+        [
+            "Ključ od sobe",
+            "ključ od sobe"
+        ],
+        [
+            "Plaža",
+            "plaža"
+        ],
+        [
+            "More na odmoru",
+            "more na odmoru"
+        ],
+        [
+            "Planina na odmoru",
+            "planina na odmoru"
+        ],
+        [
+            "Grad za vikend",
+            "grad za vikend"
+        ],
+        [
+            "Selo za odmor",
+            "selo za odmor"
+        ],
+        [
+            "Granica",
+            "granica"
+        ],
+        [
+            "Carina",
+            "carina"
+        ],
+        [
+            "Aerodrom",
+            "aerodrom"
+        ],
+        [
+            "Kolodvor",
+            "stanica"
+        ],
+        [
+            "Peron",
+            "peron"
+        ],
+        [
+            "Putnički vlak",
+            "putnički voz"
+        ],
+        [
+            "Putnički autobus",
+            "putnički autobus"
+        ],
+        [
+            "Taksi",
+            "taksi"
+        ],
+        [
+            "Rent-a-car",
+            "rent-a-car"
+        ],
+        [
+            "Karta grada",
+            "mapa grada"
+        ],
+        [
+            "Vodič",
+            "vodič"
+        ],
+        [
+            "Turist",
+            "turista"
+        ],
+        [
+            "Suvenir",
+            "suvenir"
+        ],
+        [
+            "Razglednica",
+            "razglednica"
+        ],
+        [
+            "Fotografija s puta",
+            "fotografija s puta"
+        ],
+        [
+            "Kamp",
+            "kamp"
+        ],
+        [
+            "Šator",
+            "šator"
+        ],
+        [
+            "Kampiranje",
+            "kampovanje"
+        ],
+        [
+            "Izlet za vikend",
+            "izlet za vikend"
+        ],
+        [
+            "Godišnji odmor",
+            "godišnji odmor"
+        ],
+        [
+            "Ljetovanje",
+            "letovanje"
+        ],
+        [
+            "Zimovanje",
+            "zimovanje"
+        ],
+        [
+            "Krstarenje",
+            "krstarenje"
+        ],
+        [
+            "Trajekt",
+            "trajekt"
+        ],
+        [
+            "Luka",
+            "luka"
+        ],
+        [
+            "Most",
+            "most"
+        ],
+        [
+            "Tunel",
+            "tunel"
+        ],
+        [
+            "Autocesta",
+            "auto-put"
+        ],
+        [
+            "Putokaz",
+            "putokaz"
+        ],
+        [
+            "Raspored",
+            "raspored"
+        ],
+        [
+            "Rezervacija",
+            "rezervacija"
+        ],
+        [
+            "Krevet u hotelu",
+            "krevet u hotelu"
+        ],
+        [
+            "Doručak u hotelu",
+            "doručak u hotelu"
+        ],
+        [
+            "Bazen u hotelu",
+            "bazen u hotelu"
+        ],
+        [
+            "Ručnik za plažu",
+            "peškir za plažu"
+        ],
+        [
+            "Krema za sunce",
+            "krema za sunce"
+        ],
+        [
+            "Sunčane naočale",
+            "naočare za sunce"
+        ],
+        [
+            "Fotoaparat",
+            "fotoaparat"
+        ],
+        [
+            "Viza",
+            "viza"
+        ],
+        [
+            "Valuta",
+            "valuta"
+        ],
+        [
+            "Mjenjačnica",
+            "menjačnica"
+        ],
+        [
+            "Ručna prtljaga",
+            "ručni prtljag"
+        ],
+        [
+            "Prtljaga",
+            "prtljag"
+        ],
+        [
+            "Ukrcaj",
+            "ukrcavanje"
+        ],
+        [
+            "Let",
+            "let"
+        ],
+        [
+            "Kašnjenje",
+            "kašnjenje"
+        ],
+        [
+            "Smještaj",
+            "smeštaj"
+        ],
+        [
+            "Plan puta",
+            "plan puta"
+        ],
+        [
+            "Adresa",
+            "adresa"
+        ],
+        [
+            "Navigacija za put",
+            "navigacija za put"
+        ],
+        [
+            "Turistički ured",
+            "turistička agencija"
+        ],
+        [
+            "Slikanje",
+            "slikanje"
+        ],
+        [
+            "Šetnja gradom",
+            "šetnja gradom"
+        ],
+        [
+            "Noćenje",
+            "noćenje"
+        ]
+    ],
+    "Priroda": [
+        [
+            "Sunce",
+            "sunce"
+        ],
+        [
+            "Mjesec",
+            "mesec"
+        ],
+        [
+            "Zvijezda",
+            "zvezda"
+        ],
+        [
+            "Nebo",
+            "nebo"
+        ],
+        [
+            "Oblak",
+            "oblak"
+        ],
+        [
+            "Kiša",
+            "kiša"
+        ],
+        [
+            "Snijeg",
+            "sneg"
+        ],
+        [
+            "Vjetar",
+            "vetar"
+        ],
+        [
+            "Magla",
+            "magla"
+        ],
+        [
+            "Duga",
+            "duga"
+        ],
+        [
+            "Grom",
+            "grom"
+        ],
+        [
+            "Munja",
+            "munja"
+        ],
+        [
+            "More",
+            "more"
+        ],
+        [
+            "Rijeka",
+            "reka"
+        ],
+        [
+            "Jezero",
+            "jezero"
+        ],
+        [
+            "Potok",
+            "potok"
+        ],
+        [
+            "Vodopad",
+            "vodopad"
+        ],
+        [
+            "Planina",
+            "planina"
+        ],
+        [
+            "Brdo",
+            "brdo"
+        ],
+        [
+            "Dolina",
+            "dolina"
+        ],
+        [
+            "Šuma",
+            "šuma"
+        ],
+        [
+            "Livada",
+            "livada"
+        ],
+        [
+            "Polje",
+            "polje"
+        ],
+        [
+            "Plaža prirodna",
+            "prirodna plaža"
+        ],
+        [
+            "Pijesak",
+            "pesak"
+        ],
+        [
+            "Kamen",
+            "kamen"
+        ],
+        [
+            "Stijena",
+            "stena"
+        ],
+        [
+            "Zemlja",
+            "zemlja"
+        ],
+        [
+            "Blato",
+            "blato"
+        ],
+        [
+            "Trava",
+            "trava"
+        ],
+        [
+            "Cvijet",
+            "cvet"
+        ],
+        [
+            "Drvo",
+            "drvo"
+        ],
+        [
+            "List",
+            "list"
+        ],
+        [
+            "Grana",
+            "grana"
+        ],
+        [
+            "Korijen",
+            "koren"
+        ],
+        [
+            "Šišarka",
+            "šišarka"
+        ],
+        [
+            "Žir",
+            "žir"
+        ],
+        [
+            "Gljiva u šumi",
+            "pečurka u šumi"
+        ],
+        [
+            "Mahovina",
+            "mahovina"
+        ],
+        [
+            "Pšenica",
+            "pšenica"
+        ],
+        [
+            "Kukuruzno polje",
+            "kukuruzno polje"
+        ],
+        [
+            "Vinograd",
+            "vinograd"
+        ],
+        [
+            "Maslina u prirodi",
+            "maslina u prirodi"
+        ],
+        [
+            "Vrt",
+            "bašta"
+        ],
+        [
+            "Park",
+            "park"
+        ],
+        [
+            "Staza",
+            "staza"
+        ],
+        [
+            "Izvor",
+            "izvor"
+        ],
+        [
+            "Pećina",
+            "pećina"
+        ],
+        [
+            "Otok",
+            "ostrvo"
+        ],
+        [
+            "Poluotok",
+            "poluostrvo"
+        ],
+        [
+            "Obala",
+            "obala"
+        ],
+        [
+            "Zaljev",
+            "zaliv"
+        ],
+        [
+            "Luka u prirodi",
+            "prirodna luka"
+        ],
+        [
+            "Pustinja",
+            "pustinja"
+        ],
+        [
+            "Led",
+            "led"
+        ],
+        [
+            "Mraz",
+            "mraz"
+        ],
+        [
+            "Rosa",
+            "rosa"
+        ],
+        [
+            "Vrućina",
+            "vrućina"
+        ],
+        [
+            "Hladnoća",
+            "hladnoća"
+        ],
+        [
+            "Proljeće",
+            "proleće"
+        ],
+        [
+            "Ljeto",
+            "leto"
+        ],
+        [
+            "Jesen",
+            "jesen"
+        ],
+        [
+            "Zima",
+            "zima"
+        ],
+        [
+            "Zrak",
+            "vazduh"
+        ],
+        [
+            "Sjena",
+            "senka"
+        ],
+        [
+            "Svjetlost",
+            "svetlost"
+        ],
+        [
+            "Miris prirode",
+            "miris prirode"
+        ],
+        [
+            "Tišina",
+            "tišina"
+        ],
+        [
+            "Pčelinjak",
+            "pčelinjak"
+        ],
+        [
+            "Gnijezdo",
+            "gnezdo"
+        ],
+        [
+            "Horizont",
+            "horizont"
+        ]
+    ],
+    "Prevoz": [
+        [
+            "Automobil",
+            "automobil"
+        ],
+        [
+            "Auto",
+            "auto"
+        ],
+        [
+            "Autobus",
+            "autobus"
+        ],
+        [
+            "Vlak",
+            "voz"
+        ],
+        [
+            "Tramvaj",
+            "tramvaj"
+        ],
+        [
+            "Trolejbus",
+            "trolejbus"
+        ],
+        [
+            "Taksi vozilo",
+            "taksi vozilo"
+        ],
+        [
+            "Motocikl",
+            "motor"
+        ],
+        [
+            "Skuter",
+            "skuter"
+        ],
+        [
+            "Bicikl za prevoz",
+            "bicikl za prevoz"
+        ],
+        [
+            "Kamion",
+            "kamion"
+        ],
+        [
+            "Kombi",
+            "kombi"
+        ],
+        [
+            "Traktor",
+            "traktor"
+        ],
+        [
+            "Avion",
+            "avion"
+        ],
+        [
+            "Helikopter",
+            "helikopter"
+        ],
+        [
+            "Brod",
+            "brod"
+        ],
+        [
+            "Čamac",
+            "čamac"
+        ],
+        [
+            "Trajektna linija",
+            "trajektna linija"
+        ],
+        [
+            "Metro",
+            "metro"
+        ],
+        [
+            "Stanica",
+            "stanica"
+        ],
+        [
+            "Autobusno stajalište",
+            "autobusko stajalište"
+        ],
+        [
+            "Kolodvor za prevoz",
+            "železnička stanica"
+        ],
+        [
+            "Terminal",
+            "terminal"
+        ],
+        [
+            "Cesta",
+            "put"
+        ],
+        [
+            "Ulica",
+            "ulica"
+        ],
+        [
+            "Izlaz s autoceste",
+            "izlaz sa auto-puta"
+        ],
+        [
+            "Prometni semafor",
+            "saobraćajni semafor"
+        ],
+        [
+            "Pješački prijelaz",
+            "pešački prelaz"
+        ],
+        [
+            "Kružni tok",
+            "kružni tok"
+        ],
+        [
+            "Most na cesti",
+            "most na putu"
+        ],
+        [
+            "Cestovni tunel",
+            "putni tunel"
+        ],
+        [
+            "Parkiralište",
+            "parking"
+        ],
+        [
+            "Garaža za auto",
+            "garaža za auto"
+        ],
+        [
+            "Volan",
+            "volan"
+        ],
+        [
+            "Kočnica",
+            "kočnica"
+        ],
+        [
+            "Gas",
+            "gas"
+        ],
+        [
+            "Mjenjač",
+            "menjač"
+        ],
+        [
+            "Guma",
+            "guma"
+        ],
+        [
+            "Rezervna guma",
+            "rezervna guma"
+        ],
+        [
+            "Motor vozila",
+            "motor vozila"
+        ],
+        [
+            "Prtljažnik",
+            "gepek"
+        ],
+        [
+            "Sjedište",
+            "sedište"
+        ],
+        [
+            "Pojas",
+            "pojas"
+        ],
+        [
+            "Kaciga za motor",
+            "kaciga za motor"
+        ],
+        [
+            "Mjesečna karta",
+            "mesečna karta"
+        ],
+        [
+            "Vozni red",
+            "red vožnje"
+        ],
+        [
+            "Putnik",
+            "putnik"
+        ],
+        [
+            "Vozač autobusa",
+            "vozač autobusa"
+        ],
+        [
+            "Kontrolor",
+            "kontrolor"
+        ],
+        [
+            "Kondukter",
+            "kondukter"
+        ],
+        [
+            "Gužva u prometu",
+            "gužva u saobraćaju"
+        ],
+        [
+            "Kolona",
+            "kolona"
+        ],
+        [
+            "Skretanje",
+            "skretanje"
+        ],
+        [
+            "Raskrižje",
+            "raskrsnica"
+        ],
+        [
+            "Benzinska postaja",
+            "benzinska pumpa"
+        ],
+        [
+            "Gorivo",
+            "gorivo"
+        ],
+        [
+            "Benzin",
+            "benzin"
+        ],
+        [
+            "Dizel",
+            "dizel"
+        ],
+        [
+            "Električni auto",
+            "električni auto"
+        ],
+        [
+            "Punjač za auto",
+            "punjač za auto"
+        ],
+        [
+            "Navigacija u autu",
+            "navigacija u autu"
+        ],
+        [
+            "Retrovizor",
+            "retrovizor"
+        ],
+        [
+            "Brisači",
+            "brisači"
+        ],
+        [
+            "Far",
+            "far"
+        ],
+        [
+            "Sirena",
+            "sirena"
+        ],
+        [
+            "Tablica",
+            "registracija"
+        ],
+        [
+            "Taxi aplikacija",
+            "taksi aplikacija"
+        ],
+        [
+            "Pruga",
+            "pruga"
+        ],
+        [
+            "Tračnice",
+            "šine"
+        ],
+        [
+            "Peron za voz",
+            "peron za voz"
+        ],
+        [
+            "Brodska luka",
+            "brodska luka"
+        ]
+    ],
+    "Odeća": [
+        [
+            "Majica",
+            "majica"
+        ],
+        [
+            "Košulja",
+            "košulja"
+        ],
+        [
+            "Hlače",
+            "pantalone"
+        ],
+        [
+            "Traperice",
+            "farmerke"
+        ],
+        [
+            "Suknja",
+            "suknja"
+        ],
+        [
+            "Haljina",
+            "haljina"
+        ],
+        [
+            "Jakna",
+            "jakna"
+        ],
+        [
+            "Kaput",
+            "kaput"
+        ],
+        [
+            "Džemper",
+            "džemper"
+        ],
+        [
+            "Duks",
+            "duks"
+        ],
+        [
+            "Trenerka",
+            "trenerka"
+        ],
+        [
+            "Kratke hlače",
+            "šorts"
+        ],
+        [
+            "Donje rublje",
+            "donji veš"
+        ],
+        [
+            "Čarapa",
+            "čarapa"
+        ],
+        [
+            "Cipela",
+            "cipela"
+        ],
+        [
+            "Tenisica",
+            "patika"
+        ],
+        [
+            "Čizma",
+            "čizma"
+        ],
+        [
+            "Sandala",
+            "sandala"
+        ],
+        [
+            "Papuča",
+            "papuča"
+        ],
+        [
+            "Kapa",
+            "kapa"
+        ],
+        [
+            "Šešir",
+            "šešir"
+        ],
+        [
+            "Šal",
+            "šal"
+        ],
+        [
+            "Rukavica",
+            "rukavica"
+        ],
+        [
+            "Remen",
+            "kaiš"
+        ],
+        [
+            "Torba",
+            "torba"
+        ],
+        [
+            "Ruksak",
+            "ranac"
+        ],
+        [
+            "Novčanik",
+            "novčanik"
+        ],
+        [
+            "Sat na ruci",
+            "ručni sat"
+        ],
+        [
+            "Naušnica",
+            "minđuša"
+        ],
+        [
+            "Ogrlica",
+            "ogrlica"
+        ],
+        [
+            "Narukvica",
+            "narukvica"
+        ],
+        [
+            "Prsten",
+            "prsten"
+        ],
+        [
+            "Naočale",
+            "naočare"
+        ],
+        [
+            "Naočale za sunce",
+            "naočare za sunce"
+        ],
+        [
+            "Kravata",
+            "kravata"
+        ],
+        [
+            "Leptir mašna",
+            "leptir mašna"
+        ],
+        [
+            "Odijelo",
+            "odelo"
+        ],
+        [
+            "Sako",
+            "sako"
+        ],
+        [
+            "Radna uniforma",
+            "radna uniforma"
+        ],
+        [
+            "Pregača",
+            "kecelja"
+        ],
+        [
+            "Pidžama",
+            "pidžama"
+        ],
+        [
+            "Kupaći kostim",
+            "kupaći kostim"
+        ],
+        [
+            "Ručnik",
+            "peškir"
+        ],
+        [
+            "Kabanica",
+            "kišna kabanica"
+        ],
+        [
+            "Kišobran",
+            "kišobran"
+        ],
+        [
+            "Gumb",
+            "dugme"
+        ],
+        [
+            "Patentni zatvarač",
+            "rajsferšlus"
+        ],
+        [
+            "Vezica",
+            "pertla"
+        ],
+        [
+            "Džep",
+            "džep"
+        ],
+        [
+            "Kapuljača",
+            "kapuljača"
+        ],
+        [
+            "Vješalica",
+            "vešalica"
+        ],
+        [
+            "Ormar za odjeću",
+            "ormar za odeću"
+        ],
+        [
+            "Ogledalo za oblačenje",
+            "ogledalo za oblačenje"
+        ],
+        [
+            "Peglanje",
+            "peglanje"
+        ],
+        [
+            "Pranje rublja",
+            "pranje veša"
+        ],
+        [
+            "Sušenje rublja",
+            "sušenje veša"
+        ],
+        [
+            "Moda",
+            "moda"
+        ],
+        [
+            "Stil",
+            "stil"
+        ],
+        [
+            "Veličina",
+            "veličina"
+        ],
+        [
+            "Boja",
+            "boja"
+        ],
+        [
+            "Materijal",
+            "materijal"
+        ],
+        [
+            "Pamuk",
+            "pamuk"
+        ],
+        [
+            "Vuna",
+            "vuna"
+        ],
+        [
+            "Kožna jakna",
+            "kožna jakna"
+        ],
+        [
+            "Svila",
+            "svila"
+        ],
+        [
+            "Jeans",
+            "džins"
+        ],
+        [
+            "Džepna maramica",
+            "džepna maramica"
+        ],
+        [
+            "Kostim",
+            "kostim"
+        ],
+        [
+            "Maska za lice",
+            "maska za lice"
+        ],
+        [
+            "Svečana kravata",
+            "svečana kravata"
+        ],
+        [
+            "Broš",
+            "broš"
+        ],
+        [
+            "Torbica",
+            "tašnica"
+        ]
+    ],
+    "Zdravlje": [
+        [
+            "Zdravlje",
+            "zdravlje"
+        ],
+        [
+            "Liječnik opće prakse",
+            "lekar opšte prakse"
+        ],
+        [
+            "Doktorica",
+            "doktorka"
+        ],
+        [
+            "Ambulanta",
+            "ambulanta"
+        ],
+        [
+            "Ordinacija",
+            "ordinacija"
+        ],
+        [
+            "Bolnica",
+            "bolnica"
+        ],
+        [
+            "Ljekarna",
+            "apoteka"
+        ],
+        [
+            "Lijek",
+            "lek"
+        ],
+        [
+            "Tableta",
+            "tableta"
+        ],
+        [
+            "Sirup",
+            "sirup"
+        ],
+        [
+            "Vitamin",
+            "vitamin"
+        ],
+        [
+            "Toplomjer",
+            "toplomer"
+        ],
+        [
+            "Zavoj",
+            "zavoj"
+        ],
+        [
+            "Flaster",
+            "flaster"
+        ],
+        [
+            "Maska",
+            "maska"
+        ],
+        [
+            "Rukavice medicinske",
+            "medicinske rukavice"
+        ],
+        [
+            "Pregled",
+            "pregled"
+        ],
+        [
+            "Recept",
+            "recept"
+        ],
+        [
+            "Kontrola",
+            "kontrola"
+        ],
+        [
+            "Čekaonica",
+            "čekaonica"
+        ],
+        [
+            "Zubar",
+            "zubar"
+        ],
+        [
+            "Četkica za zube",
+            "četkica za zube"
+        ],
+        [
+            "Pasta za zube",
+            "pasta za zube"
+        ],
+        [
+            "Zub",
+            "zub"
+        ],
+        [
+            "Oko",
+            "oko"
+        ],
+        [
+            "Uho",
+            "uho"
+        ],
+        [
+            "Nos",
+            "nos"
+        ],
+        [
+            "Grlo",
+            "grlo"
+        ],
+        [
+            "Ruka",
+            "ruka"
+        ],
+        [
+            "Noga",
+            "noga"
+        ],
+        [
+            "Leđa",
+            "leđa"
+        ],
+        [
+            "Glava",
+            "glava"
+        ],
+        [
+            "Srce",
+            "srce"
+        ],
+        [
+            "Stomak",
+            "stomak"
+        ],
+        [
+            "Koža",
+            "koža"
+        ],
+        [
+            "Kosa",
+            "kosa"
+        ],
+        [
+            "San",
+            "san"
+        ],
+        [
+            "Kratak odmor",
+            "kratak odmor"
+        ],
+        [
+            "Čaša vode",
+            "čaša vode"
+        ],
+        [
+            "Šetnja",
+            "šetnja"
+        ],
+        [
+            "Lagano trčanje",
+            "lagano trčanje"
+        ],
+        [
+            "Vježba",
+            "vežba"
+        ],
+        [
+            "Teretana",
+            "teretana"
+        ],
+        [
+            "Joga",
+            "joga"
+        ],
+        [
+            "Disanje",
+            "disanje"
+        ],
+        [
+            "Temperatura",
+            "temperatura"
+        ],
+        [
+            "Kašalj",
+            "kašalj"
+        ],
+        [
+            "Prehlada",
+            "prehlada"
+        ],
+        [
+            "Alergija",
+            "alergija"
+        ],
+        [
+            "Kapi za nos",
+            "kapi za nos"
+        ],
+        [
+            "Krema",
+            "krema"
+        ],
+        [
+            "Masaža",
+            "masaža"
+        ],
+        [
+            "Fizioterapija",
+            "fizioterapija"
+        ],
+        [
+            "Naočale za vid",
+            "naočare za vid"
+        ],
+        [
+            "Leća",
+            "sočivo"
+        ],
+        [
+            "Sluh",
+            "sluh"
+        ],
+        [
+            "Puls",
+            "puls"
+        ],
+        [
+            "Tlak",
+            "pritisak"
+        ],
+        [
+            "Prehrana",
+            "ishrana"
+        ],
+        [
+            "Svježe voće",
+            "sveže voće"
+        ],
+        [
+            "Svježe povrće",
+            "sveže povrće"
+        ],
+        [
+            "Zdrav doručak",
+            "zdrav doručak"
+        ],
+        [
+            "Čaj za grlo",
+            "čaj za grlo"
+        ],
+        [
+            "Med za grlo",
+            "med za grlo"
+        ],
+        [
+            "Sapunjanje",
+            "pranje sapunom"
+        ],
+        [
+            "Higijena",
+            "higijena"
+        ],
+        [
+            "Tuširanje",
+            "tuširanje"
+        ],
+        [
+            "Ručnik za zdravlje",
+            "peškir za zdravlje"
+        ],
+        [
+            "Dezinfekcija",
+            "dezinfekcija"
+        ],
+        [
+            "Prva pomoć",
+            "prva pomoć"
+        ]
+    ],
+    "Zabava": [
+        [
+            "Film",
+            "film"
+        ],
+        [
+            "Serija",
+            "serija"
+        ],
+        [
+            "Kino",
+            "bioskop"
+        ],
+        [
+            "Kazalište",
+            "pozorište"
+        ],
+        [
+            "Koncert",
+            "koncert"
+        ],
+        [
+            "Glazba",
+            "muzika"
+        ],
+        [
+            "Pjesma",
+            "pesma"
+        ],
+        [
+            "Glavni vokal",
+            "glavni vokal"
+        ],
+        [
+            "Bend",
+            "bend"
+        ],
+        [
+            "Gitara",
+            "gitara"
+        ],
+        [
+            "Klavir",
+            "klavir"
+        ],
+        [
+            "Bubanj",
+            "bubanj"
+        ],
+        [
+            "Ples",
+            "ples"
+        ],
+        [
+            "Zabava",
+            "žurka"
+        ],
+        [
+            "Rođendan",
+            "rođendan"
+        ],
+        [
+            "Poklon",
+            "poklon"
+        ],
+        [
+            "Balon",
+            "balon"
+        ],
+        [
+            "Torta",
+            "torta"
+        ],
+        [
+            "Svijeća",
+            "sveća"
+        ],
+        [
+            "Društvena igra",
+            "društvena igra"
+        ],
+        [
+            "Karte za igru",
+            "karte za igru"
+        ],
+        [
+            "Kockica",
+            "kockica"
+        ],
+        [
+            "Puzzle",
+            "slagalica"
+        ],
+        [
+            "Kviz",
+            "kviz"
+        ],
+        [
+            "Karaoke",
+            "karaoke"
+        ],
+        [
+            "Karaoke mikrofon",
+            "karaoke mikrofon"
+        ],
+        [
+            "Scena",
+            "scena"
+        ],
+        [
+            "Publika",
+            "publika"
+        ],
+        [
+            "Aplauz",
+            "aplauz"
+        ],
+        [
+            "Ulaznica",
+            "ulaznica"
+        ],
+        [
+            "Maskenbal",
+            "maskenbal"
+        ],
+        [
+            "Maska za maskenbal",
+            "maska za maskenbal"
+        ],
+        [
+            "Strip",
+            "strip"
+        ],
+        [
+            "Knjiga za odmor",
+            "knjiga za odmor"
+        ],
+        [
+            "Roman",
+            "roman"
+        ],
+        [
+            "Časopis",
+            "časopis"
+        ],
+        [
+            "Hobi",
+            "hobi"
+        ],
+        [
+            "Crtanje",
+            "crtanje"
+        ],
+        [
+            "Likovna radionica",
+            "likovna radionica"
+        ],
+        [
+            "Fotografiranje",
+            "fotografisanje"
+        ],
+        [
+            "Video igra",
+            "video igra"
+        ],
+        [
+            "Igraća konzola",
+            "igraća konzola"
+        ],
+        [
+            "Gamepad",
+            "gejmped"
+        ],
+        [
+            "Igraonica",
+            "igraonica"
+        ],
+        [
+            "Park za zabavu",
+            "zabavni park"
+        ],
+        [
+            "Vrtuljak",
+            "ringišpil"
+        ],
+        [
+            "Klovn",
+            "klovn"
+        ],
+        [
+            "Mađioničar",
+            "mađioničar"
+        ],
+        [
+            "Cirkus",
+            "cirkus"
+        ],
+        [
+            "Izložba",
+            "izložba"
+        ],
+        [
+            "Muzej",
+            "muzej"
+        ],
+        [
+            "Festival",
+            "festival"
+        ],
+        [
+            "Sajam",
+            "sajam"
+        ],
+        [
+            "Piknik",
+            "piknik"
+        ],
+        [
+            "Izlazak",
+            "izlazak"
+        ],
+        [
+            "Kafić",
+            "kafić"
+        ],
+        [
+            "Diskoteka",
+            "diskoteka"
+        ],
+        [
+            "DJ",
+            "di-džej"
+        ],
+        [
+            "Titlovi",
+            "titlovi"
+        ],
+        [
+            "Epizoda",
+            "epizoda"
+        ],
+        [
+            "Netflix",
+            "Netflix"
+        ],
+        [
+            "Kokice u kinu",
+            "kokice u bioskopu"
+        ],
+        [
+            "Sjedalo u kinu",
+            "sedište u bioskopu"
+        ],
+        [
+            "Humor",
+            "humor"
+        ],
+        [
+            "Šala",
+            "šala"
+        ],
+        [
+            "Meme",
+            "mim"
+        ],
+        [
+            "Audio emisija",
+            "audio emisija"
+        ],
+        [
+            "Stream",
+            "strim"
+        ],
+        [
+            "Publika online",
+            "online publika"
+        ],
+        [
+            "Navijanje",
+            "navijanje"
+        ]
+    ],
+    "Balkan": [
+        [
+            "Kafana",
+            "kafana"
+        ],
+        [
+            "Pekara",
+            "pekara"
+        ],
+        [
+            "Tržnica",
+            "pijaca"
+        ],
+        [
+            "Susjed",
+            "komšija"
+        ],
+        [
+            "Susjedstvo",
+            "komšiluk"
+        ],
+        [
+            "Džezva",
+            "džezva"
+        ],
+        [
+            "Fildžan",
+            "fildžan"
+        ],
+        [
+            "Kava u kafani",
+            "kafa u kafani"
+        ],
+        [
+            "Rakija",
+            "rakija"
+        ],
+        [
+            "Roštilj u dvorištu",
+            "roštilj u dvorištu"
+        ],
+        [
+            "Ćevabdžinica",
+            "ćevabdžinica"
+        ],
+        [
+            "Buregdžinica",
+            "buregdžinica"
+        ],
+        [
+            "Sarma za praznik",
+            "sarma za praznik"
+        ],
+        [
+            "Ajvar iz zimnice",
+            "ajvar iz zimnice"
+        ],
+        [
+            "Zimnica",
+            "zimnica"
+        ],
+        [
+            "Slava",
+            "slava"
+        ],
+        [
+            "Svadba",
+            "svadba"
+        ],
+        [
+            "Kolo",
+            "kolo"
+        ],
+        [
+            "Tamburica",
+            "tamburica"
+        ],
+        [
+            "Harmonika",
+            "harmonika"
+        ],
+        [
+            "Truba",
+            "truba"
+        ],
+        [
+            "Narodna pjesma",
+            "narodna pesma"
+        ],
+        [
+            "Sevdah",
+            "sevdah"
+        ],
+        [
+            "Klapa",
+            "klapa"
+        ],
+        [
+            "Riva",
+            "riva"
+        ],
+        [
+            "Čaršija",
+            "čaršija"
+        ],
+        [
+            "Mahala",
+            "mahala"
+        ],
+        [
+            "Avlija",
+            "avlija"
+        ],
+        [
+            "Sokak",
+            "sokak"
+        ],
+        [
+            "Kaldrma",
+            "kaldrma"
+        ],
+        [
+            "Ćilim",
+            "ćilim"
+        ],
+        [
+            "Šporet na drva",
+            "šporet na drva"
+        ],
+        [
+            "Drva",
+            "drva"
+        ],
+        [
+            "Šupa",
+            "šupa"
+        ],
+        [
+            "Bunar",
+            "bunar"
+        ],
+        [
+            "Seoski vrt",
+            "seoska bašta"
+        ],
+        [
+            "Šljivik",
+            "šljivik"
+        ],
+        [
+            "Vinograd za berbu",
+            "vinograd za berbu"
+        ],
+        [
+            "Berba",
+            "berba"
+        ],
+        [
+            "Seoski put",
+            "seoski put"
+        ],
+        [
+            "Seoski autobus",
+            "seoski autobus"
+        ],
+        [
+            "Autobusna stanica",
+            "autobuska stanica"
+        ],
+        [
+            "Tetka",
+            "tetka"
+        ],
+        [
+            "Ujak",
+            "ujak"
+        ],
+        [
+            "Stric",
+            "stric"
+        ],
+        [
+            "Baka",
+            "baka"
+        ],
+        [
+            "Djed",
+            "deda"
+        ],
+        [
+            "Kum",
+            "kum"
+        ],
+        [
+            "Kuma",
+            "kuma"
+        ],
+        [
+            "Gosti",
+            "gosti"
+        ],
+        [
+            "Meze",
+            "meze"
+        ],
+        [
+            "Sok od bazge",
+            "sok od zove"
+        ],
+        [
+            "Kiseli kupus",
+            "kiseli kupus"
+        ],
+        [
+            "Domaća juha",
+            "domaća supa"
+        ],
+        [
+            "Pogača",
+            "pogača"
+        ],
+        [
+            "Lepinja",
+            "lepinja"
+        ],
+        [
+            "Kajmak na stolu",
+            "kajmak na stolu"
+        ],
+        [
+            "Paprikaš",
+            "paprikaš"
+        ],
+        [
+            "Gulaš",
+            "gulaš"
+        ],
+        [
+            "Baklava",
+            "baklava"
+        ],
+        [
+            "Tulumbe",
+            "tulumbe"
+        ],
+        [
+            "Uštipci",
+            "uštipci"
+        ],
+        [
+            "Priganice",
+            "priganice"
+        ],
+        [
+            "Domaća serija",
+            "domaća serija"
+        ],
+        [
+            "Dnevnik na TV-u",
+            "dnevnik na TV-u"
+        ],
+        [
+            "Daljinski kod kuće",
+            "daljinski kod kuće"
+        ],
+        [
+            "Terasa kafića",
+            "terasa kafića"
+        ],
+        [
+            "Promaja",
+            "promaja"
+        ],
+        [
+            "Papirnati ručnik",
+            "papirni ubrus"
+        ],
+        [
+            "Vikendica",
+            "vikendica"
+        ],
+        [
+            "Jadransko more",
+            "Jadransko more"
+        ]
+    ]
+}
+
+@dataclass
+class WordIssue:
+    word_id: str
+    field: str
+    message: str
+
+@dataclass
+class WordValidationResult:
+    quality_warnings: list[WordIssue] = field(default_factory=list)
+
+    def add(self, word_id: str, field: str, message: str) -> None:
+        self.quality_warnings.append(WordIssue(word_id, field, message))
 
 
-def validate_words(words: list[dict[str, str]]) -> None:
+def ascii_fold(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value.casefold())
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+
+def token_set(value: str) -> set[str]:
+    return {token for token in re.split(r"[^\w]+", ascii_fold(value)) if token}
+
+
+def stable_index(value: str, modulo: int) -> int:
+    return sum((index + 1) * ord(ch) for index, ch in enumerate(value)) % modulo
+
+
+def remove_direct_hints(hr: str, sr: str, hints: list[str]) -> list[str]:
+    blocked_tokens = token_set(hr) | token_set(sr)
+    exact_words = {ascii_fold(hr), ascii_fold(sr)}
+    clean: list[str] = []
+    for hint in hints:
+        hint_text = str(hint).strip()
+        if not hint_text:
+            continue
+        hint_fold = ascii_fold(hint_text)
+        if hint_fold in exact_words:
+            continue
+        if token_set(hint_text) & blocked_tokens:
+            continue
+        if hint_fold in BANNED_DIRECT_HINTS:
+            continue
+        if hint_text not in clean:
+            clean.append(hint_text)
+    return clean
+
+
+def semantic_hint_pool(hr: str, sr: str, category: str, index: int) -> list[str]:
+    category_pool = category_exact_hint_pool(category, hr, sr)
+    if category_pool:
+        return category_pool[:4]
+    hr_fold = ascii_fold(hr)
+    sr_fold = ascii_fold(sr)
+    hints: list[str] = []
+    has_exact_match = False
+    for key, pool in EXACT_HINT_POOLS.items():
+        key_fold = ascii_fold(key)
+        if key_fold in {hr_fold, sr_fold}:
+            hints.extend(pool)
+            has_exact_match = True
+            break
+    if not hints:
+        for key, pool in EXACT_HINT_POOLS.items():
+            key_fold = ascii_fold(key)
+            if len(key_fold) >= 5 and (key_fold in token_set(hr) or key_fold in token_set(sr)):
+                hints.extend(pool)
+                has_exact_match = True
+                break
+    bank = CATEGORY_HINT_BANKS[category]
+    scene = bank[stable_index(f"{category}:{hr}:{sr}:{index}", len(bank))]
+    hints.extend(scene)
+    offset_scene = bank[(stable_index(f"extra:{sr}:{hr}", len(bank)) + index) % len(bank)]
+    hints.extend(offset_scene)
+    variant_pool = [hint for bank_scene in bank for hint in bank_scene]
+    variant = variant_pool[stable_index(f"variant:{category}:{hr}:{sr}:{index}", len(variant_pool))]
+    if has_exact_match:
+        blended_hints = hints[:4]
+    else:
+        blended_hints = [scene[0], variant, scene[2], scene[3], scene[1], offset_scene[0], offset_scene[2], offset_scene[3]]
+    hints = remove_direct_hints(hr, sr, blended_hints)
+    if len(hints) < 4:
+        for scene in bank:
+            hints.extend(remove_direct_hints(hr, sr, scene))
+            unique = []
+            for hint in hints:
+                if hint not in unique:
+                    unique.append(hint)
+            hints = unique
+            if len(hints) >= 4:
+                break
+    return hints[:4]
+
+
+def difficulty_for(index: int) -> str:
+    if index % 5 == 0:
+        return "hard"
+    if index % 3 == 0:
+        return "easy"
+    return "normal"
+
+
+def build_words() -> list[dict]:
+    words: list[dict] = []
+    for category, pairs in RAW_CATEGORY_WORDS.items():
+        prefix = ascii_fold(category).replace(" ", "_")
+        for index, pair in enumerate(pairs, start=1):
+            hr, sr = pair
+            words.append({
+                "id": f"{prefix}_{index:03d}",
+                "hr": hr,
+                "sr": sr,
+                "category": category,
+                "difficulty": difficulty_for(index),
+                "hint_pool": semantic_hint_pool(hr, sr, category, index),
+            })
+    return words
+
+
+def validate_words(words: list[dict], *, strict: bool = False) -> WordValidationResult:
+    result = WordValidationResult()
     if len(words) != 1000:
-        raise ValueError(f"Expected exactly 1000 words, got {len(words)}")
-
-    allowed = set(ALLOWED_CATEGORIES) - {DEFAULT_CATEGORY}
+        result.add("database", "count", f"Expected exactly 1000 words, found {len(words)}")
     ids: set[str] = set()
-    sr_words: set[str] = set()
+    pairs: set[tuple[str, str]] = set()
+    for word in words:
+        word_id = str(word.get("id", "<missing>"))
+        for field_name in ("id", "hr", "sr", "category", "difficulty", "hint_pool"):
+            if field_name not in word:
+                result.add(word_id, field_name, "Missing required field")
+                continue
+            if field_name != "hint_pool" and not str(word[field_name]).strip():
+                result.add(word_id, field_name, "Empty field")
+        if word_id in ids:
+            result.add(word_id, "id", "Duplicate id")
+        ids.add(word_id)
+        hr = str(word.get("hr", "")).strip()
+        sr = str(word.get("sr", "")).strip()
+        pair = (hr.casefold(), sr.casefold())
+        if pair in pairs:
+            result.add(word_id, "word", f"Duplicate word pair: {hr} / {sr}")
+        pairs.add(pair)
+        category = str(word.get("category", ""))
+        if category not in WORD_CATEGORIES:
+            result.add(word_id, "category", f"Invalid category: {category}")
+        difficulty = str(word.get("difficulty", ""))
+        if difficulty not in ALLOWED_DIFFICULTIES:
+            result.add(word_id, "difficulty", f"Invalid difficulty: {difficulty}")
+        hints = word.get("hint_pool", [])
+        if not isinstance(hints, list) or not 3 <= len(hints) <= 4:
+            result.add(word_id, "hint_pool", "hint_pool must contain 3-4 hints")
+            hints = []
+        blocked_tokens = token_set(hr) | token_set(sr)
+        for hint in hints:
+            hint_text = str(hint).strip()
+            if not hint_text:
+                result.add(word_id, "hint_pool", "Empty hint")
+                continue
+            hint_fold = ascii_fold(hint_text)
+            if hint_fold in {ascii_fold(hr), ascii_fold(sr)}:
+                result.add(word_id, "hint_pool", f"Hint reveals exact word: {hint_text}")
+            if hint_fold in BANNED_DIRECT_HINTS:
+                result.add(word_id, "hint_pool", f"Direct banned hint: {hint_text}")
+        for field_name in ("hr", "sr"):
+            text = str(word.get(field_name, "")).strip()
+            lower = text.casefold()
+            if lower.startswith(SUSPICIOUS_PREFIXES):
+                result.add(word_id, field_name, f"Suspicious generated phrase: {text}")
+            folded = ascii_fold(text)
+            if folded in ASCII_DIACRITIC_EXPECTATIONS and not any(ch in text for ch in "čćšđžČĆŠĐŽ"):
+                result.add(word_id, field_name, f"Suspicious missing diacritics: {text}")
+    if strict and result.quality_warnings:
+        details = "\n".join(f"- {issue.word_id} [{issue.field}]: {issue.message}" for issue in result.quality_warnings[:30])
+        raise ValueError(f"Word validation failed with {len(result.quality_warnings)} issue(s):\n{details}")
+    return result
 
-    for entry in words:
-        for field in ("id", "sr", "hr", "category", "hint"):
-            if not str(entry.get(field, "")).strip():
-                raise ValueError(f"Word entry has empty field {field}: {entry}")
 
-        if entry["id"] in ids:
-            raise ValueError(f"Duplicate word id: {entry['id']}")
-        ids.add(entry["id"])
+def hint_repetition_warnings(words: list[dict]) -> list[str]:
+    exact: defaultdict[tuple[str, ...], list[str]] = defaultdict(list)
+    first_three: defaultdict[tuple[str, ...], list[str]] = defaultdict(list)
+    for word in words:
+        hints = tuple(word.get("hint_pool", []))
+        exact[hints].append(word["id"])
+        first_three[hints[:3]].append(word["id"])
+    warnings: list[str] = []
+    for hints, ids in sorted(exact.items(), key=lambda item: len(item[1]), reverse=True):
+        if len(ids) > 3:
+            warnings.append(f"Exact hint_pool repeated {len(ids)} times: {hints} -> {', '.join(ids[:8])}")
+    for hints, ids in sorted(first_three.items(), key=lambda item: len(item[1]), reverse=True):
+        if len(ids) > 4:
+            warnings.append(f"First 3 hints repeated {len(ids)} times: {hints} -> {', '.join(ids[:8])}")
+    return warnings
 
-        sr_key = entry["sr"].casefold()
-        if sr_key in sr_words:
-            raise ValueError(f"Duplicate Serbian word: {entry['sr']}")
-        sr_words.add(sr_key)
 
-        if entry["category"] not in allowed:
-            raise ValueError(f"Invalid category {entry['category']} for {entry['id']}")
+def random_hint(word: dict) -> str:
+    hints = word.get("hint_pool") or []
+    if hints:
+        return random.choice(hints)
+    return word.get("hint", "Slušaj asocijacije i uklopi se.")
 
-        if _hint_reveals_word(entry["hint"], entry["sr"]) or _hint_reveals_word(entry["hint"], entry["hr"]):
-            raise ValueError(f"Hint reveals word for {entry['id']}: {entry}")
-
-        sr = entry["sr"].casefold()
-        hr = entry["hr"].casefold()
-        for prefix in SUSPICIOUS_PREFIXES:
-            if sr.startswith(prefix) or hr.startswith(prefix):
-                raise ValueError(f"Suspicious generated phrase in {entry['id']}: {entry}")
+STARTER_WORDS = build_words()
+validate_words(STARTER_WORDS, strict=True)
 
 
 def normalize_category(category: str | None) -> str:
-    if category in ALLOWED_CATEGORIES:
-        return str(category)
+    if category in WORD_CATEGORIES:
+        return category
     return DEFAULT_CATEGORY
 
 
-def words_for_category(category: str | None) -> list[dict[str, str]]:
-    selected = normalize_category(category)
-    if selected == DEFAULT_CATEGORY:
+def words_for_category(category: str | None) -> list[dict]:
+    selected_category = normalize_category(category)
+    if selected_category == DEFAULT_CATEGORY:
         return STARTER_WORDS
-    category_words = [word for word in STARTER_WORDS if word["category"] == selected]
-    return category_words or STARTER_WORDS
-
-
-STARTER_WORDS = RAW_WORDS
-validate_words(STARTER_WORDS)
+    filtered_words = [word for word in STARTER_WORDS if word["category"] == selected_category]
+    return filtered_words or STARTER_WORDS
