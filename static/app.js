@@ -1215,15 +1215,20 @@ function toggleQrPanel() {
 
   qrPanel.innerHTML = `
     <div class="qr-code-card">
-      <canvas id="roomQrCanvas" width="328" height="328" aria-label="QR kod za ulazak u sobu"></canvas>
+      <div id="roomQrCode" class="qr-code-box" aria-label="QR kod za ulazak u sobu"></div>
     </div>
     <p class="helper-text">Scan to join</p>
   `;
   console.log("QR invite URL:", link);
-  window.VaralicaQRCode.draw(document.querySelector("#roomQrCanvas"), link, {
-    scale: 8,
-    dark: "#000000",
-    light: "#ffffff",
+  const qrContainer = document.querySelector("#roomQrCode");
+  qrContainer.innerHTML = "";
+  new window.QRCode(qrContainer, {
+    text: link,
+    width: 328,
+    height: 328,
+    colorDark: "#000000",
+    colorLight: "#ffffff",
+    correctLevel: window.QRCode.CorrectLevel.M,
   });
   qrPanel.classList.remove("hidden");
   showQrButton.textContent = "Sakrij QR";
