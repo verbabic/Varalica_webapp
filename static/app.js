@@ -562,15 +562,18 @@ function playerNameText(player) {
 }
 
 function inviteOrigin() {
-  const origin = window.location.origin;
-  if (origin.includes("localhost") || origin.includes("127.0.0.1") || origin.includes("0.0.0.0") || /^https?:\/\/(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(origin)) {
+  const { hostname, origin } = window.location;
+  if (hostname === "varalica.autolovac.space" || hostname === "91.98.83.121") {
     return PRODUCTION_ORIGIN;
   }
+  if (!hostname || hostname === "0.0.0.0") return PRODUCTION_ORIGIN;
   return origin;
 }
 
 function inviteLink() {
-  return `${inviteOrigin()}/room/${localRoomCode}`;
+  const code = (localRoomCode || roomState?.room_code || "").trim().toUpperCase();
+  if (!code) return "";
+  return `${inviteOrigin()}/room/${encodeURIComponent(code)}`;
 }
 
 function render() {
@@ -635,7 +638,7 @@ function renderHostPanel() {
     return;
   }
 
-  const actions = [`<button id="hostResetRoomButton" class="small danger">Resetuj sobu</button>`];
+  const actions = [`<button id="hostResetRoomButton" class="small danger">Nova runda</button>`];
   if (roomState.state === "reveal") {
     actions.unshift(`<button id="hostChangeWordButton" class="small secondary">Promijeni riječ</button>`);
   } else if (["discussion", "vote_request", "ready_for_final_voting", "final_voting", "overtime", "overtime_voting", "voting_complete", "results"].includes(roomState.state)) {
@@ -1200,6 +1203,10 @@ async function copyRoomCode() {
 
 function toggleQrPanel() {
   const link = inviteLink();
+  if (!link) {
+    showError("QR link nije spreman. Pokušaj ponovo.");
+    return;
+  }
   if (!qrPanel.classList.contains("hidden")) {
     qrPanel.classList.add("hidden");
     showQrButton.textContent = "QR";
@@ -1211,8 +1218,8 @@ function toggleQrPanel() {
       <canvas id="roomQrCanvas" width="328" height="328" aria-label="QR kod za ulazak u sobu"></canvas>
     </div>
     <p class="helper-text">Scan to join</p>
-    <p class="qr-link">${escapeHtml(link)}</p>
   `;
+  console.log("QR invite URL:", link);
   window.VaralicaQRCode.draw(document.querySelector("#roomQrCanvas"), link, {
     scale: 8,
     dark: "#000000",
