@@ -1329,6 +1329,7 @@ def results_state(room: Room) -> dict | None:
         outcome = "Igrači su pronašli Varalicu."
     else:
         outcome = "Varalica je pobijedila."
+    was_varalica_caught = not tie and bool(top_player_ids) and top_player_ids[0] == room.varalica_id
 
     return {
         "varalica": {
@@ -1343,6 +1344,7 @@ def results_state(room: Room) -> dict | None:
         },
         "outcome": outcome,
         "is_tie": tie,
+        "was_varalica_caught": was_varalica_caught,
         "active_player_count": len(active_ids),
         "vote_summary": [
             {

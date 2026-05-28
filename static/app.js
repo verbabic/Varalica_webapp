@@ -36,6 +36,7 @@ const toastContainer = document.querySelector("#toastContainer");
 const SESSION_MAX_AGE_MS = 15 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 12000;
 const PRODUCTION_ORIGIN = "https://varalica.autolovac.space";
+const IMPOSTOR_REVEAL_AVATAR_URL = "";
 const AVATARS = [
   "😀", "😎", "🤓", "🥳", "😇", "🤠", "🐵", "🦊", "🐼", "🐸",
   "🐱", "🐶", "🦁", "🐯", "🦄", "🐧", "🐙", "🦖", "👽", "🤖",
@@ -53,8 +54,13 @@ let selectedCategory = localStorage.getItem("varalica_selected_category") || "Sv
 let selectedDiscussionSeconds = Number(localStorage.getItem("varalica_discussion_seconds") || 180);
 let hasRevealedPrivateCard = false;
 let lastRoomState = "";
-let revealCountdownActive = false;
-let revealCountdownValue = 0;
+let revealSequence = {
+  active: false,
+  phase: "complete",
+  countdown: 0,
+  complete: false,
+};
+let revealSequenceTimers = [];
 let inviteRoomCode = "";
 let reconnectTimer = null;
 let heartbeatTimer = null;
@@ -283,9 +289,9 @@ function connectSocket() {
     updateTurnLock(roomState);
     if (roomState.state === "reveal" && previousState !== "reveal") {
       hasRevealedPrivateCard = false;
-      revealCountdownActive = false;
+      resetRevealSequence();
     }
-    if (roomState.state === "results" && previousState === "voting_complete") {
+    if (roomState.state === "results" && previousState !== "results") {
       startRevealCountdown();
     }
     lastRoomState = roomState.state;
@@ -439,26 +445,50 @@ async function revealResults() {
 }
 
 function startRevealCountdown() {
-  revealCountdownActive = true;
-  revealCountdownValue = 4;
-  if (navigator.vibrate) {
-    navigator.vibrate([80, 80, 80]);
-  }
-  const tick = () => {
-    if (!revealCountdownActive || !roomState || roomState.state !== "results") return;
-    render();
-    if (revealCountdownValue <= 1) {
-      setTimeout(() => {
-        revealCountdownActive = false;
-        revealCountdownValue = 0;
-        render();
-      }, 750);
-      return;
-    }
-    revealCountdownValue -= 1;
-    setTimeout(tick, 750);
+  resetRevealSequence();
+  if (!roomState?.results?.varalica) return;
+
+  revealSequence = {
+    active: true,
+    phase: "countdown_4",
+    countdown: 4,
+    complete: false,
   };
-  tick();
+
+  const isCurrentUserVaralica = roomState.viewer_id === roomState.results.varalica.id;
+  if (isCurrentUserVaralica && navigator.vibrate) {
+    navigator.vibrate([120, 80, 200]);
+  }
+
+  const setRevealPhase = (phase, countdown = 0) => {
+    if (!roomState || roomState.state !== "results") return;
+    revealSequence = {
+      active: phase !== "complete",
+      phase,
+      countdown,
+      complete: phase === "complete",
+    };
+    render();
+  };
+
+  setRevealPhase("countdown_4", 4);
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_3", 3), 600));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_2", 2), 1200));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_1", 1), 1800));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("title_reveal"), 2400));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("nickname_reveal"), 3400));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("complete"), 4550));
+}
+
+function resetRevealSequence() {
+  revealSequenceTimers.forEach((timer) => clearTimeout(timer));
+  revealSequenceTimers = [];
+  revealSequence = {
+    active: false,
+    phase: "complete",
+    countdown: 0,
+    complete: false,
+  };
 }
 
 function expireOldSession() {
@@ -1025,16 +1055,85 @@ function renderVotingComplete() {
   if (revealButton) revealButton.addEventListener("click", revealResults);
 }
 
+function revealTheme(results) {
+  const wasCaught = results.was_varalica_caught === true;
+  const isCurrentUserVaralica = roomState.viewer_id === results.varalica.id;
+  if (isCurrentUserVaralica && wasCaught) return "private-caught";
+  if (isCurrentUserVaralica && !wasCaught) return "private-victory";
+  return wasCaught ? "public-success" : "public-failure";
+}
+
+function revealOutcomeTitle(results) {
+  if (results.was_varalica_caught === true) {
+    return roomState.viewer_id === results.varalica.id ? "PROVALJEN" : "OTKRIVEN";
+  }
+  return roomState.viewer_id === results.varalica.id ? "MAJSTOR MANIPULACIJE" : "VARALICA JE PREŽIVJELA";
+}
+
+function revealOutcomeSubtitle(results) {
+  const isCurrentUserVaralica = roomState.viewer_id === results.varalica.id;
+  if (results.was_varalica_caught === true) {
+    return isCurrentUserVaralica ? "Manipulacija nije uspjela." : "Igrači su pronašli Varalicu.";
+  }
+  return isCurrentUserVaralica ? "Savršeno si se uklopio/la." : "Varalica vas je preveslala.";
+}
+
+function impostorAvatarHtml() {
+  if (IMPOSTOR_REVEAL_AVATAR_URL) {
+    return `<img class="impostor-reveal-avatar-img" src="${escapeHtml(IMPOSTOR_REVEAL_AVATAR_URL)}" alt="Varalica avatar">`;
+  }
+  return `
+    <div class="impostor-reveal-avatar-fallback" aria-hidden="true">
+      <div class="impostor-hood">
+        <div class="impostor-face">
+          <span class="impostor-eye">×</span>
+          <span class="impostor-eye">×</span>
+        </div>
+        <div class="impostor-finger"></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderImpostorReveal(results) {
+  const phase = revealSequence.phase;
+  const theme = revealTheme(results);
+  const showTitle = phase === "title_reveal" || phase === "nickname_reveal";
+  const showName = phase === "nickname_reveal";
+  const isImpact = phase === "countdown_1" || phase === "nickname_reveal";
+  const nickname = results.varalica?.name || "Nepoznato";
+  const title = revealOutcomeTitle(results);
+  const subtitle = revealOutcomeSubtitle(results);
+
+  phaseContent.innerHTML = `
+    <div class="impostor-reveal-stage ${escapeHtml(theme)} ${escapeHtml(phase)} ${isImpact ? "impact" : ""}">
+      <div class="impostor-reveal-vignette"></div>
+      <div class="impostor-glitch-lines" aria-hidden="true"></div>
+      <div class="impostor-reveal-card">
+        <div class="impostor-avatar-wrap">
+          ${impostorAvatarHtml()}
+          ${
+            revealSequence.countdown
+              ? `<div class="impostor-countdown">${revealSequence.countdown}</div>`
+              : ""
+          }
+        </div>
+        <div class="impostor-reveal-copy">
+          ${showTitle ? `<p class="impostor-pretitle">VARALICA JE...</p>` : `<p class="impostor-pretitle ghost">OTKRIVANJE</p>`}
+          ${showName ? `<h2 class="impostor-nickname" title="${escapeHtml(nickname)}">${escapeHtml(nickname)}</h2>` : ""}
+          ${showName ? `<p class="impostor-outcome-title">${escapeHtml(title)}</p>` : ""}
+          ${showName ? `<p class="impostor-subtitle">${escapeHtml(subtitle)}</p>` : ""}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderResults() {
   const isHost = roomState.viewer_id === roomState.host_id;
   const results = roomState.results;
-  if (revealCountdownActive) {
-    phaseContent.innerHTML = `
-      <div class="phase-card reveal-countdown-card">
-        <p class="eyebrow">Otkrivanje Varalice</p>
-        <p class="reveal-countdown-number">${revealCountdownValue}</p>
-      </div>
-    `;
+  if (revealSequence.active && !revealSequence.complete) {
+    renderImpostorReveal(results);
     return;
   }
   const voteRows = results.vote_summary
