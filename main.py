@@ -1246,7 +1246,7 @@ def public_state(room: Room, viewer_id: str) -> dict:
                 "has_voted": player.id in room.final_votes if room.state in {"final_voting", "overtime_voting", "voting_complete", "results"} else False,
                 "is_active_round_player": player.id in active_round_player_ids(room),
                 "temporarily_disconnected": player_connection_status(player) in {"away", "idle"},
-                "vote_target": vote_target_for_player(room, player.id),
+                "vote_target": vote_target_for_player(room, player.id) if room.state == "results" else None,
             }
             for player in room.players.values()
         ],

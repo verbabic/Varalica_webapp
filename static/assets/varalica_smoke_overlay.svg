@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <filter id="softBlur" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="38"/>
+    </filter>
+    <filter id="wideBlur" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="70"/>
+    </filter>
+    <radialGradient id="smokeA" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#5b0a16" stop-opacity="0.34"/>
+      <stop offset="0.52" stop-color="#320711" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#140208" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="smokeB" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#8f1023" stop-opacity="0.2"/>
+      <stop offset="0.58" stop-color="#3b0610" stop-opacity="0.1"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mist" x1="170" y1="174" x2="884" y2="850">
+      <stop stop-color="#21040b" stop-opacity="0"/>
+      <stop offset="0.36" stop-color="#58111c" stop-opacity="0.16"/>
+      <stop offset="0.7" stop-color="#2d060d" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <g opacity="0.95">
+    <ellipse cx="292" cy="392" rx="265" ry="152" fill="url(#smokeA)" filter="url(#wideBlur)" transform="rotate(-18 292 392)"/>
+    <ellipse cx="724" cy="604" rx="290" ry="162" fill="url(#smokeA)" filter="url(#wideBlur)" transform="rotate(20 724 604)"/>
+    <ellipse cx="507" cy="505" rx="386" ry="98" fill="url(#mist)" filter="url(#softBlur)" transform="rotate(7 507 505)"/>
+    <ellipse cx="477" cy="267" rx="202" ry="74" fill="url(#smokeB)" filter="url(#softBlur)" transform="rotate(12 477 267)"/>
+    <ellipse cx="548" cy="773" rx="236" ry="82" fill="url(#smokeB)" filter="url(#softBlur)" transform="rotate(-10 548 773)"/>
+    <path d="M126 637 C260 575 380 635 511 589 C641 543 739 458 904 505"
+          stroke="#5d0b18" stroke-opacity="0.16" stroke-width="58" stroke-linecap="round" filter="url(#wideBlur)"/>
+    <path d="M126 363 C252 416 383 357 506 397 C649 444 754 518 894 459"
+          stroke="#8b1325" stroke-opacity="0.11" stroke-width="44" stroke-linecap="round" filter="url(#softBlur)"/>
+  </g>
+</svg>

@@ -622,6 +622,24 @@ label {
   min-width: 92px;
 }
 
+.vote-progress-private {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.vote-progress-private strong {
+  color: var(--text);
+  font-size: 1.7rem;
+}
+
 .results-card {
   gap: 16px;
 }
@@ -654,6 +672,10 @@ label {
   backdrop-filter: blur(10px);
 }
 
+.impostor-reveal-stage.overlay_intro .impostor-reveal-card {
+  animation: revealCardIntro 0.3s ease-out both;
+}
+
 .impostor-reveal-stage::before {
   content: "";
   position: absolute;
@@ -662,24 +684,36 @@ label {
   opacity: 0;
 }
 
-.impostor-reveal-stage.private-caught::before {
+.impostor-reveal-stage.private-caught::before,
+.impostor-reveal-stage.impostor-caught-red::before {
   background: rgba(239, 68, 68, 0.22);
   animation: redPressureBlink 0.55s ease-in-out 4;
 }
 
-.impostor-reveal-stage.private-victory {
+.impostor-reveal-stage.danger-red-for-all {
+  background:
+    radial-gradient(circle at 50% 28%, rgba(239, 68, 68, 0.2), transparent 34%),
+    rgba(6, 6, 14, 0.94);
+}
+
+.impostor-reveal-stage.private-victory,
+.impostor-reveal-stage.impostor-win-green {
   background:
     radial-gradient(circle at 50% 28%, rgba(34, 197, 94, 0.28), transparent 34%),
     rgba(3, 13, 10, 0.94);
 }
 
-.impostor-reveal-stage.public-success {
+.impostor-reveal-stage.public-success,
+.impostor-reveal-stage.players-win-green {
   background:
-    radial-gradient(circle at 50% 28%, rgba(245, 158, 11, 0.16), transparent 34%),
-    rgba(4, 8, 15, 0.92);
+    radial-gradient(circle at 50% 28%, rgba(34, 197, 94, 0.2), transparent 32%),
+    radial-gradient(circle at 50% 34%, rgba(245, 158, 11, 0.13), transparent 42%),
+    rgba(4, 12, 10, 0.93);
 }
 
-.impostor-reveal-stage.public-failure {
+.impostor-reveal-stage.public-failure,
+.impostor-reveal-stage.players-lost-red,
+.impostor-reveal-stage.impostor-caught-red {
   background:
     radial-gradient(circle at 50% 28%, rgba(239, 68, 68, 0.12), transparent 34%),
     rgba(5, 6, 12, 0.94);
@@ -696,10 +730,47 @@ label {
   pointer-events: none;
 }
 
+.impostor-smoke-overlay {
+  position: absolute;
+  inset: -8%;
+  z-index: 1;
+  width: 116%;
+  height: 116%;
+  object-fit: cover;
+  object-position: center;
+  opacity: 0.32;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  transform-origin: center;
+  animation: impostorSmokeDrift 12s ease-in-out infinite;
+}
+
+.private-caught .impostor-smoke-overlay,
+.public-failure .impostor-smoke-overlay,
+.danger-red-for-all .impostor-smoke-overlay,
+.impostor-caught-red .impostor-smoke-overlay,
+.players-lost-red .impostor-smoke-overlay {
+  opacity: 0.38;
+  filter: saturate(1.25) hue-rotate(-4deg);
+}
+
+.private-victory .impostor-smoke-overlay,
+.impostor-win-green .impostor-smoke-overlay {
+  opacity: 0.34;
+  filter: hue-rotate(105deg) saturate(1.15);
+}
+
+.public-success .impostor-smoke-overlay,
+.players-win-green .impostor-smoke-overlay {
+  opacity: 0.3;
+  filter: hue-rotate(82deg) saturate(1.12);
+}
+
 .impostor-glitch-lines {
   position: absolute;
   inset: 0;
-  opacity: 0.22;
+  z-index: 5;
+  opacity: 0.14;
   pointer-events: none;
   background:
     repeating-linear-gradient(
@@ -709,11 +780,52 @@ label {
       rgba(255, 255, 255, 0.08) 14px,
       transparent 15px
     );
-  animation: glitchLines 0.85s steps(2, end) infinite;
+  animation: glitchLines 1.35s steps(2, end) infinite;
+}
+
+.impostor-scanlines-overlay {
+  position: absolute;
+  inset: -7%;
+  z-index: 4;
+  width: 114%;
+  height: 114%;
+  object-fit: contain;
+  object-position: center;
+  opacity: 0.18;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  transform: translate3d(0, 0, 0);
+  animation: scanlineSubtleDrift 1.5s steps(2, end) infinite;
+}
+
+.impostor-reveal-stage.overlay_intro .impostor-scanlines-overlay,
+.impostor-reveal-stage.title_reveal .impostor-scanlines-overlay,
+.impostor-reveal-stage.nickname_reveal .impostor-scanlines-overlay,
+.impostor-reveal-stage.statistics_reveal .impostor-scanlines-overlay {
+  opacity: 0.08;
+}
+
+.impostor-reveal-stage.countdown_1 .impostor-scanlines-overlay {
+  opacity: 0.35;
+  animation: scanlineBurst 0.38s steps(3, end) 3;
+}
+
+.private-caught .impostor-scanlines-overlay,
+.danger-red-for-all .impostor-scanlines-overlay,
+.impostor-caught-red .impostor-scanlines-overlay,
+.players-lost-red .impostor-scanlines-overlay {
+  filter: saturate(1.35) hue-rotate(-3deg);
+}
+
+.private-victory .impostor-scanlines-overlay,
+.impostor-win-green .impostor-scanlines-overlay,
+.players-win-green .impostor-scanlines-overlay {
+  filter: hue-rotate(105deg) saturate(1.2);
 }
 
 .impostor-reveal-card {
   position: relative;
+  z-index: 3;
   width: min(92vw, 430px);
   min-height: 520px;
   display: grid;
@@ -728,12 +840,14 @@ label {
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.72), 0 0 55px rgba(239, 68, 68, 0.15);
 }
 
-.private-victory .impostor-reveal-card {
+.private-victory .impostor-reveal-card,
+.impostor-win-green .impostor-reveal-card {
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.72), 0 0 70px rgba(34, 197, 94, 0.28);
 }
 
-.public-success .impostor-reveal-card {
-  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.72), 0 0 60px rgba(245, 158, 11, 0.2);
+.public-success .impostor-reveal-card,
+.players-win-green .impostor-reveal-card {
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.72), 0 0 64px rgba(34, 197, 94, 0.22), 0 0 44px rgba(245, 158, 11, 0.14);
 }
 
 .impostor-avatar-wrap {
@@ -749,6 +863,7 @@ label {
   animation: avatarImpactZoom 0.7s ease-out 1;
 }
 
+.impostor-avatar-asset,
 .impostor-reveal-avatar-img,
 .impostor-reveal-avatar-fallback {
   width: 100%;
@@ -756,15 +871,94 @@ label {
   display: block;
 }
 
-.impostor-reveal-avatar-img {
+.impostor-avatar-asset {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.impostor-neon-ring-img {
+  position: absolute;
+  inset: -18%;
+  z-index: 1;
+  width: 136%;
+  height: 136%;
   object-fit: contain;
-  filter: drop-shadow(0 18px 35px rgba(0, 0, 0, 0.65));
+  object-position: center;
+  opacity: 0.82;
+  pointer-events: none;
+  transform-origin: center;
+  filter:
+    drop-shadow(0 0 18px rgba(239, 68, 68, 0.42))
+    drop-shadow(0 0 36px rgba(239, 68, 68, 0.28));
+  animation: neonRingSlowPulse 2.4s ease-in-out infinite;
+}
+
+.impostor-reveal-avatar-img {
+  position: relative;
+  z-index: 3;
+  object-fit: contain;
+  object-position: center;
+  filter:
+    drop-shadow(0 18px 35px rgba(0, 0, 0, 0.65))
+    drop-shadow(0 0 24px rgba(239, 68, 68, 0.28));
+  transform: translateZ(0);
+  transform-origin: center;
+}
+
+.impostor-avatar-asset.image-failed .impostor-reveal-avatar-img {
+  display: none;
 }
 
 .impostor-reveal-avatar-fallback {
   position: relative;
-  display: grid;
+  display: none;
   place-items: center;
+}
+
+.impostor-avatar-asset.image-failed .impostor-reveal-avatar-fallback {
+  display: grid;
+}
+
+.impostor-reveal-stage.countdown_1 .impostor-neon-ring-img,
+.impostor-reveal-stage.nickname_reveal .impostor-neon-ring-img {
+  animation: neonRingImpactPulse 0.78s ease-in-out 2;
+}
+
+.private-caught .impostor-neon-ring-img,
+.private-caught .result-reveal-avatar .impostor-neon-ring-img,
+.danger-red-for-all .impostor-neon-ring-img,
+.impostor-caught-red .impostor-neon-ring-img,
+.players-lost-red .impostor-neon-ring-img,
+.players-lost-red .result-reveal-avatar .impostor-neon-ring-img,
+.impostor-caught-red .result-reveal-avatar .impostor-neon-ring-img {
+  opacity: 0.96;
+  filter:
+    drop-shadow(0 0 22px rgba(239, 68, 68, 0.72))
+    drop-shadow(0 0 55px rgba(239, 68, 68, 0.48));
+}
+
+.private-victory .impostor-neon-ring-img,
+.private-victory .result-reveal-avatar .impostor-neon-ring-img,
+.impostor-win-green .impostor-neon-ring-img,
+.impostor-win-green .result-reveal-avatar .impostor-neon-ring-img {
+  opacity: 0.92;
+  filter:
+    hue-rotate(105deg)
+    saturate(1.45)
+    drop-shadow(0 0 22px rgba(34, 197, 94, 0.7))
+    drop-shadow(0 0 58px rgba(34, 197, 94, 0.44));
+}
+
+.public-success .impostor-neon-ring-img,
+.public-success .result-reveal-avatar .impostor-neon-ring-img,
+.players-win-green .impostor-neon-ring-img,
+.players-win-green .result-reveal-avatar .impostor-neon-ring-img {
+  filter:
+    hue-rotate(86deg)
+    saturate(1.3)
+    drop-shadow(0 0 20px rgba(34, 197, 94, 0.5))
+    drop-shadow(0 0 44px rgba(245, 158, 11, 0.22));
 }
 
 .impostor-hood {
@@ -814,6 +1008,32 @@ label {
   animation: eyeBlinkGlow 0.55s ease-in-out 2;
 }
 
+.impostor-reveal-stage.countdown_1 .impostor-reveal-avatar-img,
+.impostor-reveal-stage.nickname_reveal .impostor-reveal-avatar-img {
+  animation: realAvatarEyePulse 0.75s ease-in-out 2;
+}
+
+.private-victory .impostor-reveal-avatar-img,
+.private-victory .result-reveal-avatar .impostor-reveal-avatar-img,
+.impostor-win-green .impostor-reveal-avatar-img,
+.impostor-win-green .result-reveal-avatar .impostor-reveal-avatar-img {
+  filter:
+    drop-shadow(0 18px 35px rgba(0, 0, 0, 0.65))
+    drop-shadow(0 0 34px rgba(34, 197, 94, 0.42));
+}
+
+.private-caught .impostor-reveal-avatar-img,
+.private-caught .result-reveal-avatar .impostor-reveal-avatar-img,
+.danger-red-for-all .impostor-reveal-avatar-img,
+.impostor-caught-red .impostor-reveal-avatar-img,
+.impostor-caught-red .result-reveal-avatar .impostor-reveal-avatar-img,
+.players-lost-red .impostor-reveal-avatar-img,
+.players-lost-red .result-reveal-avatar .impostor-reveal-avatar-img {
+  filter:
+    drop-shadow(0 18px 35px rgba(0, 0, 0, 0.65))
+    drop-shadow(0 0 38px rgba(239, 68, 68, 0.52));
+}
+
 .impostor-finger {
   position: absolute;
   left: 50%;
@@ -841,6 +1061,7 @@ label {
 .impostor-countdown {
   position: absolute;
   inset: 0;
+  z-index: 6;
   display: grid;
   place-items: center;
   color: #fff;
@@ -848,10 +1069,16 @@ label {
   line-height: 1;
   font-weight: 950;
   text-shadow: 0 0 16px rgba(239, 68, 68, 0.9), 4px 0 rgba(34, 197, 94, 0.35), -4px 0 rgba(99, 102, 241, 0.45);
-  animation: countdownPunch 0.58s ease-out 1;
+  animation: countdownPunch 0.95s ease-out 1;
+}
+
+.impostor-reveal-stage.countdown_1 .impostor-countdown {
+  animation-duration: 1.25s;
 }
 
 .impostor-reveal-copy {
+  position: relative;
+  z-index: 7;
   width: 100%;
   min-height: 150px;
   display: grid;
@@ -891,7 +1118,9 @@ label {
   font-weight: 950;
 }
 
-.private-victory .impostor-outcome-title {
+.private-victory .impostor-outcome-title,
+.impostor-win-green .impostor-outcome-title,
+.players-win-green .impostor-outcome-title {
   color: var(--green);
   text-shadow: 0 0 18px rgba(34, 197, 94, 0.42);
 }
@@ -900,7 +1129,9 @@ label {
   color: #fbbf24;
 }
 
-.public-failure .impostor-outcome-title {
+.public-failure .impostor-outcome-title,
+.players-lost-red .impostor-outcome-title,
+.impostor-caught-red .impostor-outcome-title {
   color: #fb7185;
 }
 
@@ -911,10 +1142,73 @@ label {
   overflow-wrap: anywhere;
 }
 
+.result-reveal-hero {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 20% 50%, rgba(239, 68, 68, 0.15), transparent 42%),
+    rgba(5, 7, 15, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: inset 0 0 35px rgba(0, 0, 0, 0.22);
+}
+
+.result-reveal-hero.private-victory,
+.result-reveal-hero.impostor-win-green {
+  background:
+    radial-gradient(circle at 20% 50%, rgba(34, 197, 94, 0.18), transparent 42%),
+    rgba(5, 12, 10, 0.9);
+  border-color: rgba(34, 197, 94, 0.28);
+}
+
+.result-reveal-hero.public-success,
+.result-reveal-hero.players-win-green {
+  background:
+    radial-gradient(circle at 20% 50%, rgba(34, 197, 94, 0.16), transparent 42%),
+    radial-gradient(circle at 45% 55%, rgba(245, 158, 11, 0.12), transparent 46%),
+    rgba(5, 12, 10, 0.9);
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+.result-reveal-avatar {
+  width: 128px;
+  aspect-ratio: 1;
+}
+
+.result-reveal-text {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.result-reveal-text .impostor-nickname {
+  font-size: clamp(1.8rem, 7vw, 3rem);
+}
+
+@media (max-width: 560px) {
+  .result-reveal-hero {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .result-reveal-avatar {
+    width: min(52vw, 170px);
+  }
+}
+
 @keyframes countdownPunch {
   0% { opacity: 0; transform: scale(0.78); }
   55% { opacity: 1; transform: scale(1.08); }
   100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes revealCardIntro {
+  from { opacity: 0; transform: translateY(18px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes avatarImpactZoom {
@@ -927,6 +1221,53 @@ label {
   0%, 100% { opacity: 1; filter: brightness(1); }
   42% { opacity: 0.16; filter: brightness(0.6); }
   58% { opacity: 1; filter: brightness(1.8); }
+}
+
+@keyframes realAvatarEyePulse {
+  0%, 100% {
+    filter:
+      drop-shadow(0 18px 35px rgba(0, 0, 0, 0.65))
+      drop-shadow(0 0 24px rgba(239, 68, 68, 0.28))
+      brightness(1);
+  }
+  45% {
+    filter:
+      drop-shadow(0 18px 35px rgba(0, 0, 0, 0.65))
+      drop-shadow(0 0 54px rgba(239, 68, 68, 0.85))
+      brightness(1.18);
+  }
+  62% {
+    filter:
+      drop-shadow(0 18px 35px rgba(0, 0, 0, 0.65))
+      drop-shadow(0 0 68px rgba(239, 68, 68, 1))
+      brightness(1.28);
+  }
+}
+
+@keyframes neonRingSlowPulse {
+  0%, 100% {
+    opacity: 0.7;
+    transform: scale(0.985) rotate(0deg);
+  }
+  50% {
+    opacity: 0.98;
+    transform: scale(1.035) rotate(2deg);
+  }
+}
+
+@keyframes neonRingImpactPulse {
+  0%, 100% {
+    opacity: 0.86;
+    transform: scale(1) rotate(0deg);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.11) rotate(-2deg);
+  }
+  68% {
+    opacity: 1;
+    transform: scale(1.06) rotate(1deg);
+  }
 }
 
 @keyframes revealShake {
@@ -946,6 +1287,45 @@ label {
   0% { transform: translateY(-2px); opacity: 0.12; }
   50% { transform: translateY(3px); opacity: 0.3; }
   100% { transform: translateY(-1px); opacity: 0.18; }
+}
+
+@keyframes scanlineSubtleDrift {
+  0%, 100% {
+    transform: translate3d(-1px, 0, 0);
+  }
+  50% {
+    transform: translate3d(2px, 1px, 0);
+  }
+}
+
+@keyframes scanlineBurst {
+  0% {
+    opacity: 0.18;
+    transform: translate3d(-5px, 0, 0) scaleX(1.01);
+  }
+  35% {
+    opacity: 0.35;
+    transform: translate3d(6px, -2px, 0) scaleX(1.035);
+  }
+  70% {
+    opacity: 0.28;
+    transform: translate3d(-3px, 2px, 0) scaleX(0.99);
+  }
+  100% {
+    opacity: 0.16;
+    transform: translate3d(0, 0, 0) scaleX(1);
+  }
+}
+
+@keyframes impostorSmokeDrift {
+  0%, 100% {
+    opacity: 0.25;
+    transform: translate3d(-1.5%, 1%, 0) scale(1.02);
+  }
+  50% {
+    opacity: 0.45;
+    transform: translate3d(1.5%, -1%, 0) scale(1.06);
+  }
 }
 
 @keyframes nicknameReveal {

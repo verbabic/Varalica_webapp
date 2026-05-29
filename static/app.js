@@ -36,7 +36,10 @@ const toastContainer = document.querySelector("#toastContainer");
 const SESSION_MAX_AGE_MS = 15 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 12000;
 const PRODUCTION_ORIGIN = "https://varalica.autolovac.space";
-const IMPOSTOR_REVEAL_AVATAR_URL = "";
+const IMPOSTOR_REVEAL_AVATAR_URL = "/static/assets/Varalica_crveno.png";
+const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
+const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
+const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
 const AVATARS = [
   "😀", "😎", "🤓", "🥳", "😇", "🤠", "🐵", "🦊", "🐼", "🐸",
   "🐱", "🐶", "🦁", "🐯", "🦄", "🐧", "🐙", "🦖", "👽", "🤖",
@@ -59,6 +62,7 @@ let revealSequence = {
   phase: "complete",
   countdown: 0,
   complete: false,
+  showReplay: false,
 };
 let revealSequenceTimers = [];
 let inviteRoomCode = "";
@@ -450,9 +454,10 @@ function startRevealCountdown() {
 
   revealSequence = {
     active: true,
-    phase: "countdown_4",
-    countdown: 4,
+    phase: "overlay_intro",
+    countdown: 0,
     complete: false,
+    showReplay: false,
   };
 
   const isCurrentUserVaralica = roomState.viewer_id === roomState.results.varalica.id;
@@ -467,17 +472,24 @@ function startRevealCountdown() {
       phase,
       countdown,
       complete: phase === "complete",
+      showReplay: false,
     };
     render();
   };
 
-  setRevealPhase("countdown_4", 4);
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_3", 3), 600));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_2", 2), 1200));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_1", 1), 1800));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("title_reveal"), 2400));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("nickname_reveal"), 3400));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("complete"), 4550));
+  setRevealPhase("overlay_intro");
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_4", 4), 300));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_3", 3), 1300));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_2", 2), 2300));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_1", 1), 3300));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("title_reveal"), 4600));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("nickname_reveal"), 6300));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("statistics_reveal"), 7000));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("complete"), 8300));
+  revealSequenceTimers.push(setTimeout(() => {
+    revealSequence = { ...revealSequence, showReplay: true };
+    render();
+  }, 10300));
 }
 
 function resetRevealSequence() {
@@ -488,6 +500,7 @@ function resetRevealSequence() {
     phase: "complete",
     countdown: 0,
     complete: false,
+    showReplay: false,
   };
 }
 
@@ -668,7 +681,8 @@ function renderHostPanel() {
     return;
   }
 
-  const actions = [`<button id="hostResetRoomButton" class="small danger">Nova runda</button>`];
+  const roundHasStarted = roomState.state !== "lobby";
+  const actions = roundHasStarted ? [`<button id="hostResetRoomButton" class="small danger">Resetuj sobu</button>`] : [];
   if (roomState.state === "reveal") {
     actions.unshift(`<button id="hostChangeWordButton" class="small secondary">Promijeni riječ</button>`);
   } else if (["discussion", "vote_request", "ready_for_final_voting", "final_voting", "overtime", "overtime_voting", "voting_complete", "results"].includes(roomState.state)) {
@@ -987,6 +1001,8 @@ function renderFinalVoting() {
   const me = roomState.players.find((player) => player.id === roomState.viewer_id);
   const hasVoted = Boolean(me?.has_voted);
   const activePlayers = roomState.players.filter((player) => player.is_active_round_player && player.id !== roomState.viewer_id);
+  const activeRoundPlayers = roomState.players.filter((player) => player.is_active_round_player);
+  const votedCount = activeRoundPlayers.filter((player) => player.has_voted).length;
   const isOvertimeVote = roomState.state === "overtime_voting";
 
   phaseContent.innerHTML = `
@@ -996,6 +1012,10 @@ function renderFinalVoting() {
         Odaberi jednog igraca za kojeg mislis da je Varalica. Glasovi se ne otkrivaju dok svi ne glasaju.
       </p>
       <p class="helper-text">Ne mozes glasati za sebe.</p>
+      <div class="vote-progress-private">
+        <strong>${votedCount}/${activeRoundPlayers.length}</strong>
+        <span>glasalo</span>
+      </div>
       <div class="vote-list">
         ${activePlayers
           .map(
@@ -1055,12 +1075,19 @@ function renderVotingComplete() {
   if (revealButton) revealButton.addEventListener("click", revealResults);
 }
 
-function revealTheme(results) {
+function finalOutcomeTheme(results) {
   const wasCaught = results.was_varalica_caught === true;
   const isCurrentUserVaralica = roomState.viewer_id === results.varalica.id;
-  if (isCurrentUserVaralica && wasCaught) return "private-caught";
-  if (isCurrentUserVaralica && !wasCaught) return "private-victory";
-  return wasCaught ? "public-success" : "public-failure";
+  if (wasCaught && isCurrentUserVaralica) return "impostor-caught-red";
+  if (wasCaught && !isCurrentUserVaralica) return "players-win-green";
+  if (!wasCaught && isCurrentUserVaralica) return "impostor-win-green";
+  return "players-lost-red";
+}
+
+function revealTheme(results, phase = "complete") {
+  const countdownPhases = new Set(["overlay_intro", "countdown_4", "countdown_3", "countdown_2", "countdown_1", "title_reveal"]);
+  if (countdownPhases.has(phase)) return "danger-red-for-all";
+  return finalOutcomeTheme(results);
 }
 
 function revealOutcomeTitle(results) {
@@ -1075,21 +1102,36 @@ function revealOutcomeSubtitle(results) {
   if (results.was_varalica_caught === true) {
     return isCurrentUserVaralica ? "Manipulacija nije uspjela." : "Igrači su pronašli Varalicu.";
   }
-  return isCurrentUserVaralica ? "Savršeno si se uklopio/la." : "Varalica vas je preveslala.";
+  return isCurrentUserVaralica ? "Igrači moraju još pasulja da pojedu." : "Varalica vas je preveslala.";
 }
 
 function impostorAvatarHtml() {
-  if (IMPOSTOR_REVEAL_AVATAR_URL) {
-    return `<img class="impostor-reveal-avatar-img" src="${escapeHtml(IMPOSTOR_REVEAL_AVATAR_URL)}" alt="Varalica avatar">`;
-  }
   return `
-    <div class="impostor-reveal-avatar-fallback" aria-hidden="true">
-      <div class="impostor-hood">
-        <div class="impostor-face">
-          <span class="impostor-eye">×</span>
-          <span class="impostor-eye">×</span>
+    <div class="impostor-avatar-asset">
+      <img
+        class="impostor-neon-ring-img"
+        src="${escapeHtml(IMPOSTOR_REVEAL_RING_URL)}"
+        alt=""
+        aria-hidden="true"
+        loading="eager"
+        decoding="async"
+      >
+      <img
+        class="impostor-reveal-avatar-img"
+        src="${escapeHtml(IMPOSTOR_REVEAL_AVATAR_URL)}"
+        alt="Varalica avatar"
+        loading="eager"
+        decoding="async"
+        onerror="this.closest('.impostor-avatar-asset').classList.add('image-failed')"
+      >
+      <div class="impostor-reveal-avatar-fallback" aria-hidden="true">
+        <div class="impostor-hood">
+          <div class="impostor-face">
+            <span class="impostor-eye">&times;</span>
+            <span class="impostor-eye">&times;</span>
+          </div>
+          <div class="impostor-finger"></div>
         </div>
-        <div class="impostor-finger"></div>
       </div>
     </div>
   `;
@@ -1097,9 +1139,9 @@ function impostorAvatarHtml() {
 
 function renderImpostorReveal(results) {
   const phase = revealSequence.phase;
-  const theme = revealTheme(results);
-  const showTitle = phase === "title_reveal" || phase === "nickname_reveal";
-  const showName = phase === "nickname_reveal";
+  const theme = revealTheme(results, phase);
+  const showTitle = phase === "title_reveal" || phase === "nickname_reveal" || phase === "statistics_reveal";
+  const showName = phase === "nickname_reveal" || phase === "statistics_reveal";
   const isImpact = phase === "countdown_1" || phase === "nickname_reveal";
   const nickname = results.varalica?.name || "Nepoznato";
   const title = revealOutcomeTitle(results);
@@ -1108,10 +1150,22 @@ function renderImpostorReveal(results) {
   phaseContent.innerHTML = `
     <div class="impostor-reveal-stage ${escapeHtml(theme)} ${escapeHtml(phase)} ${isImpact ? "impact" : ""}">
       <div class="impostor-reveal-vignette"></div>
-      <div class="impostor-glitch-lines" aria-hidden="true"></div>
+      <img
+        class="impostor-smoke-overlay"
+        src="${escapeHtml(IMPOSTOR_REVEAL_SMOKE_URL)}"
+        alt=""
+        aria-hidden="true"
+      >
       <div class="impostor-reveal-card">
         <div class="impostor-avatar-wrap">
           ${impostorAvatarHtml()}
+          <img
+            class="impostor-scanlines-overlay"
+            src="${escapeHtml(IMPOSTOR_REVEAL_SCANLINES_URL)}"
+            alt=""
+            aria-hidden="true"
+          >
+          <div class="impostor-glitch-lines" aria-hidden="true"></div>
           ${
             revealSequence.countdown
               ? `<div class="impostor-countdown">${revealSequence.countdown}</div>`
@@ -1124,6 +1178,24 @@ function renderImpostorReveal(results) {
           ${showName ? `<p class="impostor-outcome-title">${escapeHtml(title)}</p>` : ""}
           ${showName ? `<p class="impostor-subtitle">${escapeHtml(subtitle)}</p>` : ""}
         </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderResultRevealHero(results) {
+  const theme = finalOutcomeTheme(results);
+  const nickname = results.varalica?.name || "Nepoznato";
+  return `
+    <div class="result-reveal-hero ${escapeHtml(theme)}">
+      <div class="result-reveal-avatar">
+        ${impostorAvatarHtml()}
+      </div>
+      <div class="result-reveal-text">
+        <p class="impostor-pretitle">VARALICA JE...</p>
+        <h2 class="impostor-nickname" title="${escapeHtml(nickname)}">${escapeHtml(nickname)}</h2>
+        <p class="impostor-outcome-title">${escapeHtml(revealOutcomeTitle(results))}</p>
+        <p class="impostor-subtitle">${escapeHtml(revealOutcomeSubtitle(results))}</p>
       </div>
     </div>
   `;
@@ -1173,7 +1245,8 @@ function renderResults() {
 
   phaseContent.innerHTML = `
     <div class="phase-card results-card">
-      <h2>Rezultati</h2>
+      ${renderResultRevealHero(results)}
+      <h2>Statistika glasanja</h2>
       <p class="big-result">Varalica je bio/la: ${escapeHtml(playerNameText(results.varalica))}</p>
       <p class="word-result">Riječ je bila: ${escapeHtml(results.word.hr)} (${escapeHtml(results.word.sr)})</p>
       <p class="outcome-text">${escapeHtml(results.outcome)}</p>
@@ -1194,9 +1267,9 @@ function renderResults() {
           : ""
       }
       ${
-        isHost
-          ? `<button id="newRoundButton">Nova runda</button>`
-          : `<p class="helper-text">Host moze pokrenuti novu rundu.</p>`
+        isHost && revealSequence.showReplay
+          ? `<button id="newRoundButton">Igraj ponovo</button>`
+          : `<p class="helper-text">${isHost ? "Igraj ponovo ce biti dostupno za trenutak." : "Host moze pokrenuti novu rundu."}</p>`
       }
     </div>
   `;
@@ -1233,7 +1306,7 @@ function renderPlayers() {
       (roomState.state === "final_voting" || roomState.state === "overtime_voting" || roomState.state === "voting_complete" || roomState.state === "results") && player.is_active_round_player
         ? `<span class="badge ${player.has_voted ? "ready" : "waiting"}">${player.has_voted ? "Glasao/la" : "Nije glasao/la"}</span>`
         : "";
-    const voteTargetLabel = player.vote_target
+    const voteTargetLabel = roomState.state === "results" && player.vote_target
       ? `<div class="vote-target-line"><span>Glasao/la za:</span> <strong>${escapeHtml(playerNameText(player.vote_target))}</strong></div>`
       : "";
 
