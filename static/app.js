@@ -23,6 +23,8 @@ const qrPanel = document.querySelector("#qrPanel");
 const hostPanel = document.querySelector("#hostPanel");
 const hostPanelActions = document.querySelector("#hostPanelActions");
 const rulesButton = document.querySelector("#rulesButton");
+const liveModeButton = document.querySelector("#liveModeButton");
+const chatModeButton = document.querySelector("#chatModeButton");
 const rulesModal = document.querySelector("#rulesModal");
 const leaveModal = document.querySelector("#leaveModal");
 const cancelLeaveButton = document.querySelector("#cancelLeaveButton");
@@ -41,9 +43,13 @@ const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
 const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
 const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
 const AVATARS = [
-  "😀", "😎", "🤓", "🥳", "😇", "🤠", "🐵", "🦊", "🐼", "🐸",
-  "🐱", "🐶", "🦁", "🐯", "🦄", "🐧", "🐙", "🦖", "👽", "🤖",
-  "🧙‍♂️", "🧙‍♀️", "🦸‍♂️", "🦸‍♀️", "🕵️‍♂️", "🕵️‍♀️", "👑", "🎭", "🎲", "🔥",
+  "🥸","🤤","😁","😇","🥳","😎","😝","👹","😈","🤠","🤡","👻","💩","👽","👾","🤖","🎃","😺","🧠","👶",
+  "👩‍🦰","👨🏻","👨🏿","👨🏽","👩🏾‍🦰","👩🏻‍🦱","🧑🏻‍🦱","🧑🏾‍🦱","👨🏿‍🦰","👨🏽‍🦳","🧔","🧔🏼‍♂️","👲","🧕","👳🏻‍♂️","👮‍♀️","👮","👮🏻‍♂️","👷‍♀️","💂‍♀️",
+  "👨🏻‍⚕️","👩‍🎓","🧑‍🍳","🧑‍🎤","👨‍🏫","👩‍🏭","👨‍🎤","👩‍🏫","👩🏻‍💻","👩‍🔧","👨🏻‍🚒","🧑‍🚒","👩‍🚀","🥷🏻","🥷🏿","🦹‍♀️","🦸‍♂️","🤴","🧌","🧛",
+  "🧞‍♀️","🧜‍♀️","🧟","🧟‍♂️","💃","👑","⛑️","👠","🐶","🐭","🐹","🦊","🐱","🐰","🐻","🐼","🦁","🐯","🐻‍❄️","🐷",
+  "🐽","🐸","🐵","🐒","🐥","🐴","🐗","🦄","🐝","🐢","🐞","🐌","🦋","🐛","🪲","🐍","🪼","🦞","🐬","🐳",
+  "🦧","🐖","🐏","🐎","🦬","🐁","🦜","🌞","⭐️","⛄️","🍉","🍎","🍆","🌽","🥨","🍳","🍖","🍟","🍭","⚽️",
+  "🏀","🎾","🎱","⛷️","🏋️","🪂","🚵‍♀️","🎹","🎷","🎸","🪗","🎲","🚗","🚕","🚒","🚜","🚓","🚑","🚛","✈️","🧸",
 ];
 
 expireOldSession();
@@ -53,6 +59,7 @@ let socket = null;
 let localRoomCode = localStorage.getItem("varalica_room_code") || "";
 let localPlayerId = localStorage.getItem("varalica_player_id") || "";
 let selectedAvatar = localStorage.getItem("varalica_avatar") || "";
+let selectedPlayMode = localStorage.getItem("varalica_play_mode") || "live";
 let selectedCategory = localStorage.getItem("varalica_selected_category") || "Sve kategorije";
 let selectedDiscussionSeconds = Number(localStorage.getItem("varalica_discussion_seconds") || 180);
 let hasRevealedPrivateCard = false;
@@ -71,6 +78,7 @@ let heartbeatTimer = null;
 let shouldReconnectSocket = true;
 let connectionMode = "disconnected";
 let hadSocketDisconnect = false;
+let isExplicitlyLeavingRoom = false;
 let lastSeenEventId = "";
 let currentTurnId = "";
 let nextPlayerUnlockAt = 0;
@@ -88,12 +96,15 @@ if (pathRoomMatch) {
 
 createRoomButton.addEventListener("click", createRoom);
 joinRoomButton.addEventListener("click", joinRoom);
+playerNameInput.addEventListener("input", updateJoinButtons);
 copyCodeButton.addEventListener("click", copyRoomCode);
 copyLinkButton.addEventListener("click", copyRoomLink);
 showQrButton.addEventListener("click", toggleQrPanel);
 resetRoomButton.addEventListener("click", resetRoom);
 leaveRoomButton.addEventListener("click", showLeaveModal);
 rulesButton.addEventListener("click", () => showModal(rulesModal));
+liveModeButton.addEventListener("click", () => setPlayMode("live"));
+chatModeButton.addEventListener("click", () => setPlayMode("chat"));
 cancelLeaveButton.addEventListener("click", () => hideModal(leaveModal));
 confirmLeaveButton.addEventListener("click", leaveRoom);
 cancelActionButton.addEventListener("click", closeConfirmAction);
@@ -117,37 +128,75 @@ document.addEventListener("visibilitychange", () => {
   touchSession();
   sendHeartbeat();
 });
+window.addEventListener("beforeunload", sendLikelyTabClose);
+window.addEventListener("pagehide", (event) => {
+  if (!event.persisted && !isLikelyMobileBrowser()) {
+    sendLikelyTabClose();
+  }
+});
 clearAvatarButton.addEventListener("click", () => {
   selectedAvatar = "";
   localStorage.removeItem("varalica_avatar");
   renderAvatarGrid();
 });
 renderAvatarGrid();
+renderModeToggle();
 setConnectionMode("disconnected");
 touchSession();
+updateJoinButtons();
+
+function hasValidPlayerName() {
+  return playerNameInput.value.trim().length > 0;
+}
+
+function updateJoinButtons() {
+  const disabled = !hasValidPlayerName();
+  createRoomButton.disabled = disabled || createRoomButton.classList.contains("hidden");
+  joinRoomButton.disabled = disabled;
+}
+
+function setPlayMode(mode) {
+  selectedPlayMode = mode === "chat" ? "chat" : "live";
+  localStorage.setItem("varalica_play_mode", selectedPlayMode);
+  renderModeToggle();
+}
+
+function renderModeToggle() {
+  liveModeButton.classList.toggle("active", selectedPlayMode === "live");
+  chatModeButton.classList.toggle("active", selectedPlayMode === "chat");
+}
 
 async function createRoom() {
   clearError();
-  const name = playerNameInput.value;
-  const result = await apiRequest("/api/rooms", { name, avatar: selectedAvatar || null });
+  const name = playerNameInput.value.trim();
+  if (!name) {
+    updateJoinButtons();
+    return;
+  }
+  const result = await apiRequest("/api/rooms", { name, avatar: selectedAvatar || null, play_mode: selectedPlayMode });
   if (!result) return;
   enterRoom(result.room_code, result.player_id, result.avatar);
 }
 
 async function joinRoom() {
   clearError();
-  const name = playerNameInput.value;
+  const name = playerNameInput.value.trim();
+  if (!name) {
+    updateJoinButtons();
+    return;
+  }
   const code = roomCodeInput.value.trim().toUpperCase();
   if (!code) {
     showError("Unesi kod sobe.");
     return;
   }
-  const result = await apiRequest(`/api/rooms/${code}/join`, { name, avatar: selectedAvatar || null });
+  const result = await apiRequest(`/api/rooms/${code}/join`, { name, avatar: selectedAvatar || null, play_mode: selectedPlayMode });
   if (!result) return;
   enterRoom(result.room_code, result.player_id, result.avatar);
 }
 
 function enterRoom(roomCode, playerId, avatar) {
+  isExplicitlyLeavingRoom = false;
   localRoomCode = roomCode;
   localPlayerId = playerId;
   hasRevealedPrivateCard = false;
@@ -335,6 +384,27 @@ function sendHeartbeat() {
   }
 }
 
+function isLikelyMobileBrowser() {
+  return window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+}
+
+function sendLikelyTabClose() {
+  if (isExplicitlyLeavingRoom || !localRoomCode || !localPlayerId) return;
+  const payload = JSON.stringify({ player_id: localPlayerId });
+  const url = `/api/rooms/${encodeURIComponent(localRoomCode)}/tab-close`;
+  if (navigator.sendBeacon) {
+    const blob = new Blob([payload], { type: "application/json" });
+    navigator.sendBeacon(url, blob);
+    return;
+  }
+  fetch(url, {
+    method: "POST",
+    body: payload,
+    headers: { "Content-Type": "application/json" },
+    keepalive: true,
+  }).catch(() => {});
+}
+
 async function startRound() {
   clearError();
   touchSession();
@@ -390,6 +460,18 @@ async function submitFinalVote(targetId) {
   });
 }
 
+async function sendAssociation() {
+  clearError();
+  touchSession();
+  const input = document.querySelector("#associationInput");
+  const text = input?.value || "";
+  const result = await apiRequest(`/api/rooms/${localRoomCode}/association`, {
+    player_id: localPlayerId,
+    text,
+  });
+  if (result && input) input.value = "";
+}
+
 async function startNewRound() {
   clearError();
   touchSession();
@@ -419,10 +501,11 @@ async function transferHost(targetId) {
 async function leaveRoom() {
   clearError();
   hideModal(leaveModal);
+  isExplicitlyLeavingRoom = true;
+  shouldReconnectSocket = false;
   if (localRoomCode && localPlayerId) {
     await apiRequest(`/api/rooms/${localRoomCode}/leave`, { player_id: localPlayerId });
   }
-  shouldReconnectSocket = false;
   if (socket) socket.close();
   localStorage.removeItem("varalica_room_code");
   localStorage.removeItem("varalica_player_id");
@@ -478,14 +561,15 @@ function startRevealCountdown() {
   };
 
   setRevealPhase("overlay_intro");
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_4", 4), 300));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_3", 3), 1300));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_2", 2), 2300));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_1", 1), 3300));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("title_reveal"), 4600));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("nickname_reveal"), 6300));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("statistics_reveal"), 7000));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("complete"), 8300));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_5", 5), 300));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_4", 4), 1300));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_3", 3), 2300));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_2", 2), 3300));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_1", 1), 4300));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("title_reveal"), 5600));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("nickname_reveal"), 7300));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("statistics_reveal"), 8000));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("complete"), 9300));
   revealSequenceTimers.push(setTimeout(() => {
     revealSequence = { ...revealSequence, showReplay: true };
     render();
@@ -536,6 +620,7 @@ function handleExpiredRoom() {
   setupView.classList.remove("hidden");
   inviteNotice.classList.add("hidden");
   createRoomButton.classList.remove("hidden");
+  updateJoinButtons();
   window.history.replaceState({}, "", "/");
   setConnectionMode("disconnected");
   showToast("Soba je istekla", "error");
@@ -554,6 +639,7 @@ function handleKicked(message) {
   setupView.classList.remove("hidden");
   inviteNotice.classList.add("hidden");
   createRoomButton.classList.remove("hidden");
+  updateJoinButtons();
   window.history.replaceState({}, "", "/");
   setConnectionMode("disconnected");
   showToast(message, "error");
@@ -682,7 +768,7 @@ function renderHostPanel() {
   }
 
   const roundHasStarted = roomState.state !== "lobby";
-  const actions = roundHasStarted ? [`<button id="hostResetRoomButton" class="small danger">Resetuj sobu</button>`] : [];
+  const actions = roundHasStarted ? [`<button id="hostResetRoomButton" class="small danger">Nova runda</button>`] : [];
   if (roomState.state === "reveal") {
     actions.unshift(`<button id="hostChangeWordButton" class="small secondary">Promijeni riječ</button>`);
   } else if (["discussion", "vote_request", "ready_for_final_voting", "final_voting", "overtime", "overtime_voting", "voting_complete", "results"].includes(roomState.state)) {
@@ -695,6 +781,9 @@ function renderHostPanel() {
   }
   if (roomState.state === "discussion" && roomState.discussion) {
     actions.unshift(`<button id="hostOpenVotingButton" class="small" ${roomState.discussion.voting_unlocked ? "" : "disabled"}>Otvori glasanje</button>`);
+  }
+  if (roomState.state === "overtime" && roomState.overtime?.voting_unlocked) {
+    actions.unshift(`<button id="hostOpenVotingButton" class="small">Otvori glasanje</button>`);
   }
   if (roomState.state === "ready_for_final_voting") {
     actions.unshift(`<button id="hostOpenVotingButton" class="small">Otvori glasanje</button>`);
@@ -869,18 +958,18 @@ function renderDiscussion() {
        ${nextLockLeft > 0 ? `<p class="helper-text">Dostupno za ${nextLockLeft}...</p>` : ""}`
     : `<p class="helper-text">Samo host ili trenutni igrac mogu prebaciti red.</p>`;
   const voteLocked = !discussion.voting_unlocked;
-  const votingControl = voteLocked
-    ? `<button disabled>Otvori glasanje</button>`
-    : isHost
-      ? `<button id="openFinalVotingButton">Otvori glasanje</button>`
-      : `<button disabled>Host otvara glasanje</button>`;
-  const votingHelper = voteLocked
-    ? `Glasanje ce biti dostupno uskoro. Preostalo: ${formatSeconds(discussion.voting_seconds_left)}.`
-    : "Host sada moze otvoriti glasanje.";
+  const votingControl = isHost
+    ? `<div class="voting-control-compact">
+         <button id="openFinalVotingButton" ${voteLocked ? "disabled" : ""}>Otvori glasanje</button>
+         <p class="helper-text">${voteLocked ? `Glasanje uskoro: ${formatSeconds(discussion.voting_seconds_left)}` : "Možeš otvoriti glasanje."}</p>
+       </div>`
+    : `<div class="voting-control-compact status-only">
+         <p class="helper-text">${voteLocked ? "Čeka se glasanje..." : "Čeka se da host otvori glasanje."}</p>
+       </div>`;
 
   phaseContent.innerHTML = `
     <div class="phase-card discussion-card">
-      <div class="timer-box">
+      <div class="timer-box compact-timer">
         <span>Diskusija</span>
         <strong>${formatSeconds(discussion.remaining_seconds)}</strong>
       </div>
@@ -894,9 +983,7 @@ function renderDiscussion() {
           : `<p class="helper-text">Samo host ili trenutni igrac mogu prebaciti red.</p>`
       }
       ${votingControl}
-      <p class="helper-text">
-        ${votingHelper}
-      </p>
+      ${renderAssociationComposer(discussion.current_player_id)}
     </div>
   `;
 
@@ -916,6 +1003,7 @@ function renderDiscussion() {
 
   const openButton = document.querySelector("#openFinalVotingButton");
   if (openButton) openButton.addEventListener("click", openFinalVoting);
+  bindAssociationComposer();
 }
 
 function renderReadyForFinalVoting() {
@@ -944,27 +1032,11 @@ function renderOvertime() {
   const canAdvanceTurn = isHost || me?.id === overtime.current_player_id;
   const nextLockLeft = nextPlayerLockSecondsLeft();
 
-  if (!overtime.started) {
-    phaseContent.innerHTML = `
-      <div class="phase-card overtime-card">
-        <p class="eyebrow">Produzetak</p>
-        <h2>Glasanje je neriješeno.</h2>
-        <p class="helper-text">Varalica se jos ne otkriva. Host moze produziti diskusiju za 60 sekundi.</p>
-        ${
-          isHost
-            ? `<button id="startOvertimeButton">Produži igru 60 sekundi</button>`
-            : `<p class="helper-text">Cekamo hosta da pokrene produzetak.</p>`
-        }
-      </div>
-    `;
-    const button = document.querySelector("#startOvertimeButton");
-    if (button) button.addEventListener("click", startOvertime);
-    return;
-  }
-
   phaseContent.innerHTML = `
     <div class="phase-card overtime-card">
       <p class="eyebrow">Produzetak</p>
+      <h2>Glasanje je nerešeno.</h2>
+      <p class="helper-text">Diskusija se produžava za 60 sekundi. Varalica se još ne otkriva.</p>
       <div class="timer-box">
         <span>Produzetak</span>
         <strong>${formatSeconds(overtime.remaining_seconds)}</strong>
@@ -978,7 +1050,14 @@ function renderOvertime() {
           ? `<button id="nextPlayerButton">Sljedeći igrač</button>`
           : `<p class="helper-text">Samo host ili trenutni igrac mogu prebaciti red.</p>`
       }
-      <p class="helper-text">Nakon isteka vremena glasanje se automatski otvara ponovo.</p>
+      <div class="voting-control-compact ${isHost ? "" : "status-only"}">
+        ${
+          isHost && overtime.voting_unlocked
+            ? `<button id="openFinalVotingButton">Otvori glasanje</button>`
+            : `<p class="helper-text">${isHost ? `Glasanje uskoro: ${formatSeconds(overtime.voting_seconds_left)}` : "Diskusija je produžena. Čeka se novo glasanje."}</p>`
+        }
+      </div>
+      ${renderAssociationComposer(overtime.current_player_id)}
     </div>
   `;
 
@@ -995,6 +1074,38 @@ function renderOvertime() {
       insertedNextButton.addEventListener("click", nextPlayer);
     }
   }
+
+  const openButton = document.querySelector("#openFinalVotingButton");
+  if (openButton) openButton.addEventListener("click", openFinalVoting);
+  bindAssociationComposer();
+}
+
+function renderAssociationComposer(currentPlayerId) {
+  const me = roomState.players.find((player) => player.id === roomState.viewer_id);
+  if (me?.play_mode !== "chat") return "";
+  const isMyTurn = me.id === currentPlayerId;
+  return `
+    <div class="association-composer">
+      <label for="associationInput">Tvoja asocijacija</label>
+      <div class="association-input-row">
+        <input id="associationInput" maxlength="80" autocomplete="off" placeholder="npr. nesto za kuhinju" />
+        <button id="sendAssociationButton" class="small" data-can-send="${isMyTurn ? "true" : "false"}" ${isMyTurn ? "" : "disabled"}>Pošalji</button>
+      </div>
+      <p class="helper-text">${isMyTurn ? "Tvoj red — pošalji asocijaciju." : "Možeš poslati kada je tvoj red."}</p>
+    </div>
+  `;
+}
+
+function bindAssociationComposer() {
+  const input = document.querySelector("#associationInput");
+  const button = document.querySelector("#sendAssociationButton");
+  if (!input || !button) return;
+  const updateButton = () => {
+    button.disabled = button.dataset.canSend !== "true" || input.value.trim().length === 0;
+  };
+  input.addEventListener("input", updateButton);
+  button.addEventListener("click", sendAssociation);
+  updateButton();
 }
 
 function renderFinalVoting() {
@@ -1049,6 +1160,15 @@ function renderFinalVoting() {
 function renderVotingComplete() {
   const isHost = roomState.viewer_id === roomState.host_id;
   const voting = roomState.voting_complete;
+  if (voting.is_tie) {
+    phaseContent.innerHTML = `
+      <div class="phase-card overtime-card">
+        <h2>Glasanje je nerešeno.</h2>
+        <p class="helper-text">Varalica se ne otkriva. Diskusija se produžava.</p>
+      </div>
+    `;
+    return;
+  }
   phaseContent.innerHTML = `
     <div class="phase-card">
       <h2>Glasanje je završeno</h2>
@@ -1085,7 +1205,7 @@ function finalOutcomeTheme(results) {
 }
 
 function revealTheme(results, phase = "complete") {
-  const countdownPhases = new Set(["overlay_intro", "countdown_4", "countdown_3", "countdown_2", "countdown_1", "title_reveal"]);
+  const countdownPhases = new Set(["overlay_intro", "countdown_5", "countdown_4", "countdown_3", "countdown_2", "countdown_1", "title_reveal"]);
   if (countdownPhases.has(phase)) return "danger-red-for-all";
   return finalOutcomeTheme(results);
 }
@@ -1166,14 +1286,15 @@ function renderImpostorReveal(results) {
             aria-hidden="true"
           >
           <div class="impostor-glitch-lines" aria-hidden="true"></div>
+          ${showTitle ? `<p class="impostor-pretitle impostor-pretitle-overlay">VARALICA JE...</p>` : ""}
+        </div>
           ${
             revealSequence.countdown
               ? `<div class="impostor-countdown">${revealSequence.countdown}</div>`
               : ""
           }
-        </div>
         <div class="impostor-reveal-copy">
-          ${showTitle ? `<p class="impostor-pretitle">VARALICA JE...</p>` : `<p class="impostor-pretitle ghost">OTKRIVANJE</p>`}
+          ${!showTitle ? `<p class="impostor-pretitle ghost">OTKRIVANJE</p>` : ""}
           ${showName ? `<h2 class="impostor-nickname" title="${escapeHtml(nickname)}">${escapeHtml(nickname)}</h2>` : ""}
           ${showName ? `<p class="impostor-outcome-title">${escapeHtml(title)}</p>` : ""}
           ${showName ? `<p class="impostor-subtitle">${escapeHtml(subtitle)}</p>` : ""}
@@ -1304,10 +1425,13 @@ function renderPlayers() {
     const voteLabel = player.requested_vote ? `<span class="badge vote-requested">Trazi glasanje</span>` : "";
     const finalVoteLabel =
       (roomState.state === "final_voting" || roomState.state === "overtime_voting" || roomState.state === "voting_complete" || roomState.state === "results") && player.is_active_round_player
-        ? `<span class="badge ${player.has_voted ? "ready" : "waiting"}">${player.has_voted ? "Glasao/la" : "Nije glasao/la"}</span>`
+        ? `<span class="badge vote-status ${player.has_voted ? "ready" : "waiting"}">${player.has_voted ? "Glasao/la" : "Nije glasao/la"}</span>`
         : "";
     const voteTargetLabel = roomState.state === "results" && player.vote_target
       ? `<div class="vote-target-line"><span>Glasao/la za:</span> <strong>${escapeHtml(playerNameText(player.vote_target))}</strong></div>`
+      : "";
+    const associationBubble = player.association
+      ? `<div class="association-bubble">${escapeHtml(player.association.text)}</div>`
       : "";
 
     row.innerHTML = `
@@ -1316,6 +1440,7 @@ function renderPlayers() {
           <span class="status-dot ${escapeHtml(player.connection_status || "offline")}" title="${connectionStatusLabel}"></span>
           ${playerNameHtml(player)}
         </span>
+        ${associationBubble}
         ${voteTargetLabel}
       </div>
       <div class="player-meta">
@@ -1472,6 +1597,7 @@ async function bootstrapRoomSession() {
       roomCodeInput.value = "";
       inviteNotice.classList.add("hidden");
       createRoomButton.classList.remove("hidden");
+      updateJoinButtons();
       window.history.replaceState({}, "", "/");
       showToast("Soba je istekla", "error");
     }

@@ -33,6 +33,8 @@ DISCUSSION_SECONDS = 180
 ALLOWED_DISCUSSION_SECONDS = {120, 180, 300}
 VOTING_LOCK_SECONDS = 100
 OVERTIME_SECONDS = 60
+OVERTIME_VOTING_LOCK_SECONDS = 30
+TAB_CLOSE_REMOVE_SECONDS = 60
 ACTIVE_GRACE_SECONDS = 30
 AWAY_AFTER_SECONDS = 30
 IDLE_AFTER_SECONDS = 180
@@ -40,9 +42,13 @@ REMOVE_AFTER_SECONDS = 300
 RECONNECT_GRACE_SECONDS = REMOVE_AFTER_SECONDS
 EMPTY_ROOM_CLEANUP_SECONDS = 300
 ALLOWED_AVATARS = [
-    "😀", "😎", "🤓", "🥳", "😇", "🤠", "🐵", "🦊", "🐼", "🐸",
-    "🐱", "🐶", "🦁", "🐯", "🦄", "🐧", "🐙", "🦖", "👽", "🤖",
-    "🧙‍♂️", "🧙‍♀️", "🦸‍♂️", "🦸‍♀️", "🕵️‍♂️", "🕵️‍♀️", "👑", "🎭", "🎲", "🔥",
+    "🥸", "🤤", "😁", "😇", "🥳", "😎", "😝", "👹", "😈", "🤠", "🤡", "👻", "💩", "👽", "👾", "🤖", "🎃", "😺", "🧠", "👶",
+    "👩‍🦰", "👨🏻", "👨🏿", "👨🏽", "👩🏾‍🦰", "👩🏻‍🦱", "🧑🏻‍🦱", "🧑🏾‍🦱", "👨🏿‍🦰", "👨🏽‍🦳", "🧔", "🧔🏼‍♂️", "👲", "🧕", "👳🏻‍♂️", "👮‍♀️", "👮", "👮🏻‍♂️", "👷‍♀️", "💂‍♀️",
+    "👨🏻‍⚕️", "👩‍🎓", "🧑‍🍳", "🧑‍🎤", "👨‍🏫", "👩‍🏭", "👨‍🎤", "👩‍🏫", "👩🏻‍💻", "👩‍🔧", "👨🏻‍🚒", "🧑‍🚒", "👩‍🚀", "🥷🏻", "🥷🏿", "🦹‍♀️", "🦸‍♂️", "🤴", "🧌", "🧛",
+    "🧞‍♀️", "🧜‍♀️", "🧟", "🧟‍♂️", "💃", "👑", "⛑️", "👠", "🐶", "🐭", "🐹", "🦊", "🐱", "🐰", "🐻", "🐼", "🦁", "🐯", "🐻‍❄️", "🐷",
+    "🐽", "🐸", "🐵", "🐒", "🐥", "🐴", "🐗", "🦄", "🐝", "🐢", "🐞", "🐌", "🦋", "🐛", "🪲", "🐍", "🪼", "🦞", "🐬", "🐳",
+    "🦧", "🐖", "🐏", "🐎", "🦬", "🐁", "🦜", "🌞", "⭐️", "⛄️", "🍉", "🍎", "🍆", "🌽", "🥨", "🍳", "🍖", "🍟", "🍭", "⚽️",
+    "🏀", "🎾", "🎱", "⛷️", "🏋️", "🪂", "🚵‍♀️", "🎹", "🎷", "🎸", "🪗", "🎲", "🚗", "🚕", "🚒", "🚜", "🚓", "🚑", "🚛", "✈️", "🧸",
 ]
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -67,6 +73,7 @@ async def startup() -> None:
 class NameRequest(BaseModel):
     name: str
     avatar: str | None = None
+    play_mode: str | None = None
 
 
 class PlayerAction(BaseModel):
@@ -87,6 +94,10 @@ class TargetPlayerAction(PlayerAction):
     target_id: str
 
 
+class AssociationAction(PlayerAction):
+    text: str
+
+
 @dataclass
 class Player:
     id: str
@@ -102,6 +113,8 @@ class Player:
     connection_state: str = "active"
     disconnect_started_at: float | None = None
     disconnected_at: float | None = None
+    likely_tab_closed_at: float | None = None
+    play_mode: str = "live"
     joined_at: float = field(default_factory=time.time)
 
 
@@ -134,6 +147,8 @@ class Room:
     empty_cleanup_task: asyncio.Task | None = None
     timer_task: asyncio.Task | None = None
     sockets: dict[str, WebSocket] = field(default_factory=dict)
+    active_associations: dict[str, dict] = field(default_factory=dict)
+    turn_version: int = 0
 
 
 rooms: dict[str, Room] = {}
@@ -174,6 +189,7 @@ async def create_room(request: NameRequest) -> dict:
         name=name,
         avatar=choose_avatar(room, request.avatar),
         is_host=True,
+        play_mode=normalize_play_mode(request.play_mode),
     )
     room.host_id = player.id
     room.players[player.id] = player
@@ -198,6 +214,7 @@ async def join_room(room_code: str, request: NameRequest) -> dict:
         name=clean_name(request.name),
         avatar=choose_avatar(room, request.avatar),
         is_host=not bool(room.players),
+        play_mode=normalize_play_mode(request.play_mode),
     )
     if player.is_host:
         room.host_id = player.id
@@ -316,6 +333,8 @@ async def next_player(room_code: str, action: PlayerAction) -> dict:
         next_id = active_ids[0]
 
     room.current_player_index = room.round_player_ids.index(next_id)
+    room.turn_version += 1
+    clear_associations_for_current_turn(room)
     persist_room(room)
     await broadcast_room(room)
     return {"ok": True}
@@ -387,10 +406,18 @@ async def open_final_voting(room_code: str, action: PlayerAction) -> dict:
         if not voting_unlocked(room):
             raise HTTPException(status_code=400, detail="Glasanje dostupno nakon 100 sekundi.")
         stop_timer(room)
+        room.state = "final_voting"
+    elif room.state == "overtime":
+        if not overtime_voting_unlocked(room):
+            raise HTTPException(status_code=400, detail="Glasanje u produzetku dostupno nakon 30 sekundi.")
+        stop_timer(room)
+        room.overtime_started_at = None
+        room.state = "overtime_voting"
     elif room.state != "ready_for_final_voting":
         raise HTTPException(status_code=400, detail="Finalno glasanje jos nije spremno.")
+    else:
+        room.state = "final_voting"
 
-    room.state = "final_voting"
     room.final_votes.clear()
     for player in room.players.values():
         player.has_voted = False
@@ -405,6 +432,8 @@ async def reveal_results(room_code: str, action: PlayerAction) -> dict:
     ensure_host(room, action.player_id)
     if room.state != "voting_complete":
         raise HTTPException(status_code=400, detail="Varalica se moze prikazati tek nakon glasanja.")
+    if is_vote_tied(room):
+        raise HTTPException(status_code=400, detail="Glasanje je nerijeseno. Produzetak je u toku.")
     if not all_active_players_voted(room):
         raise HTTPException(status_code=400, detail="Svi aktivni igraci moraju glasati.")
 
@@ -433,8 +462,36 @@ async def submit_vote(room_code: str, action: VoteAction) -> dict:
     room.players[action.player_id].has_voted = True
 
     if all_active_players_voted(room):
-        finish_voting(room)
+        if finish_voting(room):
+            room.timer_task = asyncio.create_task(timer_loop(room.code))
 
+    persist_room(room)
+    await broadcast_room(room)
+    return {"ok": True}
+
+
+@app.post("/api/rooms/{room_code}/association")
+async def send_association(room_code: str, action: AssociationAction) -> dict:
+    room = get_room(room_code)
+    if room.state not in {"discussion", "overtime"}:
+        raise HTTPException(status_code=400, detail="Asocijaciju mozes poslati samo tokom diskusije.")
+    player = room.players.get(action.player_id)
+    if player is None or action.player_id not in active_round_player_ids(room):
+        raise HTTPException(status_code=400, detail="Igrac nije aktivan u ovoj rundi.")
+    if player.play_mode != "chat":
+        raise HTTPException(status_code=403, detail="Pisane asocijacije su dostupne samo u Chat modu.")
+    if current_player_id(room) != action.player_id:
+        raise HTTPException(status_code=403, detail="Asocijaciju mozes poslati samo kada je tvoj red.")
+
+    text = clean_association_text(action.text)
+    now = time.time()
+    room.active_associations[action.player_id] = {
+        "player_id": action.player_id,
+        "text": text,
+        "created_at": now,
+        "expires_at": now + 10,
+        "turn_version": room.turn_version,
+    }
     persist_room(room)
     await broadcast_room(room)
     return {"ok": True}
@@ -444,22 +501,8 @@ async def submit_vote(room_code: str, action: VoteAction) -> dict:
 async def start_overtime(room_code: str, action: PlayerAction) -> dict:
     room = get_room(room_code)
     ensure_host(room, action.player_id)
-    if room.state != "voting_complete":
-        raise HTTPException(status_code=400, detail="Produzetak je dostupan samo nakon zavrsenog glasanja.")
-    if room.overtime_used:
-        raise HTTPException(status_code=400, detail="Produzetak je vec iskoristen.")
-    if not is_vote_tied(room):
-        raise HTTPException(status_code=400, detail="Glasanje nije nerijeseno.")
-
-    room.state = "overtime"
-    room.overtime_used = True
-    room.overtime_started_at = time.time()
-    room.final_votes.clear()
-    for player in room.players.values():
-        player.has_voted = False
-    normalize_current_player(room)
-    stop_timer(room)
-    room.timer_task = asyncio.create_task(timer_loop(room.code))
+    if room.state != "overtime":
+        raise HTTPException(status_code=400, detail="Produzetak se pokrece automatski nakon nerijesenog glasanja.")
     persist_room(room)
     await broadcast_room(room)
     return {"ok": True}
@@ -499,6 +542,27 @@ async def leave_room(room_code: str, action: PlayerAction) -> dict:
     return {"ok": True}
 
 
+@app.post("/api/rooms/{room_code}/tab-close")
+async def tab_close(room_code: str, action: PlayerAction) -> dict:
+    room = get_room(room_code)
+    player = room.players.get(action.player_id)
+    if player is None:
+        return {"ok": True}
+
+    now = time.time()
+    player.connected = False
+    player.connection_state = "away"
+    player.disconnect_started_at = player.disconnect_started_at or now
+    player.disconnected_at = player.disconnected_at or now
+    player.likely_tab_closed_at = now
+    if action.player_id in room.sockets:
+        room.sockets.pop(action.player_id, None)
+    asyncio.create_task(disconnected_player_status_loop(room.code, action.player_id))
+    persist_room(room)
+    await broadcast_room(room)
+    return {"ok": True}
+
+
 @app.websocket("/ws/{room_code}/{player_id}")
 async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: str) -> None:
     await websocket.accept()
@@ -510,8 +574,11 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: st
     if room is None or player_id not in room.players:
         await websocket.close(code=1008)
         return
-    if time.time() - room.players[player_id].last_seen_at > RECONNECT_GRACE_SECONDS:
+    if should_remove_player(room.players[player_id], time.time()):
         remove_player_from_room(room, player_id)
+        await reconcile_after_player_removed(room)
+        if not room.players:
+            schedule_empty_room_cleanup(room)
         persist_room(room)
         await websocket.close(code=1008)
         return
@@ -523,6 +590,7 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: st
     room.players[player_id].connection_state = "active"
     room.players[player_id].disconnect_started_at = None
     room.players[player_id].disconnected_at = None
+    room.players[player_id].likely_tab_closed_at = None
     cancel_empty_room_cleanup(room)
     if was_disconnected:
         set_room_event(room, "reconnect", room.players[player_id])
@@ -533,8 +601,10 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: st
         while True:
             await websocket.receive_text()
             if player_id in room.players:
+                room.players[player_id].connected = True
                 room.players[player_id].last_seen_at = time.time()
                 room.players[player_id].connection_state = "active"
+                room.players[player_id].likely_tab_closed_at = None
     except WebSocketDisconnect:
         if room.sockets.get(player_id) is websocket:
             del room.sockets[player_id]
@@ -552,7 +622,8 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: st
             room.state = "ready_for_final_voting"
             stop_timer(room)
         elif room.state in {"final_voting", "overtime_voting"} and all_active_players_voted(room):
-            finish_voting(room)
+            if finish_voting(room):
+                room.timer_task = asyncio.create_task(timer_loop(room.code))
         elif room.state == "voting_complete" and not all_active_players_voted(room):
             room.state = "final_voting" if not room.overtime_used else "overtime_voting"
         persist_room(room)
@@ -565,6 +636,19 @@ def clean_name(name: str) -> str:
         raise HTTPException(status_code=400, detail="Unesi ime.")
     if len(cleaned) > 24:
         raise HTTPException(status_code=400, detail="Ime moze imati najvise 24 znaka.")
+    return cleaned
+
+
+def normalize_play_mode(value: str | None) -> str:
+    return "chat" if value == "chat" else "live"
+
+
+def clean_association_text(text: str) -> str:
+    cleaned = " ".join(text.strip().split())
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="Unesi asocijaciju.")
+    if len(cleaned) > 80:
+        raise HTTPException(status_code=400, detail="Asocijacija moze imati najvise 80 znakova.")
     return cleaned
 
 
@@ -622,6 +706,8 @@ def room_to_snapshot(room: Room) -> dict:
         "kicked_player_ids": list(room.kicked_player_ids),
         "last_event": room.last_event,
         "empty_since": room.empty_since,
+        "active_associations": room.active_associations,
+        "turn_version": room.turn_version,
         "players": [
             {
                 "id": player.id,
@@ -637,6 +723,8 @@ def room_to_snapshot(room: Room) -> dict:
                 "requested_vote": player.requested_vote,
                 "has_voted": player.has_voted,
                 "disconnected_at": player.disconnected_at,
+                "likely_tab_closed_at": player.likely_tab_closed_at,
+                "play_mode": player.play_mode,
                 "joined_at": player.joined_at,
             }
             for player in room.players.values()
@@ -670,6 +758,8 @@ def room_from_snapshot(snapshot: dict) -> Room:
         kicked_player_ids=set(snapshot.get("kicked_player_ids", [])),
         last_event=snapshot.get("last_event"),
         empty_since=snapshot.get("empty_since"),
+        active_associations=dict(snapshot.get("active_associations", {})),
+        turn_version=int(snapshot.get("turn_version", 0)),
     )
     used_avatars: set[str] = set()
     if room.word is not None:
@@ -700,6 +790,8 @@ def room_from_snapshot(snapshot: dict) -> Room:
             requested_vote=bool(player_data.get("requested_vote", False)),
             has_voted=bool(player_data.get("has_voted", False)),
             disconnected_at=player_data.get("disconnected_at"),
+            likely_tab_closed_at=player_data.get("likely_tab_closed_at"),
+            play_mode=normalize_play_mode(player_data.get("play_mode")),
             joined_at=float(player_data.get("joined_at", time.time())),
         )
         room.players[player.id] = player
@@ -848,6 +940,7 @@ def prepare_reveal_round(room: Room, active_players: list[Player]) -> None:
     room.current_player_index = 0
     room.vote_request_player_ids.clear()
     room.final_votes.clear()
+    room.active_associations.clear()
     room.overtime_started_at = None
     room.overtime_used = False
     stop_timer(room)
@@ -893,6 +986,7 @@ def reset_room_to_lobby(room: Room) -> None:
     room.current_player_index = 0
     room.vote_request_player_ids.clear()
     room.final_votes.clear()
+    room.active_associations.clear()
     room.overtime_started_at = None
     room.overtime_used = False
     room.round_number = 1
@@ -910,7 +1004,7 @@ def reset_room_to_lobby(room: Room) -> None:
 
 
 def is_player_active_for_round(player: Player) -> bool:
-    return time.time() - player.last_seen_at <= REMOVE_AFTER_SECONDS
+    return not should_remove_player(player, time.time())
 
 
 def player_connection_status(player: Player) -> str:
@@ -928,12 +1022,18 @@ def player_connection_status(player: Player) -> str:
     return "offline"
 
 
-def cleanup_expired_disconnected_players(room: Room) -> None:
+def should_remove_player(player: Player, now: float) -> bool:
+    if player.likely_tab_closed_at is not None and now - player.likely_tab_closed_at > TAB_CLOSE_REMOVE_SECONDS:
+        return True
+    return now - player.last_seen_at > RECONNECT_GRACE_SECONDS
+
+
+def cleanup_expired_disconnected_players(room: Room) -> list[str]:
     now = time.time()
     expired_ids = [
         player_id
         for player_id, player in room.players.items()
-        if now - player.last_seen_at > REMOVE_AFTER_SECONDS
+        if should_remove_player(player, now)
     ]
     for player_id in expired_ids:
         remove_player_from_room(room, player_id)
@@ -941,6 +1041,7 @@ def cleanup_expired_disconnected_players(room: Room) -> None:
         normalize_current_player(room)
     if expired_ids and not room.players:
         schedule_empty_room_cleanup(room)
+    return expired_ids
 
 
 def remove_player_from_room(room: Room, player_id: str) -> None:
@@ -952,6 +1053,7 @@ def remove_player_from_room(room: Room, player_id: str) -> None:
     if player_id in room.round_player_ids:
         room.round_player_ids.remove(player_id)
     room.vote_request_player_ids.discard(player_id)
+    room.active_associations.pop(player_id, None)
     room.final_votes.pop(player_id, None)
     for voter_id, target_id in list(room.final_votes.items()):
         if target_id == player_id:
@@ -997,7 +1099,8 @@ async def reconcile_after_player_removed(room: Room) -> None:
         stop_timer(room)
         return
     if room.state in {"final_voting", "overtime_voting"} and all_active_players_voted(room):
-        finish_voting(room)
+        if finish_voting(room):
+            room.timer_task = asyncio.create_task(timer_loop(room.code))
         return
     if room.state == "voting_complete" and not all_active_players_voted(room):
         room.state = "final_voting" if not room.overtime_used else "overtime_voting"
@@ -1049,6 +1152,37 @@ def vote_target_for_player(room: Room, player_id: str) -> dict | None:
     }
 
 
+def cleanup_associations(room: Room) -> None:
+    now = time.time()
+    current_id = current_player_id(room) if room.state in {"discussion", "overtime"} else None
+    for player_id, association in list(room.active_associations.items()):
+        if association.get("expires_at", 0) <= now:
+            room.active_associations.pop(player_id, None)
+            continue
+        if player_id == current_id and association.get("turn_version") != room.turn_version:
+            room.active_associations.pop(player_id, None)
+
+
+def clear_associations_for_current_turn(room: Room) -> None:
+    current_id = current_player_id(room)
+    if current_id:
+        association = room.active_associations.get(current_id)
+        if association and association.get("turn_version") != room.turn_version:
+            room.active_associations.pop(current_id, None)
+
+
+def association_for_player(room: Room, player_id: str) -> dict | None:
+    cleanup_associations(room)
+    association = room.active_associations.get(player_id)
+    if not association:
+        return None
+    return {
+        "text": association["text"],
+        "created_at": association["created_at"],
+        "expires_at": association["expires_at"],
+    }
+
+
 def vote_counts(room: Room) -> dict[str, int]:
     counts = {player_id: 0 for player_id in room.round_player_ids if player_id in room.players}
     for target_id in room.final_votes.values():
@@ -1071,15 +1205,34 @@ def is_vote_tied(room: Room) -> bool:
     return len(tied_top_player_ids(room)) > 1
 
 
-def finish_voting(room: Room) -> None:
+def finish_voting(room: Room) -> bool:
+    if is_vote_tied(room):
+        enter_tie_overtime(room)
+        return True
     room.state = "voting_complete"
     stop_timer(room)
+    return False
+
+
+def enter_tie_overtime(room: Room) -> None:
+    stop_timer(room)
+    room.state = "overtime"
+    room.overtime_used = True
+    room.overtime_started_at = time.time()
+    room.final_votes.clear()
+    for player in room.players.values():
+        player.has_voted = False
+    normalize_current_player(room)
+    room.turn_version += 1
+    room.active_associations.clear()
 
 
 def enter_discussion_values(room: Room) -> None:
     room.state = "discussion"
     room.discussion_started_at = time.time()
     room.current_player_index = 0
+    room.turn_version += 1
+    room.active_associations.clear()
     room.vote_request_player_ids.clear()
     room.final_votes.clear()
     for player in room.players.values():
@@ -1109,13 +1262,10 @@ async def timer_loop(room_code: str) -> None:
             continue
         if room.state == "overtime" and room.overtime_started_at is not None:
             if overtime_remaining(room) == 0:
-                room.state = "overtime_voting"
-                room.overtime_started_at = None
-                room.final_votes.clear()
-                for player in room.players.values():
-                    player.has_voted = False
                 room.timer_task = None
                 persist_room(room)
+                await broadcast_room(room)
+                return
             await broadcast_room(room)
             continue
         cleanup_expired_disconnected_players(room)
@@ -1123,7 +1273,7 @@ async def timer_loop(room_code: str) -> None:
 
 
 async def disconnected_player_status_loop(room_code: str, player_id: str) -> None:
-    checkpoints = [AWAY_AFTER_SECONDS, IDLE_AFTER_SECONDS, REMOVE_AFTER_SECONDS]
+    checkpoints = sorted({AWAY_AFTER_SECONDS, TAB_CLOSE_REMOVE_SECONDS, IDLE_AFTER_SECONDS, RECONNECT_GRACE_SECONDS})
     started_at = time.time()
     for checkpoint in checkpoints:
         await asyncio.sleep(max(0, checkpoint - (time.time() - started_at)))
@@ -1133,7 +1283,9 @@ async def disconnected_player_status_loop(room_code: str, player_id: str) -> Non
         player = room.players.get(player_id)
         if player is None or time.time() - player.last_seen_at < checkpoint:
             return
-        cleanup_expired_disconnected_players(room)
+        expired_ids = cleanup_expired_disconnected_players(room)
+        if expired_ids:
+            await reconcile_after_player_removed(room)
         persist_room(room)
         await broadcast_room(room)
 
@@ -1143,7 +1295,9 @@ async def presence_monitor_loop() -> None:
         await asyncio.sleep(10)
         for room in list(rooms.values()):
             before_ids = set(room.players)
-            cleanup_expired_disconnected_players(room)
+            expired_ids = cleanup_expired_disconnected_players(room)
+            if expired_ids:
+                await reconcile_after_player_removed(room)
             if before_ids != set(room.players):
                 persist_room(room)
                 await broadcast_room(room)
@@ -1178,9 +1332,20 @@ def voting_unlocked(room: Room) -> bool:
 
 def overtime_remaining(room: Room) -> int:
     if room.overtime_started_at is None:
-        return OVERTIME_SECONDS
+        return 0
     elapsed = max(0, int(time.time() - room.overtime_started_at))
     return max(0, OVERTIME_SECONDS - elapsed)
+
+
+def overtime_voting_seconds_left(room: Room) -> int:
+    if room.overtime_started_at is None:
+        return 0
+    elapsed = max(0, int(time.time() - room.overtime_started_at))
+    return max(0, OVERTIME_VOTING_LOCK_SECONDS - elapsed)
+
+
+def overtime_voting_unlocked(room: Room) -> bool:
+    return overtime_voting_seconds_left(room) == 0
 
 
 def current_player_id(room: Room) -> str | None:
@@ -1204,6 +1369,9 @@ def normalize_current_player(room: Room) -> None:
 def public_state(room: Room, viewer_id: str) -> dict:
     cleanup_expired_disconnected_players(room)
     normalize_current_player(room)
+    if room.state not in {"discussion", "overtime"}:
+        room.active_associations.clear()
+    cleanup_associations(room)
     all_confirmed = room.state == "reveal" and all_active_players_confirmed(room)
     return {
         "room_code": room.code,
@@ -1214,6 +1382,7 @@ def public_state(room: Room, viewer_id: str) -> dict:
         "max_players": MAX_PLAYERS,
         "idle_after_seconds": IDLE_AFTER_SECONDS,
         "away_after_seconds": AWAY_AFTER_SECONDS,
+        "tab_close_remove_seconds": TAB_CLOSE_REMOVE_SECONDS,
         "remove_after_seconds": REMOVE_AFTER_SECONDS,
         "reconnect_grace_seconds": RECONNECT_GRACE_SECONDS,
         "lifecycle": room_lifecycle(room),
@@ -1237,6 +1406,7 @@ def public_state(room: Room, viewer_id: str) -> dict:
                 "name": player.name,
                 "avatar": player.avatar,
                 "is_host": player.is_host,
+                "play_mode": player.play_mode,
                 "connected": player.connected,
                 "connection_status": player_connection_status(player),
                 "viewed_secret": player.viewed_secret if room.state == "reveal" else False,
@@ -1246,6 +1416,7 @@ def public_state(room: Room, viewer_id: str) -> dict:
                 "has_voted": player.id in room.final_votes if room.state in {"final_voting", "overtime_voting", "voting_complete", "results"} else False,
                 "is_active_round_player": player.id in active_round_player_ids(room),
                 "temporarily_disconnected": player_connection_status(player) in {"away", "idle"},
+                "association": association_for_player(room, player.id),
                 "vote_target": vote_target_for_player(room, player.id) if room.state == "results" else None,
             }
             for player in room.players.values()
@@ -1275,6 +1446,9 @@ def overtime_state(room: Room) -> dict | None:
     return {
         "duration_seconds": OVERTIME_SECONDS,
         "remaining_seconds": overtime_remaining(room),
+        "voting_locked_seconds": OVERTIME_VOTING_LOCK_SECONDS,
+        "voting_seconds_left": overtime_voting_seconds_left(room),
+        "voting_unlocked": overtime_voting_unlocked(room),
         "started": room.overtime_started_at is not None,
         "used": room.overtime_used,
         "current_player_id": current_player_id(room),

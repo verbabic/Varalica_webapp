@@ -64,6 +64,13 @@ button:disabled {
   opacity: 0.48;
 }
 
+#createRoomButton:disabled,
+#joinRoomButton:disabled {
+  background: #0b1020;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
 button.secondary {
   background: var(--panel-soft);
   color: var(--text);
@@ -110,9 +117,9 @@ select:focus {
 label {
   display: block;
   margin-bottom: 8px;
-  color: var(--muted);
+  color: rgba(226, 232, 240, 0.94);
   font-size: 0.94rem;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .app-shell {
@@ -136,10 +143,37 @@ label {
   gap: 8px;
 }
 
+.mode-toggle {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0b1020;
+}
+
+.mode-segment {
+  width: auto;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  font-size: 0.9rem;
+}
+
+.mode-segment.active {
+  color: var(--text);
+  background: var(--primary-soft);
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.28);
+}
+
 .hero h1 {
   margin: 0;
+  color: rgba(248, 250, 252, 0.88);
   font-size: clamp(2rem, 9vw, 4rem);
   line-height: 1;
+  text-shadow: 0 0 22px rgba(99, 102, 241, 0.18);
 }
 
 .eyebrow {
@@ -387,6 +421,14 @@ label {
   color: var(--yellow);
 }
 
+.badge.vote-status {
+  min-height: 22px;
+  padding: 0 7px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  opacity: 0.88;
+}
+
 .phase-content {
   display: grid;
   gap: 14px;
@@ -513,6 +555,33 @@ label {
   line-height: 1.25;
 }
 
+.association-bubble {
+  position: relative;
+  display: inline-block;
+  max-width: min(260px, 72vw);
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.13);
+  border: 1px solid rgba(245, 158, 11, 0.34);
+  color: #fde68a;
+  font-size: 0.86rem;
+  font-weight: 850;
+  line-height: 1.28;
+  overflow-wrap: anywhere;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+}
+
+.association-bubble::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: -6px;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 6px solid rgba(245, 158, 11, 0.34);
+}
+
 .vote-target-line strong {
   color: var(--vote-accent);
   font-weight: 900;
@@ -526,9 +595,11 @@ label {
 }
 
 .player-action-button {
-  min-height: 30px;
-  padding: 0 10px;
-  font-size: 0.78rem;
+  min-height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .error-box {
@@ -542,7 +613,7 @@ label {
 }
 
 .discussion-card {
-  gap: 16px;
+  gap: 10px;
 }
 
 .overtime-card {
@@ -561,6 +632,10 @@ label {
   border: 1px solid var(--line);
 }
 
+.timer-box.compact-timer {
+  padding: 10px;
+}
+
 .timer-box span {
   color: var(--muted);
   font-size: 0.86rem;
@@ -571,6 +646,30 @@ label {
 .timer-box strong {
   font-size: clamp(3rem, 18vw, 5.2rem);
   line-height: 1;
+}
+
+.compact-timer strong {
+  font-size: clamp(2.35rem, 13vw, 4rem);
+}
+
+.voting-control-compact {
+  display: grid;
+  gap: 6px;
+}
+
+.voting-control-compact button {
+  min-height: 44px;
+}
+
+.voting-control-compact .helper-text {
+  font-size: 0.86rem;
+}
+
+.voting-control-compact.status-only {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #0b1020;
 }
 
 .current-player-card {
@@ -587,6 +686,30 @@ label {
   line-height: 1.05;
   font-weight: 900;
   overflow-wrap: anywhere;
+}
+
+.association-composer {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #0b1020;
+  border: 1px solid rgba(99, 102, 241, 0.28);
+}
+
+.association-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.association-input-row input {
+  min-height: 44px;
+}
+
+.association-input-row button {
+  min-height: 44px;
 }
 
 .vote-list,
@@ -831,7 +954,7 @@ label {
   display: grid;
   justify-items: center;
   align-content: center;
-  gap: 22px;
+  gap: 14px;
   padding: 28px 22px;
   border-radius: 18px;
   text-align: center;
@@ -877,6 +1000,31 @@ label {
   place-items: center;
 }
 
+.impostor-avatar-asset::before {
+  content: "";
+  position: absolute;
+  inset: 4%;
+  z-index: 2;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow:
+    inset 0 -28px 42px rgba(5, 7, 15, 0.5),
+    inset 0 24px 38px rgba(5, 7, 15, 0.22);
+}
+
+.impostor-avatar-asset::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  opacity: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 43% 39%, rgba(255, 34, 61, 0.72) 0 2.2%, rgba(255, 34, 61, 0.26) 4.5%, transparent 10%),
+    radial-gradient(circle at 58% 39%, rgba(255, 34, 61, 0.72) 0 2.2%, rgba(255, 34, 61, 0.26) 4.5%, transparent 10%);
+  filter: blur(1.5px) drop-shadow(0 0 14px rgba(239, 68, 68, 0.9));
+}
+
 .impostor-neon-ring-img {
   position: absolute;
   inset: -18%;
@@ -904,6 +1052,8 @@ label {
     drop-shadow(0 0 24px rgba(239, 68, 68, 0.28));
   transform: translateZ(0);
   transform-origin: center;
+  -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 58%, rgba(0, 0, 0, 0.86) 72%, transparent 97%);
+  mask-image: radial-gradient(circle at 50% 45%, #000 58%, rgba(0, 0, 0, 0.86) 72%, transparent 97%);
 }
 
 .impostor-avatar-asset.image-failed .impostor-reveal-avatar-img {
@@ -1003,14 +1153,24 @@ label {
   text-shadow: 0 0 12px rgba(239, 68, 68, 0.95), 0 0 30px rgba(239, 68, 68, 0.55);
 }
 
-.impostor-reveal-stage.countdown_1 .impostor-eye,
-.impostor-reveal-stage.nickname_reveal .impostor-eye {
-  animation: eyeBlinkGlow 0.55s ease-in-out 2;
+.impostor-reveal-stage.countdown_5 .impostor-eye,
+.impostor-reveal-stage.countdown_4 .impostor-eye,
+.impostor-reveal-stage.countdown_3 .impostor-eye,
+.impostor-reveal-stage.countdown_2 .impostor-eye,
+.impostor-reveal-stage.countdown_1 .impostor-eye {
+  animation: eyeBlinkGlow 1s ease-in-out infinite;
 }
 
-.impostor-reveal-stage.countdown_1 .impostor-reveal-avatar-img,
-.impostor-reveal-stage.nickname_reveal .impostor-reveal-avatar-img {
-  animation: realAvatarEyePulse 0.75s ease-in-out 2;
+.impostor-reveal-stage.countdown_5 .impostor-avatar-asset::after,
+.impostor-reveal-stage.countdown_4 .impostor-avatar-asset::after,
+.impostor-reveal-stage.countdown_3 .impostor-avatar-asset::after,
+.impostor-reveal-stage.countdown_2 .impostor-avatar-asset::after,
+.impostor-reveal-stage.countdown_1 .impostor-avatar-asset::after {
+  animation: avatarEyeGlowPulse 1s ease-in-out infinite;
+}
+
+.impostor-reveal-stage.countdown_1 .impostor-avatar-asset::after {
+  animation-duration: 0.65s;
 }
 
 .private-victory .impostor-reveal-avatar-img,
@@ -1059,17 +1219,20 @@ label {
 }
 
 .impostor-countdown {
-  position: absolute;
-  inset: 0;
+  position: relative;
   z-index: 6;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-size: clamp(5.5rem, 30vw, 12rem);
+  margin-top: -4px;
+  color: rgba(255, 228, 232, 0.78);
+  font-size: clamp(3.7rem, 19vw, 7.4rem);
   line-height: 1;
   font-weight: 950;
-  text-shadow: 0 0 16px rgba(239, 68, 68, 0.9), 4px 0 rgba(34, 197, 94, 0.35), -4px 0 rgba(99, 102, 241, 0.45);
+  text-shadow:
+    0 0 14px rgba(239, 68, 68, 0.78),
+    0 0 36px rgba(239, 68, 68, 0.36),
+    3px 0 rgba(244, 63, 94, 0.25),
+    -3px 0 rgba(99, 102, 241, 0.32);
   animation: countdownPunch 0.95s ease-out 1;
+  opacity: 0.84;
 }
 
 .impostor-reveal-stage.countdown_1 .impostor-countdown {
@@ -1080,7 +1243,7 @@ label {
   position: relative;
   z-index: 7;
   width: 100%;
-  min-height: 150px;
+  min-height: 120px;
   display: grid;
   align-content: start;
   gap: 10px;
@@ -1088,10 +1251,29 @@ label {
 
 .impostor-pretitle {
   margin: 0;
-  color: #cbd5e1;
+  color: rgba(203, 213, 225, 0.72);
   font-size: clamp(1.05rem, 4.5vw, 1.35rem);
   font-weight: 950;
   letter-spacing: 0.08em;
+  text-shadow: 0 0 18px rgba(239, 68, 68, 0.28);
+}
+
+.impostor-pretitle-overlay {
+  position: absolute;
+  left: 50%;
+  bottom: 16%;
+  z-index: 8;
+  width: min(120%, 360px);
+  transform: translateX(-50%);
+  color: rgba(255, 226, 232, 0.66);
+  font-size: clamp(1rem, 4.8vw, 1.45rem);
+  letter-spacing: 0.1em;
+  text-shadow:
+    0 0 10px rgba(255, 255, 255, 0.16),
+    0 0 26px rgba(239, 68, 68, 0.42),
+    0 2px 14px rgba(0, 0, 0, 0.78);
+  mix-blend-mode: screen;
+  animation: pretitleOverlayReveal 0.7s ease-out both;
 }
 
 .impostor-pretitle.ghost {
@@ -1102,13 +1284,38 @@ label {
   max-width: 100%;
   margin: 0;
   overflow: hidden;
-  color: #fff;
+  color: #ff9aad;
   font-size: clamp(2rem, 9vw, 3.6rem);
   line-height: 1.02;
   font-weight: 950;
   text-overflow: ellipsis;
   white-space: nowrap;
   animation: nicknameReveal 0.55s ease-out both;
+  text-shadow:
+    0 0 16px rgba(244, 63, 94, 0.5),
+    0 0 34px rgba(239, 68, 68, 0.28);
+}
+
+.private-victory .impostor-nickname,
+.impostor-win-green .impostor-nickname,
+.players-win-green .impostor-nickname {
+  color: #67e8f9;
+  text-shadow:
+    0 0 18px rgba(34, 197, 94, 0.42),
+    0 0 32px rgba(56, 189, 248, 0.34);
+}
+
+.public-success .impostor-nickname {
+  color: #fde68a;
+  text-shadow:
+    0 0 18px rgba(245, 158, 11, 0.42),
+    0 0 30px rgba(34, 197, 94, 0.24);
+}
+
+.public-failure .impostor-nickname,
+.players-lost-red .impostor-nickname,
+.impostor-caught-red .impostor-nickname {
+  color: #ff9aad;
 }
 
 .impostor-outcome-title {
@@ -1244,6 +1451,35 @@ label {
   }
 }
 
+@keyframes avatarEyeGlowPulse {
+  0%, 100% {
+    opacity: 0.28;
+    transform: scale(0.96);
+    filter: blur(1.5px) drop-shadow(0 0 10px rgba(239, 68, 68, 0.68));
+  }
+  45% {
+    opacity: 0.68;
+    transform: scale(1.02);
+    filter: blur(1.7px) drop-shadow(0 0 20px rgba(239, 68, 68, 0.95));
+  }
+  62% {
+    opacity: 0.86;
+    transform: scale(1.05);
+    filter: blur(1.4px) drop-shadow(0 0 28px rgba(255, 34, 61, 1));
+  }
+}
+
+@keyframes pretitleOverlayReveal {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
 @keyframes neonRingSlowPulse {
   0%, 100% {
     opacity: 0.7;
@@ -1338,6 +1574,24 @@ label {
   .impostor-reveal-stage::before {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .avatar-grid {
+    max-height: 138px;
+    overflow-y: auto;
+    gap: 6px;
+    padding-right: 2px;
+    overscroll-behavior: contain;
+  }
+
+  .avatar-option {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    min-height: 42px;
+    font-size: 1.2rem;
   }
 }
 
