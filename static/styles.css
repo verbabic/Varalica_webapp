@@ -352,10 +352,9 @@ label {
 }
 
 .qr-panel {
-  display: inline-grid;
-  gap: 10px;
-  justify-items: center;
-  max-width: min(100%, 380px);
+  display: inline-flex;
+  justify-content: center;
+  max-width: min(100%, 392px);
   margin-top: 12px;
   padding: 12px;
   border-radius: 8px;
@@ -364,30 +363,32 @@ label {
 }
 
 .qr-code-box {
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 328px;
   height: 328px;
-  max-width: min(82vw, 328px);
-  max-height: min(82vw, 328px);
+  padding: 16px;
   background: #ffffff;
+  box-sizing: content-box;
 }
 
-.qr-code-box canvas {
+.qr-code-box canvas,
+.qr-code-box img {
   display: block;
   width: 328px;
   height: 328px;
-  max-width: 100%;
-  max-height: 100%;
   background: #ffffff;
+  filter: none;
+  opacity: 1;
   image-rendering: pixelated;
 }
 
 .qr-code-card {
-  padding: 16px;
+  padding: 12px;
   border-radius: 10px;
   background: #ffffff;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  box-shadow: none;
 }
 
 .host-panel {

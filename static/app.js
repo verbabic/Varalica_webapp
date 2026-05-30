@@ -727,18 +727,44 @@ function playerNameText(player) {
 }
 
 function inviteOrigin() {
-  const { hostname, origin } = window.location;
-  if (hostname === "varalica.autolovac.space" || hostname === "91.98.83.121") {
+  const { hostname, origin, port, protocol } = window.location;
+  const host = (hostname || "").toLowerCase();
+
+  if (host === "varalica.autolovac.space" || host === "91.98.83.121") {
     return PRODUCTION_ORIGIN;
   }
-  if (!hostname || hostname === "0.0.0.0") return PRODUCTION_ORIGIN;
+  if (!host || host === "0.0.0.0") {
+    return PRODUCTION_ORIGIN;
+  }
+  if (host === "127.0.0.1") {
+    const portSuffix = port ? `:${port}` : "";
+    return `${protocol}//localhost${portSuffix}`;
+  }
   return origin;
+}
+
+function isValidInviteUrl(url) {
+  if (!url || typeof url !== "string") return false;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed.includes("undefined") || trimmed.includes("null")) return false;
+  try {
+    const parsed = new URL(trimmed);
+    if (!/^https?:$/.test(parsed.protocol)) return false;
+    const host = parsed.hostname.toLowerCase();
+    if (!host || host === "0.0.0.0" || host === "127.0.0.1") return false;
+    const roomMatch = parsed.pathname.match(/^\/room\/([A-Z0-9]{5})$/i);
+    if (!roomMatch) return false;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function inviteLink() {
   const code = (localRoomCode || roomState?.room_code || "").trim().toUpperCase();
   if (!code) return "";
-  return `${inviteOrigin()}/room/${encodeURIComponent(code)}`;
+  const inviteUrl = `${inviteOrigin()}/room/${encodeURIComponent(code)}`;
+  return isValidInviteUrl(inviteUrl) ? inviteUrl : "";
 }
 
 function isAssociationInputFocused() {
@@ -1700,8 +1726,8 @@ async function copyRoomCode() {
 }
 
 function toggleQrPanel() {
-  const link = inviteLink();
-  if (!link) {
+  const inviteUrl = inviteLink();
+  if (!inviteUrl) {
     showError("QR link nije spreman. Pokušaj ponovo.");
     return;
   }
@@ -1715,21 +1741,34 @@ function toggleQrPanel() {
     <div class="qr-code-card">
       <div id="roomQrCode" class="qr-code-box" aria-label="QR kod za ulazak u sobu"></div>
     </div>
-    <p class="helper-text">Scan to join</p>
   `;
-  console.log("QR invite URL:", link);
+  console.log("QR invite URL:", inviteUrl);
   const qrContainer = document.querySelector("#roomQrCode");
   qrContainer.innerHTML = "";
-  new window.QRCode(qrContainer, {
-    text: link,
-    width: 328,
-    height: 328,
-    colorDark: "#000000",
-    colorLight: "#ffffff",
-    correctLevel: window.QRCode.CorrectLevel.M,
-  });
-  qrPanel.classList.remove("hidden");
-  showQrButton.textContent = "Sakrij QR";
+  try {
+    if (typeof window.QRCode !== "function") {
+      throw new Error("QR library not loaded");
+    }
+    new window.QRCode(qrContainer, {
+      text: inviteUrl,
+      width: 328,
+      height: 328,
+      colorDark: "#000000",
+      colorLight: "#ffffff",
+      correctLevel: window.QRCode.CorrectLevel.M,
+    });
+    qrContainer.removeAttribute("title");
+    qrContainer.querySelectorAll("canvas, img").forEach((node) => {
+      node.removeAttribute("title");
+    });
+    qrPanel.classList.remove("hidden");
+    showQrButton.textContent = "Sakrij QR";
+  } catch (error) {
+    console.error("QR generation failed:", error);
+    showError("QR kod nije mogao biti generisan. Koristi Kopiraj link.");
+    qrPanel.innerHTML = "";
+    qrPanel.classList.add("hidden");
+  }
 }
 
 async function apiRequest(url, body) {
