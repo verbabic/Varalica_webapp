@@ -955,7 +955,7 @@ label {
 
 .discussion-monitor-layout {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 6px;
   align-items: start;
 }
@@ -964,6 +964,12 @@ label {
   display: grid;
   gap: 5px;
   min-width: 0;
+  align-content: start;
+}
+
+.discussion-card:not(:has(.association-composer)),
+.overtime-card:not(:has(.association-composer)) {
+  padding-bottom: 8px;
 }
 
 .discussion-monitor-top-row {
@@ -1102,6 +1108,14 @@ label {
   background: rgba(15, 23, 42, 0.72);
 }
 
+.reaction-row-left {
+  grid-column: 1;
+}
+
+.reaction-row-right {
+  grid-column: 3;
+}
+
 .reaction-button {
   display: grid;
   place-items: center;
@@ -1144,28 +1158,42 @@ label {
   width: auto;
 }
 
+.discussion-action-button.compact-action:disabled,
+#nextPlayerButton.compact-action:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+  filter: grayscale(0.15);
+}
+
 .association-composer {
   display: grid;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: 4px;
+  margin-top: 2px;
+  padding: 5px 7px;
   border-radius: 8px;
   background: #0b1020;
   border: 1px solid rgba(99, 102, 241, 0.28);
 }
 
+.association-composer label {
+  margin-bottom: 0;
+  font-size: 0.78rem;
+}
+
 .association-input-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
 }
 
 .association-input-row input {
-  min-height: 40px;
+  min-height: 34px;
 }
 
 .association-input-row button {
-  min-height: 40px;
+  min-height: 34px;
+  padding: 0 10px;
 }
 
 .vote-list,
@@ -1238,21 +1266,21 @@ label {
 .voting-checklist {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 5px;
 }
 
 .voting-check-item {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   min-width: 0;
-  padding: 9px 10px;
-  border-radius: 8px;
+  padding: 6px 7px;
+  border-radius: 6px;
   border: 1px solid var(--line);
   background: #0b1020;
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: 0.6rem;
   font-weight: 800;
 }
 
@@ -1260,17 +1288,18 @@ label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 0.92em;
 }
 
 .vote-check-box {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
   border: 1px solid rgba(156, 163, 175, 0.42);
   color: #ffffff;
-  font-size: 0.9rem;
+  font-size: 0.58rem;
   line-height: 1;
 }
 
@@ -1288,13 +1317,60 @@ label {
 
 @media (max-width: 420px) {
   .voting-checklist {
-    gap: 6px;
+    gap: 4px;
   }
 
   .voting-check-item {
-    padding: 8px;
-    font-size: 0.84rem;
+    padding: 5px 6px;
+    font-size: 0.56rem;
   }
+}
+
+.voting-phase-card .vote-progress-private {
+  margin-bottom: 2px;
+}
+
+.voting-phase-card .vote-progress-private strong {
+  font-size: 1.19rem;
+}
+
+.voting-phase-card .vote-progress-private span {
+  font-size: 0.82rem;
+}
+
+.voting-phase-card .vote-list {
+  gap: 7px;
+}
+
+.voting-phase-card .vote-option {
+  gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+}
+
+.voting-phase-card .vote-option strong {
+  font-size: 0.88rem;
+}
+
+.voting-phase-card .vote-option .helper-text {
+  font-size: 0.72rem;
+  margin-top: 2px;
+}
+
+.voting-phase-card .vote-button {
+  min-width: 64px;
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 0.78rem;
+}
+
+.voting-phase-card .vote-option .inline-player {
+  gap: 5px;
+  font-size: 0.92em;
+}
+
+.voting-phase-card .player-avatar {
+  font-size: 1em;
 }
 
 .results-card {
@@ -2414,21 +2490,11 @@ label {
   }
 
   .discussion-monitor-layout {
-    display: block;
-  }
-
-  .discussion-monitor-layout > .reaction-row {
-    flex-direction: row;
-    justify-content: center;
-    align-self: stretch;
-    gap: 6px;
-    margin-bottom: 8px;
-    padding: 4px 8px;
-    border-radius: 999px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
   .discussion-monitor-body {
-    gap: 10px;
+    gap: 8px;
   }
 
   .discussion-card,

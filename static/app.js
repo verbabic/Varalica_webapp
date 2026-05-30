@@ -46,7 +46,8 @@ const IMPOSTOR_REVEAL_AVATAR_URL = "/static/assets/Varalica_crveno.png";
 const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
 const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
 const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
-const REACTION_EMOJIS = ["😂", "🧐", "😎", "🤢", "🤥"];
+const REACTION_EMOJIS_LEFT = ["😂", "🧐", "😎"];
+const REACTION_EMOJIS_RIGHT = ["🤢", "🤥", "🙈"];
 const AVATARS = [
   "🥸","🤤","😁","😇","🥳","😎","😝","👹","😈","🤠","🤡","👻","💩","👽","👾","🤖","🎃","😺","🧠","👶",
   "👩‍🦰","👨🏻","👨🏿","👨🏽","👩🏾‍🦰","👩🏻‍🦱","🧑🏻‍🦱","🧑🏾‍🦱","👨🏿‍🦰","👨🏽‍🦳","🧔","🧔🏼‍♂️","👲","🧕","👳🏻‍♂️","👮‍♀️","👮","👮🏻‍♂️","👷‍♀️","💂‍♀️",
@@ -957,7 +958,9 @@ function updateDiscussionShellInPlace() {
     openButton.disabled = !data.voting_unlocked;
   }
   if (nextButton) {
-    nextButton.disabled = nextPlayerLockSecondsLeft() > 0;
+    const lockLeft = nextPlayerLockSecondsLeft();
+    nextButton.disabled = lockLeft > 0;
+    nextButton.textContent = lockLeft > 0 ? `Sljedeći (${lockLeft})` : "Sljedeći igrač";
   }
   updateAssociationComposerState();
   syncAssociationBannerStack(roomState.association_banners);
@@ -1368,18 +1371,19 @@ function renderDiscussionActionRow(discussion, isHost, canAdvanceTurn, nextLockL
   const voteLocked = !discussion.voting_unlocked;
   const buttons = [];
   if (canAdvanceTurn) {
-    buttons.push(`<button id="nextPlayerButton" class="discussion-action-button compact-action" ${nextLockLeft > 0 ? "disabled" : ""}>Sljedeći igrač</button>`);
+    const nextLabel = nextLockLeft > 0 ? `Sljedeći (${nextLockLeft})` : "Sljedeći igrač";
+    buttons.push(`<button id="nextPlayerButton" class="discussion-action-button compact-action" ${nextLockLeft > 0 ? "disabled" : ""} title="${nextLockLeft > 0 ? `Dostupno za ${nextLockLeft}s` : "Prebaci na sljedećeg igrača"}">${nextLabel}</button>`);
   }
   if (isHost) {
-    buttons.push(`<button id="openFinalVotingButton" class="discussion-action-button compact-action" ${voteLocked ? "disabled" : ""}>Otvori glasanje</button>`);
+    buttons.push(`<button id="openFinalVotingButton" class="discussion-action-button compact-action" ${voteLocked ? "disabled" : ""} title="${voteLocked ? "Glasanje još nije otključano" : "Otvori finalno glasanje"}">Otvori glasanje</button>`);
   }
   if (!buttons.length) return "";
   return `<div class="discussion-actions">${buttons.join("")}</div>`;
 }
 
-function bindDiscussionActions(canAdvanceTurn, nextLockLeft) {
+function bindDiscussionActions(canAdvanceTurn) {
   const nextButton = document.querySelector("#nextPlayerButton");
-  if (nextButton && canAdvanceTurn && nextLockLeft <= 0) {
+  if (nextButton && canAdvanceTurn) {
     nextButton.addEventListener("click", nextPlayer);
   }
   const openButton = document.querySelector("#openFinalVotingButton");
@@ -1397,18 +1401,19 @@ function renderDiscussion() {
   phaseContent.innerHTML = `
     <div class="phase-card discussion-card">
       <div class="discussion-monitor-layout">
-        ${renderReactionRow(discussion.current_player_id)}
+        ${renderReactionColumn("left", REACTION_EMOJIS_LEFT, discussion.current_player_id)}
         <div class="discussion-monitor-body">
           ${renderAssociationBannerStack(roomState.association_banners)}
           ${renderDiscussionMonitorHeader(currentPlayer, "Diskusija", discussion.remaining_seconds)}
           ${renderDiscussionActionRow(discussion, isHost, canAdvanceTurn, nextLockLeft)}
           ${renderAssociationComposer(discussion.current_player_id)}
         </div>
+        ${renderReactionColumn("right", REACTION_EMOJIS_RIGHT, discussion.current_player_id)}
       </div>
     </div>
   `;
 
-  bindDiscussionActions(canAdvanceTurn, nextLockLeft);
+  bindDiscussionActions(canAdvanceTurn);
   bindReactionRow();
   bindAssociationComposer();
   lastAssociationBannerStackKey = associationBannerStackKey(roomState.association_banners);
@@ -1444,18 +1449,19 @@ function renderOvertime() {
     <div class="phase-card overtime-card">
       <p class="overtime-compact-title">PRODUŽETAK — Glasanje je nerešeno</p>
       <div class="discussion-monitor-layout">
-        ${renderReactionRow(overtime.current_player_id)}
+        ${renderReactionColumn("left", REACTION_EMOJIS_LEFT, overtime.current_player_id)}
         <div class="discussion-monitor-body">
           ${renderAssociationBannerStack(roomState.association_banners)}
           ${renderDiscussionMonitorHeader(currentPlayer, "Produžetak", overtime.remaining_seconds)}
           ${renderDiscussionActionRow(overtime, isHost, canAdvanceTurn, nextLockLeft)}
           ${renderAssociationComposer(overtime.current_player_id)}
         </div>
+        ${renderReactionColumn("right", REACTION_EMOJIS_RIGHT, overtime.current_player_id)}
       </div>
     </div>
   `;
 
-  bindDiscussionActions(canAdvanceTurn, nextLockLeft);
+  bindDiscussionActions(canAdvanceTurn);
   bindReactionRow();
   bindAssociationComposer();
   lastAssociationBannerStackKey = associationBannerStackKey(roomState.association_banners);
@@ -1477,12 +1483,12 @@ function renderAssociationComposer(currentPlayerId) {
   `;
 }
 
-function renderReactionRow(targetPlayerId) {
-  if (!targetPlayerId) return "";
-  const buttons = REACTION_EMOJIS.map((emoji) => (
+function renderReactionColumn(side, emojis, targetPlayerId) {
+  if (!targetPlayerId || !emojis.length) return "";
+  const buttons = emojis.map((emoji) => (
     `<button class="reaction-button" type="button" data-reaction-emoji="${escapeHtml(emoji)}" data-reaction-target-id="${escapeHtml(targetPlayerId)}" aria-label="Reakcija ${escapeHtml(emoji)}">${escapeHtml(emoji)}</button>`
   )).join("");
-  return `<div class="reaction-row" aria-label="Reakcije">${buttons}</div>`;
+  return `<div class="reaction-row reaction-row-${side}" aria-label="Reakcije">${buttons}</div>`;
 }
 
 function bindReactionRow() {
@@ -1539,7 +1545,7 @@ function renderFinalVoting() {
   const requiredTargets = roomState.required_vote_targets || 1;
 
   phaseContent.innerHTML = `
-    <div class="phase-card">
+    <div class="phase-card voting-phase-card">
       <h2>${isOvertimeVote ? "Glasanje nakon produzetka" : "Finalno glasanje"}</h2>
       <p class="helper-text">
         ${requiredTargets === 2 ? "Odaberi 2 igrača za koje misliš da su Varalice." : "Odaberi igrača za kojeg misliš da je Varalica."}
