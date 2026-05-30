@@ -95,6 +95,17 @@ button.danger {
   border: 1px solid rgba(255, 107, 107, 0.42);
 }
 
+button.replay {
+  background: rgba(34, 197, 94, 0.12);
+  color: #bbf7d0;
+  border: 1px solid rgba(34, 197, 94, 0.42);
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.12);
+}
+
+button.replay:hover {
+  filter: brightness(1.08);
+}
+
 button.small {
   width: auto;
   min-height: 40px;
@@ -182,6 +193,11 @@ label {
   color: var(--text);
   background: var(--primary-soft);
   box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.28);
+}
+
+.mode-segment:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .hero h1 {

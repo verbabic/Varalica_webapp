@@ -89,6 +89,10 @@ class StartRoundAction(PlayerAction):
     varalica_count: int | None = None
 
 
+class PlayModeAction(PlayerAction):
+    play_mode: str | None = None
+
+
 class VoteAction(BaseModel):
     player_id: str
     target_id: str | None = None
@@ -358,7 +362,23 @@ async def next_player(room_code: str, action: PlayerAction) -> dict:
 async def reset_room(room_code: str, action: PlayerAction) -> dict:
     room = get_room(room_code)
     ensure_host(room, action.player_id)
+    if room.state == "lobby":
+        raise HTTPException(status_code=400, detail="Soba je vec u postavkama.")
     reset_room_to_lobby(room)
+    persist_room(room)
+    await broadcast_room(room)
+    return {"ok": True}
+
+
+@app.post("/api/rooms/{room_code}/play-mode")
+async def update_play_mode(room_code: str, action: PlayModeAction) -> dict:
+    room = get_room(room_code)
+    if room.state != "lobby":
+        raise HTTPException(status_code=400, detail="Nacin igre se moze promijeniti samo prije pocetka runde.")
+    player = room.players.get(action.player_id)
+    if player is None:
+        raise HTTPException(status_code=404, detail="Igrac nije u sobi.")
+    player.play_mode = normalize_play_mode(action.play_mode)
     persist_room(room)
     await broadcast_room(room)
     return {"ok": True}
@@ -1078,7 +1098,8 @@ def reset_room_to_lobby(room: Room) -> None:
     room.state = "lobby"
     room.varalica_id = None
     room.varalica_ids.clear()
-    room.selected_varalica_count = 1
+    room.recent_varalica_ids.clear()
+    room.selected_varalica_count = normalize_varalica_count(1, len(room.players))
     room.word = None
     room.current_word_id = None
     room.selected_hint = None
@@ -1091,6 +1112,7 @@ def reset_room_to_lobby(room: Room) -> None:
     room.active_reactions.clear()
     room.overtime_started_at = None
     room.overtime_used = False
+    room.turn_version += 1
     room.round_number = 1
     room.last_event = None
     room.kicked_player_ids.clear()

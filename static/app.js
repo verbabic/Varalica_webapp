@@ -111,7 +111,7 @@ roomCodeInput.addEventListener("input", () => {
 copyCodeButton.addEventListener("click", copyRoomCode);
 copyLinkButton.addEventListener("click", copyRoomLink);
 showQrButton.addEventListener("click", toggleQrPanel);
-resetRoomButton.addEventListener("click", resetRoom);
+resetRoomButton.addEventListener("click", promptRestartRoom);
 leaveRoomButton.addEventListener("click", showLeaveModal);
 rulesButton.addEventListener("click", () => showModal(rulesModal));
 liveModeButton.addEventListener("click", () => setPlayMode("live"));
@@ -163,14 +163,35 @@ function updateJoinButtons() {
 }
 
 function setPlayMode(mode) {
-  selectedPlayMode = mode === "chat" ? "chat" : "live";
+  if (roomState && roomState.state !== "lobby") return;
+  const nextMode = mode === "chat" ? "chat" : "live";
+  selectedPlayMode = nextMode;
   localStorage.setItem("varalica_play_mode", selectedPlayMode);
+  renderModeToggle();
+  if (localRoomCode && localPlayerId && roomState?.state === "lobby") {
+    apiRequest(`/api/rooms/${localRoomCode}/play-mode`, {
+      player_id: localPlayerId,
+      play_mode: selectedPlayMode,
+    });
+  }
+}
+
+function syncPlayModeFromRoom() {
+  if (!roomState) return;
+  const me = roomState.players.find((player) => player.id === roomState.viewer_id);
+  if (me?.play_mode) {
+    selectedPlayMode = me.play_mode;
+    localStorage.setItem("varalica_play_mode", selectedPlayMode);
+  }
   renderModeToggle();
 }
 
 function renderModeToggle() {
+  const locked = Boolean(roomState && roomState.state !== "lobby");
   liveModeButton.classList.toggle("active", selectedPlayMode === "live");
   chatModeButton.classList.toggle("active", selectedPlayMode === "chat");
+  liveModeButton.disabled = locked;
+  chatModeButton.disabled = locked;
 }
 
 async function createRoom() {
@@ -362,6 +383,13 @@ function connectSocket() {
       hasRevealedPrivateCard = false;
       resetRevealSequence();
     }
+    if (roomState.state === "lobby" && previousState && previousState !== "lobby") {
+      hasRevealedPrivateCard = false;
+      resetRevealSequence();
+      associationDraft = "";
+      sessionStorage.removeItem("varalica_association_draft");
+      syncPlayModeFromRoom();
+    }
     if (roomState.state === "results" && previousState !== "results") {
       startRevealCountdown();
     }
@@ -515,10 +543,17 @@ async function startNewRound() {
   await apiRequest(`/api/rooms/${localRoomCode}/new-round`, { player_id: localPlayerId });
 }
 
+function promptRestartRoom() {
+  showConfirmAction("Restartovati sobu i vratiti je na postavke?", () => resetRoom(), false);
+}
+
 async function resetRoom() {
   clearError();
   touchSession();
   hasRevealedPrivateCard = false;
+  resetRevealSequence();
+  associationDraft = "";
+  sessionStorage.removeItem("varalica_association_draft");
   await apiRequest(`/api/rooms/${localRoomCode}/reset`, { player_id: localPlayerId });
 }
 
@@ -825,6 +860,7 @@ function render() {
   roundDisplay.textContent = `Runda ${roomState.round_number || 1}`;
   playerCountBadge.textContent = `${roomState.player_count}/${roomState.max_players}`;
   resetRoomButton.classList.add("hidden");
+  renderModeToggle();
   renderHostPanel();
   renderPlayers();
 
@@ -884,7 +920,7 @@ function renderHostPanel() {
   }
 
   const roundHasStarted = roomState.state !== "lobby";
-  const actions = roundHasStarted ? [`<button id="hostResetRoomButton" class="small danger">Nova runda</button>`] : [];
+  const actions = roundHasStarted ? [`<button id="hostResetRoomButton" class="small replay">Restartuj sobu</button>`] : [];
   if (roomState.state === "reveal") {
     actions.unshift(`<button id="hostChangeWordButton" class="small secondary">Promijeni riječ</button>`);
   } else if (["discussion", "vote_request", "ready_for_final_voting", "final_voting", "overtime", "overtime_voting", "voting_complete", "results"].includes(roomState.state)) {
@@ -915,7 +951,7 @@ function renderHostPanel() {
   }
 
   hostPanelActions.innerHTML = actions.join("");
-  document.querySelector("#hostResetRoomButton")?.addEventListener("click", resetRoom);
+  document.querySelector("#hostResetRoomButton")?.addEventListener("click", promptRestartRoom);
   document.querySelector("#hostChangeWordButton")?.addEventListener("click", changeWord);
   document.querySelector("#hostOpenVotingButton")?.addEventListener("click", openFinalVoting);
   document.querySelector("#transferHostSelect")?.addEventListener("change", (event) => {
@@ -933,6 +969,12 @@ function renderLobby() {
   const categories = (roomState.categories || ["Sve kategorije"]).filter((category) => category !== "Balkan");
   const durationOptions = roomState.allowed_discussion_seconds || [120, 180, 300];
   const allowedVaralicaCounts = roomState.allowed_varalica_counts || [1];
+  selectedCategory = roomState.selected_category || selectedCategory;
+  selectedDiscussionSeconds = roomState.discussion_duration_seconds || selectedDiscussionSeconds;
+  if (allowedVaralicaCounts.includes(roomState.selected_varalica_count)) {
+    selectedVaralicaCount = roomState.selected_varalica_count;
+    localStorage.setItem("varalica_count", String(selectedVaralicaCount));
+  }
   if (!allowedVaralicaCounts.includes(selectedVaralicaCount)) {
     selectedVaralicaCount = 1;
     localStorage.setItem("varalica_count", "1");
@@ -1622,14 +1664,14 @@ function renderResults() {
       }
       ${
         isHost && revealSequence.showReplay
-          ? `<button id="newRoundButton">Igraj ponovo</button>`
-          : `<p class="helper-text">${isHost ? "Igraj ponovo ce biti dostupno za trenutak." : "Host moze pokrenuti novu rundu."}</p>`
+          ? `<button id="restartRoomButton" class="replay">Restartuj sobu</button>`
+          : `<p class="helper-text">${isHost ? "Restartuj sobu ce biti dostupno za trenutak." : "Host moze restartovati sobu."}</p>`
       }
     </div>
   `;
 
-  const newRoundButton = document.querySelector("#newRoundButton");
-  if (newRoundButton) newRoundButton.addEventListener("click", startNewRound);
+  const restartRoomButton = document.querySelector("#restartRoomButton");
+  if (restartRoomButton) restartRoomButton.addEventListener("click", promptRestartRoom);
 }
 
 function renderPlayers() {
