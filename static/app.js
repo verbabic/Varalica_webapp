@@ -1,4 +1,7 @@
 const setupView = document.querySelector("#setupView");
+const expiredRoomView = document.querySelector("#expiredRoomView");
+const expiredRoomCodeDisplay = document.querySelector("#expiredRoomCodeDisplay");
+const homeButton = document.querySelector("#homeButton");
 const roomView = document.querySelector("#roomView");
 const playerNameInput = document.querySelector("#playerName");
 const roomCodeInput = document.querySelector("#roomCode");
@@ -94,9 +97,7 @@ let lastAssociationBannerStackKey = "";
 const pathRoomMatch = window.location.pathname.match(/^\/room\/([A-Z0-9]{5})$/i);
 if (pathRoomMatch) {
   inviteRoomCode = pathRoomMatch[1].toUpperCase();
-  roomCodeInput.value = inviteRoomCode;
-  inviteNotice.textContent = `Pridruzuješ se sobi ${inviteRoomCode}. Unesi ime i klikni “Pridruzi se”.`;
-  inviteNotice.classList.remove("hidden");
+  setupView.classList.add("hidden");
   createRoomButton.classList.add("hidden");
 }
 
@@ -104,12 +105,13 @@ playerNameInput.value = sessionStorage.getItem("varalica_username") || "";
 
 createRoomButton.addEventListener("click", createRoom);
 joinRoomButton.addEventListener("click", joinRoom);
+homeButton.addEventListener("click", goToHome);
 playerNameInput.addEventListener("input", () => {
   sessionStorage.setItem("varalica_username", playerNameInput.value.trim());
   updateJoinButtons();
 });
 roomCodeInput.addEventListener("input", () => {
-  roomCodeInput.value = roomCodeInput.value.toUpperCase().replace(/[O0]/g, "");
+  roomCodeInput.value = roomCodeInput.value.replace(/[^1-9]/g, "").slice(0, 5);
 });
 copyCodeButton.addEventListener("click", copyRoomCode);
 copyLinkButton.addEventListener("click", copyRoomLink);
@@ -163,9 +165,10 @@ function toggleRoomPanel() {
 }
 
 function applyRoomPanelCollapse() {
-  const roomPanel = document.querySelector(".room-panel");
-  if (!roomPanel || !roomPanelToggle) return;
-  roomPanel.classList.toggle("is-collapsed", roomPanelCollapsed);
+  const appShell = document.querySelector(".app-shell");
+  if (!roomPanelToggle) return;
+  const inRoom = !roomView.classList.contains("hidden");
+  appShell?.classList.toggle("room-compact-collapsed", roomPanelCollapsed && inRoom);
   roomPanelToggle.setAttribute("aria-expanded", roomPanelCollapsed ? "false" : "true");
   roomPanelToggle.textContent = roomPanelCollapsed ? "▼" : "▲";
 }
@@ -241,9 +244,25 @@ async function joinRoom() {
     showError("Unesi kod sobe.");
     return;
   }
-  const result = await apiRequest(`/api/rooms/${code}/join`, { name, avatar: selectedAvatar || null, play_mode: selectedPlayMode });
-  if (!result) return;
-  enterRoom(result.room_code, result.player_id, result.avatar);
+  try {
+    const response = await fetch(`/api/rooms/${code}/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, avatar: selectedAvatar || null, play_mode: selectedPlayMode }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      if (response.status === 404 && isExpiredRoomDetail(data.detail)) {
+        showExpiredRoomUI(code);
+        return;
+      }
+      showError(data.detail || "Doslo je do greske.");
+      return;
+    }
+    enterRoom(data.room_code, data.player_id, data.avatar);
+  } catch {
+    showError("Nije moguce spojiti se na server.");
+  }
 }
 
 function enterRoom(roomCode, playerId, avatar) {
@@ -263,6 +282,7 @@ function enterRoom(roomCode, playerId, avatar) {
   setupView.classList.add("hidden");
   roomView.classList.remove("hidden");
   connectionStatus.classList.remove("hidden");
+  applyRoomPanelCollapse();
   connectSocket();
 }
 
@@ -610,6 +630,7 @@ async function leaveRoom() {
   roomState = null;
   roomView.classList.add("hidden");
   setupView.classList.remove("hidden");
+  applyRoomPanelCollapse();
   window.history.replaceState({}, "", "/");
 }
 
@@ -702,22 +723,83 @@ function clearStoredSession() {
   localStorage.removeItem("varalica_last_active_at");
 }
 
-function handleExpiredRoom() {
+function isExpiredRoomDetail(detail) {
+  const message = String(detail || "").toLowerCase();
+  return message.includes("istekla") || message.includes("ne postoji");
+}
+
+function showValidInviteUI(code) {
+  expiredRoomView.classList.add("hidden");
+  setupView.classList.remove("hidden");
+  roomView.classList.add("hidden");
+  homeButton.classList.add("hidden");
+  roomCodeInput.value = code;
+  inviteNotice.textContent = `Pridruzuješ se sobi ${code}. Unesi ime i klikni “Pridruzi se”.`;
+  inviteNotice.classList.remove("hidden");
+  createRoomButton.classList.add("hidden");
+  clearError();
+  updateJoinButtons();
+}
+
+function showExpiredRoomUI(code) {
   shouldReconnectSocket = false;
   stopHeartbeat();
   if (socket) socket.close();
   clearStoredSession();
+  inviteRoomCode = "";
   localRoomCode = "";
   localPlayerId = "";
   roomState = null;
+
+  setupView.classList.add("hidden");
   roomView.classList.add("hidden");
-  setupView.classList.remove("hidden");
+  expiredRoomView.classList.remove("hidden");
+  homeButton.classList.remove("hidden");
   inviteNotice.classList.add("hidden");
+  connectionStatus.classList.add("hidden");
+  clearError();
+
+  if (code) {
+    expiredRoomCodeDisplay.textContent = `Kod: ${code}`;
+    expiredRoomCodeDisplay.classList.remove("hidden");
+  } else {
+    expiredRoomCodeDisplay.textContent = "";
+    expiredRoomCodeDisplay.classList.add("hidden");
+  }
+
+  setConnectionMode("disconnected");
+  applyRoomPanelCollapse();
+}
+
+function goToHome() {
+  shouldReconnectSocket = false;
+  stopHeartbeat();
+  if (socket) socket.close();
+  clearStoredSession();
+  inviteRoomCode = "";
+  localRoomCode = "";
+  localPlayerId = "";
+  roomState = null;
+
+  expiredRoomView.classList.add("hidden");
+  setupView.classList.remove("hidden");
+  roomView.classList.add("hidden");
+  homeButton.classList.add("hidden");
+  inviteNotice.classList.add("hidden");
+  roomCodeInput.value = "";
   createRoomButton.classList.remove("hidden");
+  connectionStatus.classList.add("hidden");
+  clearError();
   updateJoinButtons();
   window.history.replaceState({}, "", "/");
   setConnectionMode("disconnected");
-  showToast("Soba je istekla", "error");
+  applyRoomPanelCollapse();
+}
+
+function handleExpiredRoom() {
+  const code = localRoomCode || inviteRoomCode || roomCodeInput.value.trim().toUpperCase();
+  showExpiredRoomUI(code);
+  window.history.replaceState({}, "", "/");
 }
 
 function handleKicked(message) {
@@ -736,6 +818,7 @@ function handleKicked(message) {
   updateJoinButtons();
   window.history.replaceState({}, "", "/");
   setConnectionMode("disconnected");
+  applyRoomPanelCollapse();
   showToast(message, "error");
 }
 
@@ -846,22 +929,35 @@ function updateAssociationComposerState() {
   button.disabled = !isMyTurn || input.value.trim().length === 0;
 }
 
+function hasDiscussionShell() {
+  if (roomState.state === "discussion") {
+    return Boolean(document.querySelector(".discussion-card #discussionMonitorHeader"));
+  }
+  if (roomState.state === "overtime") {
+    return Boolean(document.querySelector(".overtime-card #discussionMonitorHeader"));
+  }
+  return false;
+}
+
 function updateDiscussionShellInPlace() {
   const timerValue = document.querySelector("#discussionTimerValue");
   const currentName = document.querySelector("#currentPlayerName");
   const openButton = document.querySelector("#openFinalVotingButton");
+  const nextButton = document.querySelector("#nextPlayerButton");
   const data = roomState.state === "overtime" ? roomState.overtime : roomState.discussion;
-  if (!data) return false;
+  if (!data || !timerValue) return false;
 
   const currentPlayer = roomState.players.find((player) => player.id === data.current_player_id);
-  if (timerValue) timerValue.textContent = formatSeconds(data.remaining_seconds);
+  timerValue.textContent = formatSeconds(data.remaining_seconds);
   if (currentName) currentName.textContent = playerNameText(currentPlayer);
   document.querySelectorAll("[data-reaction-target-id]").forEach((button) => {
     button.dataset.reactionTargetId = data.current_player_id || "";
   });
   if (openButton && roomState.viewer_id === roomState.host_id) {
-    const voteLocked = !data.voting_unlocked;
-    openButton.disabled = voteLocked;
+    openButton.disabled = !data.voting_unlocked;
+  }
+  if (nextButton) {
+    nextButton.disabled = nextPlayerLockSecondsLeft() > 0;
   }
   updateAssociationComposerState();
   syncAssociationBannerStack(roomState.association_banners);
@@ -869,7 +965,39 @@ function updateDiscussionShellInPlace() {
 }
 
 function associationBannerStackKey(banners) {
-  return (banners || []).map((banner) => `${banner.id}:${banner.expires_at}`).join("|");
+  return (banners || []).map((banner) => banner.id).join("|");
+}
+
+function associationBannerMarkup(banner) {
+  return `
+    <span class="association-banner-avatar">${escapeHtml(banner.player_avatar || "🎲")}</span>
+    <span class="association-banner-body">
+      <strong>${escapeHtml(banner.player_name || "Nepoznato")}:</strong>
+      “${escapeHtml(banner.text)}”
+    </span>
+  `;
+}
+
+function createAssociationBannerElement(banner, { animate = false } = {}) {
+  const element = document.createElement("div");
+  element.className = animate ? "association-banner association-banner-enter" : "association-banner";
+  element.dataset.bannerId = banner.id;
+  element.dataset.expiresAt = String(banner.expires_at);
+  element.innerHTML = associationBannerMarkup(banner);
+  if (animate) {
+    element.addEventListener(
+      "animationend",
+      () => {
+        element.classList.remove("association-banner-enter");
+      },
+      { once: true },
+    );
+  }
+  return element;
+}
+
+function updateAssociationBannerElement(element, banner) {
+  element.dataset.expiresAt = String(banner.expires_at);
 }
 
 function renderAssociationBannerStack(banners) {
@@ -878,11 +1006,7 @@ function renderAssociationBannerStack(banners) {
     .map(
       (banner) => `
         <div class="association-banner" data-banner-id="${escapeHtml(banner.id)}" data-expires-at="${banner.expires_at}">
-          <span class="association-banner-avatar">${escapeHtml(banner.player_avatar || "🎲")}</span>
-          <span class="association-banner-body">
-            <strong>${escapeHtml(banner.player_name || "Nepoznato")}:</strong>
-            “${escapeHtml(banner.text)}”
-          </span>
+          ${associationBannerMarkup(banner)}
         </div>
       `,
     )
@@ -893,24 +1017,79 @@ function renderAssociationBannerStack(banners) {
 function syncAssociationBannerStack(banners) {
   const card = document.querySelector(".discussion-card, .overtime-card");
   if (!card) return;
-  const key = associationBannerStackKey(banners);
-  const existingStack = card.querySelector("#associationBannerStack");
-  if (!banners?.length) {
-    existingStack?.remove();
+
+  const bannerList = banners || [];
+  let stack = card.querySelector("#associationBannerStack");
+
+  if (!bannerList.length) {
+    stack?.remove();
     lastAssociationBannerStackKey = "";
     return;
   }
-  if (key === lastAssociationBannerStackKey && existingStack) return;
-  lastAssociationBannerStackKey = key;
-  const html = renderAssociationBannerStack(banners);
-  if (existingStack) {
-    existingStack.outerHTML = html;
+
+  const idsKey = associationBannerStackKey(bannerList);
+  if (idsKey === lastAssociationBannerStackKey && stack) {
     return;
   }
-  const anchor = card.querySelector(".timer-box");
-  if (anchor) {
-    anchor.insertAdjacentHTML("afterend", html);
+
+  if (!stack) {
+    stack = document.createElement("div");
+    stack.id = "associationBannerStack";
+    stack.className = "association-banner-stack";
+    const body = card.querySelector(".discussion-monitor-body");
+    const anchor = body?.querySelector("#discussionMonitorHeader");
+    if (body && anchor) {
+      body.insertBefore(stack, anchor);
+    } else if (body) {
+      body.prepend(stack);
+    } else {
+      card.prepend(stack);
+    }
   }
+
+  const existingById = new Map();
+  stack.querySelectorAll(".association-banner").forEach((element) => {
+    existingById.set(element.dataset.bannerId, element);
+  });
+
+  const nextIds = new Set(bannerList.map((banner) => banner.id));
+  existingById.forEach((element, id) => {
+    if (!nextIds.has(id)) {
+      element.remove();
+    }
+  });
+
+  bannerList.forEach((banner, index) => {
+    let element = stack.querySelector(`[data-banner-id="${banner.id}"]`);
+    const isNew = !element;
+    if (isNew) {
+      element = createAssociationBannerElement(banner, { animate: true });
+    } else {
+      updateAssociationBannerElement(element, banner);
+    }
+
+    const referenceNode = stack.children[index] || null;
+    if (stack.children[index] !== element) {
+      stack.insertBefore(element, referenceNode);
+    }
+  });
+
+  lastAssociationBannerStackKey = idsKey;
+}
+
+function renderDiscussionMonitorHeader(currentPlayer, phaseLabel, remainingSeconds) {
+  return `
+    <div id="discussionMonitorHeader" class="discussion-monitor-top-row">
+      <div class="current-player-card compact-current-player">
+        <p class="eyebrow">Trenutni igrač</p>
+        <p id="currentPlayerName" class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
+      </div>
+      <div class="timer-box compact-timer compact-timer-inline">
+        <span>${escapeHtml(phaseLabel)}</span>
+        <strong id="discussionTimerValue">${formatSeconds(remainingSeconds)}</strong>
+      </div>
+    </div>
+  `;
 }
 
 function render() {
@@ -935,7 +1114,7 @@ function render() {
   }
 
   if (roomState.state === "discussion") {
-    if (isAssociationInputFocused() && updateDiscussionShellInPlace()) return;
+    if (hasDiscussionShell() && updateDiscussionShellInPlace()) return;
     renderDiscussion();
     return;
   }
@@ -951,7 +1130,7 @@ function render() {
   }
 
   if (roomState.state === "overtime") {
-    if (isAssociationInputFocused() && updateDiscussionShellInPlace()) return;
+    if (hasDiscussionShell() && updateDiscussionShellInPlace()) return;
     renderOvertime();
     return;
   }
@@ -1217,18 +1396,15 @@ function renderDiscussion() {
 
   phaseContent.innerHTML = `
     <div class="phase-card discussion-card">
-      <div class="timer-box compact-timer">
-        <span>Diskusija</span>
-        <strong id="discussionTimerValue">${formatSeconds(discussion.remaining_seconds)}</strong>
+      <div class="discussion-monitor-layout">
+        ${renderReactionRow(discussion.current_player_id)}
+        <div class="discussion-monitor-body">
+          ${renderAssociationBannerStack(roomState.association_banners)}
+          ${renderDiscussionMonitorHeader(currentPlayer, "Diskusija", discussion.remaining_seconds)}
+          ${renderDiscussionActionRow(discussion, isHost, canAdvanceTurn, nextLockLeft)}
+          ${renderAssociationComposer(discussion.current_player_id)}
+        </div>
       </div>
-      ${renderAssociationBannerStack(roomState.association_banners)}
-      ${renderReactionRow(discussion.current_player_id)}
-      <div class="current-player-card compact-current-player">
-        <p class="eyebrow">Trenutni igrač</p>
-        <p id="currentPlayerName" class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
-      </div>
-      ${renderDiscussionActionRow(discussion, isHost, canAdvanceTurn, nextLockLeft)}
-      ${renderAssociationComposer(discussion.current_player_id)}
     </div>
   `;
 
@@ -1267,18 +1443,15 @@ function renderOvertime() {
   phaseContent.innerHTML = `
     <div class="phase-card overtime-card">
       <p class="overtime-compact-title">PRODUŽETAK — Glasanje je nerešeno</p>
-      <div class="timer-box compact-timer">
-        <span>Produžetak</span>
-        <strong id="discussionTimerValue">${formatSeconds(overtime.remaining_seconds)}</strong>
+      <div class="discussion-monitor-layout">
+        ${renderReactionRow(overtime.current_player_id)}
+        <div class="discussion-monitor-body">
+          ${renderAssociationBannerStack(roomState.association_banners)}
+          ${renderDiscussionMonitorHeader(currentPlayer, "Produžetak", overtime.remaining_seconds)}
+          ${renderDiscussionActionRow(overtime, isHost, canAdvanceTurn, nextLockLeft)}
+          ${renderAssociationComposer(overtime.current_player_id)}
+        </div>
       </div>
-      ${renderAssociationBannerStack(roomState.association_banners)}
-      ${renderReactionRow(overtime.current_player_id)}
-      <div class="current-player-card compact-current-player">
-        <p class="eyebrow">Trenutni igrač</p>
-        <p id="currentPlayerName" class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
-      </div>
-      ${renderDiscussionActionRow(overtime, isHost, canAdvanceTurn, nextLockLeft)}
-      ${renderAssociationComposer(overtime.current_player_id)}
     </div>
   `;
 
@@ -1940,28 +2113,27 @@ async function bootstrapRoomSession() {
   if (localRoomCode && localPlayerId && (!inviteRoomCode || inviteRoomCode === localRoomCode)) {
     const exists = await validateRoomExists(localRoomCode);
     if (!exists) {
-      handleExpiredRoom();
+      showExpiredRoomUI(localRoomCode);
+      window.history.replaceState({}, "", "/");
       return;
     }
     setupView.classList.add("hidden");
+    expiredRoomView.classList.add("hidden");
     roomView.classList.remove("hidden");
     connectionStatus.classList.remove("hidden");
+    applyRoomPanelCollapse();
     connectSocket();
     return;
   }
 
   if (inviteRoomCode) {
-    const exists = await validateRoomExists(inviteRoomCode);
+    const code = inviteRoomCode;
+    const exists = await validateRoomExists(code);
     if (!exists) {
-      clearStoredSession();
-      inviteRoomCode = "";
-      roomCodeInput.value = "";
-      inviteNotice.classList.add("hidden");
-      createRoomButton.classList.remove("hidden");
-      updateJoinButtons();
-      window.history.replaceState({}, "", "/");
-      showToast("Soba je istekla", "error");
+      showExpiredRoomUI(code);
+      return;
     }
+    showValidInviteUI(code);
   }
 }
 

@@ -732,7 +732,7 @@ def clean_association_text(text: str) -> str:
 
 
 def make_room_code() -> str:
-    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ123456789"
+    alphabet = "123456789"
     while True:
         code = "".join(random.choice(alphabet) for _ in range(5))
         if code not in rooms:
