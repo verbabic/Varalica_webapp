@@ -667,6 +667,12 @@ label {
   color: var(--yellow);
 }
 
+.badge.viewing {
+  color: #fde68a;
+  background: rgba(244, 201, 93, 0.12);
+  border-color: rgba(244, 201, 93, 0.38);
+}
+
 .badge.vote-status {
   min-height: 22px;
   padding: 0 7px;

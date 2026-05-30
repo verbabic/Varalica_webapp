@@ -94,6 +94,7 @@ let nextPlayerCountdownTimer = null;
 let pendingConfirmAction = null;
 let roomPanelCollapsed = sessionStorage.getItem("varalica_room_panel_collapsed") === "true";
 let lastAssociationBannerStackKey = "";
+let lastPlayersListPhase = "";
 
 const pathRoomMatch = window.location.pathname.match(/^\/room\/([A-Z0-9]{5})$/i);
 if (pathRoomMatch) {
@@ -271,6 +272,7 @@ function enterRoom(roomCode, playerId, avatar) {
   localRoomCode = roomCode;
   localPlayerId = playerId;
   hasRevealedPrivateCard = false;
+  lastPlayersListPhase = "";
   localStorage.setItem("varalica_room_code", roomCode);
   localStorage.setItem("varalica_player_id", playerId);
   touchSession();
@@ -425,6 +427,7 @@ function connectSocket() {
     }
     if (roomState.state === "lobby" && previousState && previousState !== "lobby") {
       hasRevealedPrivateCard = false;
+      lastPlayersListPhase = "";
       resetRevealSequence();
       associationDraft = "";
       sessionStorage.removeItem("varalica_association_draft");
@@ -629,6 +632,7 @@ async function leaveRoom() {
   localRoomCode = "";
   localPlayerId = "";
   roomState = null;
+  lastPlayersListPhase = "";
   roomView.classList.add("hidden");
   setupView.classList.remove("hidden");
   applyRoomPanelCollapse();
@@ -1294,11 +1298,27 @@ function renderLobby() {
   if (startButton) startButton.addEventListener("click", startRound);
 }
 
+function revealStatusForPlayer(player) {
+  if (player.confirmed) {
+    return { label: "Spreman", className: "ready" };
+  }
+  if (player.viewed_secret) {
+    return { label: "Pregleda", className: "viewing" };
+  }
+  return { label: "Nije vidio", className: "waiting" };
+}
+
+function clearRevealStatusBadges(row) {
+  row.querySelectorAll(".player-meta .badge.reveal-status").forEach((badge) => badge.remove());
+}
+
 function renderReveal() {
   const privateInfo = roomState.private;
   const me = roomState.players.find((player) => player.id === roomState.viewer_id);
   const alreadyConfirmed = Boolean(me?.confirmed);
-  if (me && !me.viewed_secret && !me.confirmed) {
+  if (me?.viewed_secret) {
+    hasRevealedPrivateCard = true;
+  } else if (me && !me.confirmed) {
     hasRevealedPrivateCard = false;
   }
 
@@ -1911,6 +1931,7 @@ function patchDiscussionPlayersInPlace() {
   roomState.players.forEach((player, index) => {
     const row = rows[index];
     row.classList.toggle("is-current", Boolean(player.is_current));
+    clearRevealStatusBadges(row);
     syncPlayerReactionBubble(row.querySelector(".inline-player"), player.reaction);
 
     const nameBlock = row.querySelector(".player-name");
@@ -1930,7 +1951,12 @@ function patchDiscussionPlayersInPlace() {
 }
 
 function renderPlayers() {
-  if (patchDiscussionPlayersInPlace()) return;
+  const canPatchInPlace =
+    (roomState.state === "discussion" || roomState.state === "overtime") &&
+    roomState.state === lastPlayersListPhase;
+  if (canPatchInPlace && patchDiscussionPlayersInPlace()) return;
+  lastPlayersListPhase = roomState.state;
+
   playersList.innerHTML = "";
   for (const player of roomState.players) {
     const row = document.createElement("div");
@@ -1939,8 +1965,7 @@ function renderPlayers() {
       row.classList.add("is-current");
     }
 
-    const statusLabel = player.confirmed ? "Spreman" : "Nije vidio";
-    const statusClass = player.confirmed ? "ready" : "waiting";
+    const revealStatus = revealStatusForPlayer(player);
     const connectionLabels = {
       active: "Active",
       away: "Away",
@@ -1977,8 +2002,8 @@ function renderPlayers() {
         ${disconnectedLabel}
         ${connectedLabel}
         ${
-          roomState.state === "reveal"
-            ? `<span class="badge ${statusClass}">${statusLabel}</span>`
+          roomState.state === "reveal" && player.is_active_round_player
+            ? `<span class="badge reveal-status ${revealStatus.className}">${revealStatus.label}</span>`
             : ""
         }
         ${

@@ -323,6 +323,7 @@ async def confirm_seen(room_code: str, action: PlayerAction) -> dict:
     if action.player_id not in room.round_player_ids:
         raise HTTPException(status_code=400, detail="Igrac nije dio ove runde.")
 
+    room.players[action.player_id].viewed_secret = True
     room.players[action.player_id].confirmed = True
     if all_active_players_confirmed(room):
         await enter_discussion(room)
