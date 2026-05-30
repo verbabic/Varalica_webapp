@@ -27,15 +27,13 @@
         <div id="inviteNotice" class="invite-notice hidden"></div>
 
         <label for="playerName">Tvoje ime</label>
-        <input id="playerName" maxlength="15" autocomplete="username" placeholder="Tvoj Username" />
+        <input id="playerName" maxlength="15" autocomplete="username" placeholder="Tvoje ime" />
 
         <div class="join-box">
           <label for="roomCode">Kod sobe</label>
           <input id="roomCode" maxlength="5" autocomplete="off" placeholder="ABCDE" />
           <button id="joinRoomButton" class="secondary">Pridruzi se</button>
         </div>
-
-        <div class="setup-divider">ILI</div>
 
         <div class="actions two-columns">
           <button id="createRoomButton">Napravi sobu</button>
@@ -92,16 +90,21 @@
     <div id="rulesModal" class="modal-backdrop hidden">
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
         <button class="modal-close small secondary" data-close-modal="rulesModal" type="button">Zatvori</button>
-        <h2 id="rulesTitle">Varalica - Pravila</h2>
-        <ul>
-          <li>Svi igraci osim jednog dobijaju istu rijec.</li>
-          <li>Jedan igrac je Varalica i dobija samo smjernicu.</li>
-          <li>Igraci redom daju asocijacije bez otkrivanja rijeci.</li>
-          <li>Varalica pokusava da se uklopi i prezivi.</li>
-          <li>Nakon diskusije host otvara glasanje.</li>
-          <li>Ako igraci pronadju Varalicu, igraci pobjedjuju.</li>
-          <li>Ako Varalica prezivi, Varalica pobjedjuje.</li>
-        </ul>
+        <h2 id="rulesTitle">📖 Pravila igre</h2>
+        <div class="rules-body">
+          <p>1 igrač je tajno Varalica. Ako je više od 6 igrača, onda su 2 Varalice u igri.</p>
+          <p>Svi igrači dobiju istu riječ, osim Varalice.</p>
+          <p>Varalica ne vidi riječ, nego dobije samo kratki hint.</p>
+          <p>Igrači redom govore jednu asocijaciju na svoju riječ.</p>
+          <p>Cilj igrača je otkriti tko je Varalica.</p>
+          <p>Cilj Varalice je uklopiti se i ne biti otkrivena.</p>
+          <p>Nakon rasprave host otvara glasanje.</p>
+          <p>Varalica je otkrivena ako dobije više od 50% glasova.</p>
+          <p>Ako pogrešan igrač dobije većinu, Varalica pobjeđuje.</p>
+          <p>Ako nitko nema većinu, glasanje je neriješeno i rasprava se produžuje.</p>
+          <p>Ne smiješ direktno reći riječ koju si dobio.</p>
+          <p>Zabavi se, blefiraj i pazi kome vjeruješ.</p>
+        </div>
       </div>
     </div>
 

@@ -26,6 +26,8 @@ from storage import (
 )
 from words import ALLOWED_CATEGORIES, DEFAULT_CATEGORY, STARTER_WORDS, normalize_category, words_for_category
 
+UI_CATEGORIES = [category for category in ALLOWED_CATEGORIES if category != "Balkan"]
+
 
 MIN_PLAYERS = 4
 MAX_PLAYERS = 8
@@ -1541,7 +1543,7 @@ def public_state(room: Room, viewer_id: str) -> dict:
         "remove_after_seconds": REMOVE_AFTER_SECONDS,
         "reconnect_grace_seconds": RECONNECT_GRACE_SECONDS,
         "lifecycle": room_lifecycle(room),
-        "categories": ALLOWED_CATEGORIES,
+        "categories": UI_CATEGORIES,
         "selected_category": room.selected_category,
         "discussion_duration_seconds": room.discussion_duration_seconds,
         "allowed_discussion_seconds": sorted(ALLOWED_DISCUSSION_SECONDS),
