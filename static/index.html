@@ -19,7 +19,7 @@
             <button id="chatModeButton" class="mode-segment" type="button" data-mode="chat">Chat</button>
           </div>
           <button id="rulesButton" class="small secondary" type="button">📖 Pravila</button>
-          <div id="connectionStatus" class="status-pill">Nije spojeno</div>
+          <div id="connectionStatus" class="status-pill hidden"></div>
         </div>
       </section>
 
@@ -27,24 +27,25 @@
         <div id="inviteNotice" class="invite-notice hidden"></div>
 
         <label for="playerName">Tvoje ime</label>
-        <input id="playerName" maxlength="24" autocomplete="name" placeholder="npr. Ana" />
-
-        <div class="avatar-section">
-          <div class="avatar-header">
-            <label>Izaberi avatar</label>
-            <button id="clearAvatarButton" class="small secondary" type="button">Random</button>
-          </div>
-          <div id="avatarGrid" class="avatar-grid" aria-label="Izaberi avatar"></div>
-        </div>
-
-        <div class="actions two-columns">
-          <button id="createRoomButton">Napravi sobu</button>
-        </div>
+        <input id="playerName" maxlength="15" autocomplete="username" placeholder="Tvoj Username" />
 
         <div class="join-box">
           <label for="roomCode">Kod sobe</label>
           <input id="roomCode" maxlength="5" autocomplete="off" placeholder="ABCDE" />
           <button id="joinRoomButton" class="secondary">Pridruzi se</button>
+        </div>
+
+        <div class="setup-divider">ILI</div>
+
+        <div class="actions two-columns">
+          <button id="createRoomButton">Napravi sobu</button>
+        </div>
+
+        <div class="avatar-section">
+          <div class="avatar-header">
+            <label>Izaberi avatar</label>
+          </div>
+          <div id="avatarGrid" class="avatar-grid" aria-label="Izaberi avatar"></div>
         </div>
       </section>
 
@@ -79,7 +80,7 @@
         <aside class="panel players-panel">
           <div class="players-header">
             <h2>Igraci</h2>
-            <span id="playerCountBadge" class="status-pill">0/10</span>
+            <span id="playerCountBadge" class="status-pill">0/8</span>
           </div>
           <div id="playersList" class="players-list"></div>
         </aside>

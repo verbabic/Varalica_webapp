@@ -28,12 +28,13 @@ from words import ALLOWED_CATEGORIES, DEFAULT_CATEGORY, STARTER_WORDS, normalize
 
 
 MIN_PLAYERS = 4
-MAX_PLAYERS = 10
+MAX_PLAYERS = 8
 DISCUSSION_SECONDS = 180
 ALLOWED_DISCUSSION_SECONDS = {120, 180, 300}
-VOTING_LOCK_SECONDS = 100
+VOTING_LOCK_SECONDS = 120
 OVERTIME_SECONDS = 60
 OVERTIME_VOTING_LOCK_SECONDS = 30
+ALLOWED_REACTIONS = {"😂", "🧐", "😎", "🤢", "🤥"}
 TAB_CLOSE_REMOVE_SECONDS = 60
 ACTIVE_GRACE_SECONDS = 30
 AWAY_AFTER_SECONDS = 30
@@ -83,11 +84,13 @@ class PlayerAction(BaseModel):
 class StartRoundAction(PlayerAction):
     category: str | None = None
     discussion_seconds: int | None = None
+    varalica_count: int | None = None
 
 
 class VoteAction(BaseModel):
     player_id: str
-    target_id: str
+    target_id: str | None = None
+    target_ids: list[str] | None = None
 
 
 class TargetPlayerAction(PlayerAction):
@@ -96,6 +99,11 @@ class TargetPlayerAction(PlayerAction):
 
 class AssociationAction(PlayerAction):
     text: str
+
+
+class ReactionAction(PlayerAction):
+    target_player_id: str
+    emoji: str
 
 
 @dataclass
@@ -125,6 +133,8 @@ class Room:
     players: dict[str, Player] = field(default_factory=dict)
     host_id: str | None = None
     varalica_id: str | None = None
+    varalica_ids: list[str] = field(default_factory=list)
+    selected_varalica_count: int = 1
     word: dict | None = None
     current_word_id: str | None = None
     selected_hint: str | None = None
@@ -133,7 +143,7 @@ class Room:
     discussion_started_at: float | None = None
     current_player_index: int = 0
     vote_request_player_ids: set[str] = field(default_factory=set)
-    final_votes: dict[str, str] = field(default_factory=dict)
+    final_votes: dict[str, list[str]] = field(default_factory=dict)
     overtime_started_at: float | None = None
     overtime_used: bool = False
     selected_category: str = DEFAULT_CATEGORY
@@ -148,6 +158,7 @@ class Room:
     timer_task: asyncio.Task | None = None
     sockets: dict[str, WebSocket] = field(default_factory=dict)
     active_associations: dict[str, dict] = field(default_factory=dict)
+    active_reactions: dict[str, dict] = field(default_factory=dict)
     turn_version: int = 0
 
 
@@ -205,7 +216,7 @@ async def join_room(room_code: str, request: NameRequest) -> dict:
     if not room.players and room.empty_since is not None:
         raise HTTPException(status_code=404, detail="Soba je istekla.")
     if len(room.players) >= MAX_PLAYERS:
-        raise HTTPException(status_code=400, detail="Soba je puna. Maksimalno 10 igraca.")
+        raise HTTPException(status_code=400, detail="Soba je puna. Maksimalno 8 igrača.")
     if room.state != "lobby":
         raise HTTPException(status_code=400, detail="Runda je vec pocela.")
 
@@ -238,7 +249,7 @@ async def start_round(room_code: str, action: StartRoundAction) -> dict:
     if len(active_players) < MIN_PLAYERS:
         raise HTTPException(status_code=400, detail="Potrebna su najmanje 4 igraca.")
     if len(active_players) > MAX_PLAYERS:
-        raise HTTPException(status_code=400, detail="Maksimalno je 10 igraca.")
+        raise HTTPException(status_code=400, detail="Maksimalno je 8 igrača.")
 
     for player in room.players.values():
         player.viewed_secret = False
@@ -248,6 +259,7 @@ async def start_round(room_code: str, action: StartRoundAction) -> dict:
 
     room.selected_category = normalize_category(action.category)
     room.discussion_duration_seconds = normalize_discussion_seconds(action.discussion_seconds)
+    room.selected_varalica_count = normalize_varalica_count(action.varalica_count, len(active_players))
     prepare_reveal_round(room, active_players)
     persist_room(room)
     await broadcast_room(room)
@@ -395,7 +407,7 @@ async def transfer_host(room_code: str, action: TargetPlayerAction) -> dict:
 @app.post("/api/rooms/{room_code}/request-vote")
 async def request_vote(room_code: str, action: PlayerAction) -> dict:
     get_room(room_code)
-    raise HTTPException(status_code=400, detail="Glasanje otvara samo host nakon 100 sekundi.")
+    raise HTTPException(status_code=400, detail="Glasanje otvara samo host nakon 120 sekundi.")
 
 
 @app.post("/api/rooms/{room_code}/open-final-voting")
@@ -404,7 +416,7 @@ async def open_final_voting(room_code: str, action: PlayerAction) -> dict:
     ensure_host(room, action.player_id)
     if room.state == "discussion":
         if not voting_unlocked(room):
-            raise HTTPException(status_code=400, detail="Glasanje dostupno nakon 100 sekundi.")
+            raise HTTPException(status_code=400, detail="Glasanje dostupno nakon 120 sekundi.")
         stop_timer(room)
         room.state = "final_voting"
     elif room.state == "overtime":
@@ -451,14 +463,16 @@ async def submit_vote(room_code: str, action: VoteAction) -> dict:
         raise HTTPException(status_code=400, detail="Ne mozes glasati prije finalnog glasanja.")
     if action.player_id not in active_round_player_ids(room):
         raise HTTPException(status_code=400, detail="Igrac nije aktivan u ovoj rundi.")
-    if action.target_id not in active_round_player_ids(room):
+    active_ids = active_round_player_ids(room)
+    target_ids = normalize_vote_targets(action, required_vote_target_count(room))
+    if any(target_id not in active_ids for target_id in target_ids):
         raise HTTPException(status_code=400, detail="Ne mozes glasati za tog igraca.")
-    if action.player_id == action.target_id:
+    if action.player_id in target_ids:
         raise HTTPException(status_code=400, detail="Ne mozes glasati za sebe.")
     if action.player_id in room.final_votes:
         raise HTTPException(status_code=400, detail="Vec si glasao.")
 
-    room.final_votes[action.player_id] = action.target_id
+    room.final_votes[action.player_id] = target_ids
     room.players[action.player_id].has_voted = True
 
     if all_active_players_voted(room):
@@ -491,6 +505,33 @@ async def send_association(room_code: str, action: AssociationAction) -> dict:
         "created_at": now,
         "expires_at": now + 10,
         "turn_version": room.turn_version,
+    }
+    persist_room(room)
+    await broadcast_room(room)
+    return {"ok": True}
+
+
+@app.post("/api/rooms/{room_code}/reaction")
+async def send_reaction(room_code: str, action: ReactionAction) -> dict:
+    room = get_room(room_code)
+    if room.state not in {"discussion", "overtime"}:
+        raise HTTPException(status_code=400, detail="Reakcije su dostupne samo tokom diskusije.")
+    if action.player_id not in room.players:
+        raise HTTPException(status_code=400, detail="Igrac nije u sobi.")
+    if action.target_player_id not in room.players or action.target_player_id not in active_round_player_ids(room):
+        raise HTTPException(status_code=400, detail="Ne mozes reagovati na tog igraca.")
+
+    emoji = action.emoji.strip()
+    if emoji not in ALLOWED_REACTIONS:
+        raise HTTPException(status_code=400, detail="Nepoznata reakcija.")
+
+    now = time.time()
+    room.active_reactions[action.target_player_id] = {
+        "target_player_id": action.target_player_id,
+        "sender_player_id": action.player_id,
+        "emoji": emoji,
+        "created_at": now,
+        "expires_at": now + 3,
     }
     persist_room(room)
     await broadcast_room(room)
@@ -634,8 +675,10 @@ def clean_name(name: str) -> str:
     cleaned = name.strip()
     if not cleaned:
         raise HTTPException(status_code=400, detail="Unesi ime.")
-    if len(cleaned) > 24:
-        raise HTTPException(status_code=400, detail="Ime moze imati najvise 24 znaka.")
+    if len(cleaned) < 3:
+        raise HTTPException(status_code=400, detail="Ime mora imati najmanje 3 znaka.")
+    if len(cleaned) > 15:
+        raise HTTPException(status_code=400, detail="Ime moze imati najvise 15 znakova.")
     return cleaned
 
 
@@ -653,7 +696,7 @@ def clean_association_text(text: str) -> str:
 
 
 def make_room_code() -> str:
-    alphabet = string.ascii_uppercase + string.digits
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ123456789"
     while True:
         code = "".join(random.choice(alphabet) for _ in range(5))
         if code not in rooms:
@@ -688,6 +731,8 @@ def room_to_snapshot(room: Room) -> dict:
         "state": room.state,
         "host_id": room.host_id,
         "varalica_id": room.varalica_id,
+        "varalica_ids": room.varalica_ids,
+        "selected_varalica_count": room.selected_varalica_count,
         "word": room.word,
         "current_word_id": room.current_word_id,
         "selected_hint": room.selected_hint,
@@ -707,6 +752,7 @@ def room_to_snapshot(room: Room) -> dict:
         "last_event": room.last_event,
         "empty_since": room.empty_since,
         "active_associations": room.active_associations,
+        "active_reactions": room.active_reactions,
         "turn_version": room.turn_version,
         "players": [
             {
@@ -739,6 +785,8 @@ def room_from_snapshot(snapshot: dict) -> Room:
         state=snapshot.get("state", "lobby"),
         host_id=snapshot.get("host_id"),
         varalica_id=snapshot.get("varalica_id"),
+        varalica_ids=list(snapshot.get("varalica_ids") or ([snapshot.get("varalica_id")] if snapshot.get("varalica_id") else [])),
+        selected_varalica_count=int(snapshot.get("selected_varalica_count", 1)),
         word=snapshot.get("word"),
         current_word_id=snapshot.get("current_word_id") or (snapshot.get("word") or {}).get("id"),
         selected_hint=snapshot.get("selected_hint") or (snapshot.get("word") or {}).get("hint"),
@@ -747,7 +795,7 @@ def room_from_snapshot(snapshot: dict) -> Room:
         discussion_started_at=snapshot.get("discussion_started_at"),
         current_player_index=int(snapshot.get("current_player_index", 0)),
         vote_request_player_ids=set(snapshot.get("vote_request_player_ids", [])),
-        final_votes=dict(snapshot.get("final_votes", {})),
+        final_votes=normalize_stored_votes(snapshot.get("final_votes", {})),
         overtime_started_at=snapshot.get("overtime_started_at"),
         overtime_used=bool(snapshot.get("overtime_used", False)),
         selected_category=normalize_category(snapshot.get("selected_category")),
@@ -759,6 +807,7 @@ def room_from_snapshot(snapshot: dict) -> Room:
         last_event=snapshot.get("last_event"),
         empty_since=snapshot.get("empty_since"),
         active_associations=dict(snapshot.get("active_associations", {})),
+        active_reactions=dict(snapshot.get("active_reactions", {})),
         turn_version=int(snapshot.get("turn_version", 0)),
     )
     used_avatars: set[str] = set()
@@ -817,23 +866,29 @@ def ensure_scoreboard_player(room: Room, player_id: str) -> None:
     room.scoreboard.setdefault(player_id, {"discoveries": 0, "survivals": 0})
 
 
+def varalica_ids(room: Room) -> list[str]:
+    ids = [player_id for player_id in room.varalica_ids if player_id in room.players]
+    if not ids and room.varalica_id in room.players:
+        ids = [room.varalica_id]
+    return ids
+
+
 def update_scoreboard(room: Room) -> None:
-    if room.varalica_id is None:
+    impostor_ids = varalica_ids(room)
+    if not impostor_ids:
         return
     for player_id in room.players:
         ensure_scoreboard_player(room, player_id)
 
-    counts = vote_counts(room)
-    top_player_ids = tied_top_player_ids(room)
-    tie = len(top_player_ids) > 1
-    players_found_varalica = not tie and bool(top_player_ids) and top_player_ids[0] == room.varalica_id
-    if players_found_varalica:
-        for voter_id, target_id in room.final_votes.items():
-            if target_id == room.varalica_id and voter_id in room.scoreboard:
+    if players_caught_all_varalice(room):
+        impostor_set = set(impostor_ids)
+        for voter_id, target_ids in room.final_votes.items():
+            if impostor_set.issubset(set(target_ids)) and voter_id in room.scoreboard:
                 room.scoreboard[voter_id]["discoveries"] += 1
     else:
-        ensure_scoreboard_player(room, room.varalica_id)
-        room.scoreboard[room.varalica_id]["survivals"] += 1
+        for impostor_id in impostor_ids:
+            ensure_scoreboard_player(room, impostor_id)
+            room.scoreboard[impostor_id]["survivals"] += 1
 
 
 def cancel_empty_room_cleanup(room: Room) -> None:
@@ -865,6 +920,36 @@ def normalize_discussion_seconds(value: int | None) -> int:
     if value in ALLOWED_DISCUSSION_SECONDS:
         return int(value)
     return DISCUSSION_SECONDS
+
+
+def normalize_varalica_count(value: int | None, player_count: int) -> int:
+    if player_count <= 6:
+        return 1
+    return 2 if value == 2 else 1
+
+
+def required_vote_target_count(room: Room) -> int:
+    return 2 if len(varalica_ids(room)) >= 2 else 1
+
+
+def normalize_vote_targets(action: VoteAction, required_count: int) -> list[str]:
+    raw_targets = action.target_ids if action.target_ids is not None else ([action.target_id] if action.target_id else [])
+    target_ids = [str(target_id) for target_id in raw_targets if target_id]
+    if len(target_ids) != len(set(target_ids)):
+        raise HTTPException(status_code=400, detail="Moras izabrati razlicite igrace.")
+    if len(target_ids) != required_count:
+        raise HTTPException(status_code=400, detail=f"Moras izabrati {required_count} igraca.")
+    return target_ids
+
+
+def normalize_stored_votes(raw_votes: dict) -> dict[str, list[str]]:
+    normalized: dict[str, list[str]] = {}
+    for voter_id, targets in dict(raw_votes or {}).items():
+        if isinstance(targets, list):
+            normalized[str(voter_id)] = [str(target_id) for target_id in targets if target_id]
+        elif targets:
+            normalized[str(voter_id)] = [str(targets)]
+    return normalized
 
 
 def load_persisted_rooms() -> None:
@@ -932,7 +1017,9 @@ def prepare_reveal_round(room: Room, active_players: list[Player]) -> None:
 
     room.state = "reveal"
     room.round_player_ids = [player.id for player in active_players]
-    room.varalica_id = choose_varalica_id(room, room.round_player_ids)
+    room.selected_varalica_count = normalize_varalica_count(room.selected_varalica_count, len(room.round_player_ids))
+    room.varalica_ids = choose_varalica_ids(room, room.round_player_ids, room.selected_varalica_count)
+    room.varalica_id = room.varalica_ids[0]
     room.current_word_id = None
     room.selected_hint = None
     room.word = choose_word(room)
@@ -941,14 +1028,16 @@ def prepare_reveal_round(room: Room, active_players: list[Player]) -> None:
     room.vote_request_player_ids.clear()
     room.final_votes.clear()
     room.active_associations.clear()
+    room.active_reactions.clear()
     room.overtime_started_at = None
     room.overtime_used = False
     stop_timer(room)
 
 
-def choose_varalica_id(room: Room, active_player_ids: list[str]) -> str:
+def choose_varalica_ids(room: Room, active_player_ids: list[str], count: int) -> list[str]:
     if not active_player_ids:
         raise HTTPException(status_code=400, detail="Nema aktivnih igraca.")
+    count = min(max(1, count), len(active_player_ids))
 
     recent_limit = max(1, min(3, len(active_player_ids) - 1))
     recent_ids = [player_id for player_id in room.recent_varalica_ids[-recent_limit:] if player_id in active_player_ids]
@@ -963,14 +1052,22 @@ def choose_varalica_id(room: Room, active_player_ids: list[str]) -> str:
     if not candidates:
         candidates = list(active_player_ids)
 
-    selected_id = secrets.choice(candidates)
-    room.recent_varalica_ids.append(selected_id)
+    selected_ids: list[str] = []
+    available = list(candidates)
+    for _ in range(count):
+        if not available:
+            available = [player_id for player_id in active_player_ids if player_id not in selected_ids]
+        selected_id = secrets.choice(available)
+        selected_ids.append(selected_id)
+        available = [player_id for player_id in available if player_id != selected_id]
+
+    room.recent_varalica_ids.extend(selected_ids)
     room.recent_varalica_ids = [
         player_id
         for player_id in room.recent_varalica_ids[-10:]
         if player_id in room.players
     ]
-    return selected_id
+    return selected_ids
 
 
 def reset_room_to_lobby(room: Room) -> None:
@@ -978,6 +1075,8 @@ def reset_room_to_lobby(room: Room) -> None:
     cancel_empty_room_cleanup(room)
     room.state = "lobby"
     room.varalica_id = None
+    room.varalica_ids.clear()
+    room.selected_varalica_count = 1
     room.word = None
     room.current_word_id = None
     room.selected_hint = None
@@ -987,6 +1086,7 @@ def reset_room_to_lobby(room: Room) -> None:
     room.vote_request_player_ids.clear()
     room.final_votes.clear()
     room.active_associations.clear()
+    room.active_reactions.clear()
     room.overtime_started_at = None
     room.overtime_used = False
     room.round_number = 1
@@ -1052,14 +1152,25 @@ def remove_player_from_room(room: Room, player_id: str) -> None:
     room.scoreboard.pop(player_id, None)
     if player_id in room.round_player_ids:
         room.round_player_ids.remove(player_id)
+    if player_id in room.varalica_ids:
+        room.varalica_ids = [impostor_id for impostor_id in room.varalica_ids if impostor_id != player_id]
+        room.varalica_id = room.varalica_ids[0] if room.varalica_ids else None
     room.vote_request_player_ids.discard(player_id)
     room.active_associations.pop(player_id, None)
+    room.active_reactions.pop(player_id, None)
+    for target_id, reaction in list(room.active_reactions.items()):
+        if reaction.get("sender_player_id") == player_id:
+            room.active_reactions.pop(target_id, None)
     room.final_votes.pop(player_id, None)
-    for voter_id, target_id in list(room.final_votes.items()):
-        if target_id == player_id:
+    required_count = required_vote_target_count(room)
+    for voter_id, target_ids in list(room.final_votes.items()):
+        updated_targets = [target_id for target_id in target_ids if target_id != player_id]
+        if len(updated_targets) != len(target_ids) or len(updated_targets) != required_count:
             room.final_votes.pop(voter_id, None)
             if voter_id in room.players:
                 room.players[voter_id].has_voted = False
+        else:
+            room.final_votes[voter_id] = updated_targets
     if player_id == room.host_id:
         assign_new_host(room, removed_joined_at)
     normalize_current_player(room)
@@ -1142,7 +1253,8 @@ def all_active_players_voted(room: Room) -> bool:
 
 
 def vote_target_for_player(room: Room, player_id: str) -> dict | None:
-    target_id = room.final_votes.get(player_id)
+    target_ids = room.final_votes.get(player_id) or []
+    target_id = target_ids[0] if target_ids else None
     if target_id is None or target_id not in room.players:
         return None
     return {
@@ -1183,11 +1295,32 @@ def association_for_player(room: Room, player_id: str) -> dict | None:
     }
 
 
+def cleanup_reactions(room: Room) -> None:
+    now = time.time()
+    for target_id, reaction in list(room.active_reactions.items()):
+        if target_id not in room.players or reaction.get("expires_at", 0) <= now:
+            room.active_reactions.pop(target_id, None)
+
+
+def reaction_for_player(room: Room, player_id: str) -> dict | None:
+    cleanup_reactions(room)
+    reaction = room.active_reactions.get(player_id)
+    if not reaction:
+        return None
+    return {
+        "emoji": reaction["emoji"],
+        "sender_player_id": reaction.get("sender_player_id"),
+        "created_at": reaction["created_at"],
+        "expires_at": reaction["expires_at"],
+    }
+
+
 def vote_counts(room: Room) -> dict[str, int]:
     counts = {player_id: 0 for player_id in room.round_player_ids if player_id in room.players}
-    for target_id in room.final_votes.values():
-        if target_id in counts:
-            counts[target_id] += 1
+    for target_ids in room.final_votes.values():
+        for target_id in target_ids:
+            if target_id in counts:
+                counts[target_id] += 1
     return counts
 
 
@@ -1202,16 +1335,34 @@ def tied_top_player_ids(room: Room) -> list[str]:
 
 
 def is_vote_tied(room: Room) -> bool:
-    return len(tied_top_player_ids(room)) > 1
+    return not majority_player_ids(room)
 
 
 def finish_voting(room: Room) -> bool:
-    if is_vote_tied(room):
+    if not majority_player_ids(room):
         enter_tie_overtime(room)
         return True
     room.state = "voting_complete"
     stop_timer(room)
     return False
+
+
+def majority_player_ids(room: Room) -> list[str]:
+    voter_count = len(active_round_player_ids(room))
+    if voter_count <= 0:
+        return []
+    threshold = voter_count / 2
+    return [
+        player_id
+        for player_id, count in vote_counts(room).items()
+        if count > threshold
+    ]
+
+
+def players_caught_all_varalice(room: Room) -> bool:
+    impostor_ids = set(varalica_ids(room))
+    majority_ids = set(majority_player_ids(room))
+    return bool(impostor_ids) and impostor_ids.issubset(majority_ids)
 
 
 def enter_tie_overtime(room: Room) -> None:
@@ -1225,6 +1376,7 @@ def enter_tie_overtime(room: Room) -> None:
     normalize_current_player(room)
     room.turn_version += 1
     room.active_associations.clear()
+    room.active_reactions.clear()
 
 
 def enter_discussion_values(room: Room) -> None:
@@ -1233,6 +1385,7 @@ def enter_discussion_values(room: Room) -> None:
     room.current_player_index = 0
     room.turn_version += 1
     room.active_associations.clear()
+    room.active_reactions.clear()
     room.vote_request_player_ids.clear()
     room.final_votes.clear()
     for player in room.players.values():
@@ -1371,7 +1524,9 @@ def public_state(room: Room, viewer_id: str) -> dict:
     normalize_current_player(room)
     if room.state not in {"discussion", "overtime"}:
         room.active_associations.clear()
+        room.active_reactions.clear()
     cleanup_associations(room)
+    cleanup_reactions(room)
     all_confirmed = room.state == "reveal" and all_active_players_confirmed(room)
     return {
         "room_code": room.code,
@@ -1390,6 +1545,9 @@ def public_state(room: Room, viewer_id: str) -> dict:
         "selected_category": room.selected_category,
         "discussion_duration_seconds": room.discussion_duration_seconds,
         "allowed_discussion_seconds": sorted(ALLOWED_DISCUSSION_SECONDS),
+        "selected_varalica_count": room.selected_varalica_count,
+        "allowed_varalica_counts": [1, 2] if len(room.players) > 6 else [1],
+        "required_vote_targets": required_vote_target_count(room),
         "round_number": room.round_number,
         "scoreboard": scoreboard_state(room),
         "last_event": room.last_event,
@@ -1417,6 +1575,7 @@ def public_state(room: Room, viewer_id: str) -> dict:
                 "is_active_round_player": player.id in active_round_player_ids(room),
                 "temporarily_disconnected": player_connection_status(player) in {"away", "idle"},
                 "association": association_for_player(room, player.id),
+                "reaction": reaction_for_player(room, player.id),
                 "vote_target": vote_target_for_player(room, player.id) if room.state == "results" else None,
             }
             for player in room.players.values()
@@ -1487,6 +1646,86 @@ def scoreboard_state(room: Room) -> list[dict]:
 
 
 def results_state(room: Room) -> dict | None:
+    return results_state_multi(room)
+
+
+def results_state_multi(room: Room) -> dict | None:
+    impostor_ids = varalica_ids(room)
+    if room.state != "results" or room.word is None or not impostor_ids:
+        return None
+
+    active_ids = active_round_player_ids(room)
+    counts = vote_counts(room)
+    majority_ids = majority_player_ids(room)
+    was_varalica_caught = players_caught_all_varalice(room)
+    if was_varalica_caught:
+        outcome = "Igrači su pronašli Varalicu." if len(impostor_ids) == 1 else "Igrači su pronašli obje Varalice."
+    else:
+        outcome = "Varalica je pobijedila." if len(impostor_ids) == 1 else "Varalice su pobijedile."
+
+    impostors = [
+        {
+            "id": impostor_id,
+            "name": room.players[impostor_id].name,
+            "avatar": room.players[impostor_id].avatar,
+        }
+        for impostor_id in impostor_ids
+        if impostor_id in room.players
+    ]
+
+    return {
+        "varalica": impostors[0],
+        "varalice": impostors,
+        "varalica_count": len(impostors),
+        "word": {
+            "hr": room.word["hr"],
+            "sr": room.word["sr"],
+            "category": room.word["category"],
+        },
+        "outcome": outcome,
+        "is_tie": False,
+        "was_varalica_caught": was_varalica_caught,
+        "majority_player_ids": majority_ids,
+        "active_player_count": len(active_ids),
+        "vote_summary": [
+            {
+                "player_id": player_id,
+                "name": room.players[player_id].name,
+                "avatar": room.players[player_id].avatar,
+                "votes": counts.get(player_id, 0),
+            }
+            for player_id in room.round_player_ids
+            if player_id in room.players
+        ],
+        "individual_votes": [
+            {
+                "voter_id": voter_id,
+                "voter_name": room.players[voter_id].name,
+                "voter_avatar": room.players[voter_id].avatar,
+                "targets": [
+                    {
+                        "target_id": target_id,
+                        "target_name": room.players[target_id].name,
+                        "target_avatar": room.players[target_id].avatar,
+                    }
+                    for target_id in target_ids
+                    if target_id in room.players
+                ],
+            }
+            for voter_id, target_ids in room.final_votes.items()
+            if voter_id in room.players
+        ],
+        "correct_guessers": [
+            {
+                "player_id": voter_id,
+                "name": room.players[voter_id].name,
+                "avatar": room.players[voter_id].avatar,
+            }
+            for voter_id, target_ids in room.final_votes.items()
+            if set(impostor_ids).issubset(set(target_ids)) and voter_id in room.players
+        ],
+    }
+
     if room.state != "results" or room.word is None or room.varalica_id is None:
         return None
 
@@ -1557,7 +1796,7 @@ def results_state(room: Room) -> dict | None:
 def private_state(room: Room, viewer_id: str) -> dict | None:
     if room.state != "reveal" or viewer_id not in room.round_player_ids:
         return None
-    if viewer_id == room.varalica_id:
+    if viewer_id in varalica_ids(room):
         if room.word is None:
             return {"role": "varalica", "message": "Ti si Varalica"}
         if not selected_word_matches_room(room):

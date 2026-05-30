@@ -42,6 +42,7 @@ const IMPOSTOR_REVEAL_AVATAR_URL = "/static/assets/Varalica_crveno.png";
 const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
 const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
 const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
+const REACTION_EMOJIS = ["😂", "🧐", "😎", "🤢", "🤥"];
 const AVATARS = [
   "🥸","🤤","😁","😇","🥳","😎","😝","👹","😈","🤠","🤡","👻","💩","👽","👾","🤖","🎃","😺","🧠","👶",
   "👩‍🦰","👨🏻","👨🏿","👨🏽","👩🏾‍🦰","👩🏻‍🦱","🧑🏻‍🦱","🧑🏾‍🦱","👨🏿‍🦰","👨🏽‍🦳","🧔","🧔🏼‍♂️","👲","🧕","👳🏻‍♂️","👮‍♀️","👮","👮🏻‍♂️","👷‍♀️","💂‍♀️",
@@ -62,6 +63,8 @@ let selectedAvatar = localStorage.getItem("varalica_avatar") || "";
 let selectedPlayMode = localStorage.getItem("varalica_play_mode") || "live";
 let selectedCategory = localStorage.getItem("varalica_selected_category") || "Sve kategorije";
 let selectedDiscussionSeconds = Number(localStorage.getItem("varalica_discussion_seconds") || 180);
+let selectedVaralicaCount = Number(localStorage.getItem("varalica_count") || 1);
+let associationDraft = sessionStorage.getItem("varalica_association_draft") || "";
 let hasRevealedPrivateCard = false;
 let lastRoomState = "";
 let revealSequence = {
@@ -94,9 +97,17 @@ if (pathRoomMatch) {
   createRoomButton.classList.add("hidden");
 }
 
+playerNameInput.value = sessionStorage.getItem("varalica_username") || "";
+
 createRoomButton.addEventListener("click", createRoom);
 joinRoomButton.addEventListener("click", joinRoom);
-playerNameInput.addEventListener("input", updateJoinButtons);
+playerNameInput.addEventListener("input", () => {
+  sessionStorage.setItem("varalica_username", playerNameInput.value.trim());
+  updateJoinButtons();
+});
+roomCodeInput.addEventListener("input", () => {
+  roomCodeInput.value = roomCodeInput.value.toUpperCase().replace(/[O0]/g, "");
+});
 copyCodeButton.addEventListener("click", copyRoomCode);
 copyLinkButton.addEventListener("click", copyRoomLink);
 showQrButton.addEventListener("click", toggleQrPanel);
@@ -134,11 +145,6 @@ window.addEventListener("pagehide", (event) => {
     sendLikelyTabClose();
   }
 });
-clearAvatarButton.addEventListener("click", () => {
-  selectedAvatar = "";
-  localStorage.removeItem("varalica_avatar");
-  renderAvatarGrid();
-});
 renderAvatarGrid();
 renderModeToggle();
 setConnectionMode("disconnected");
@@ -146,7 +152,8 @@ touchSession();
 updateJoinButtons();
 
 function hasValidPlayerName() {
-  return playerNameInput.value.trim().length > 0;
+  const length = playerNameInput.value.trim().length;
+  return length >= 3 && length <= 15;
 }
 
 function updateJoinButtons() {
@@ -169,10 +176,12 @@ function renderModeToggle() {
 async function createRoom() {
   clearError();
   const name = playerNameInput.value.trim();
-  if (!name) {
+  if (!hasValidPlayerName()) {
     updateJoinButtons();
+    showError("Username mora imati 3 do 15 znakova.");
     return;
   }
+  sessionStorage.setItem("varalica_username", name);
   const result = await apiRequest("/api/rooms", { name, avatar: selectedAvatar || null, play_mode: selectedPlayMode });
   if (!result) return;
   enterRoom(result.room_code, result.player_id, result.avatar);
@@ -181,10 +190,12 @@ async function createRoom() {
 async function joinRoom() {
   clearError();
   const name = playerNameInput.value.trim();
-  if (!name) {
+  if (!hasValidPlayerName()) {
     updateJoinButtons();
+    showError("Username mora imati 3 do 15 znakova.");
     return;
   }
+  sessionStorage.setItem("varalica_username", name);
   const code = roomCodeInput.value.trim().toUpperCase();
   if (!code) {
     showError("Unesi kod sobe.");
@@ -211,11 +222,18 @@ function enterRoom(roomCode, playerId, avatar) {
   window.history.replaceState({}, "", `/room/${roomCode}`);
   setupView.classList.add("hidden");
   roomView.classList.remove("hidden");
+  connectionStatus.classList.remove("hidden");
   connectSocket();
 }
 
 function setConnectionMode(mode) {
   connectionMode = mode;
+  if ((!localRoomCode && !roomState) || (roomView.classList.contains("hidden") && !roomState)) {
+    connectionStatus.classList.add("hidden");
+    connectionStatus.textContent = "";
+    return;
+  }
+  connectionStatus.classList.remove("hidden");
   const labels = {
     stable: "Stable",
     reconnecting: "Reconnecting",
@@ -413,6 +431,7 @@ async function startRound() {
     player_id: localPlayerId,
     category: selectedCategory,
     discussion_seconds: selectedDiscussionSeconds,
+    varalica_count: selectedVaralicaCount,
   });
 }
 
@@ -451,12 +470,14 @@ async function openFinalVoting() {
   await apiRequest(`/api/rooms/${localRoomCode}/open-final-voting`, { player_id: localPlayerId });
 }
 
-async function submitFinalVote(targetId) {
+async function submitFinalVote(targetIds) {
   clearError();
   touchSession();
+  const normalizedTargets = Array.isArray(targetIds) ? targetIds : [targetIds];
   await apiRequest(`/api/rooms/${localRoomCode}/vote`, {
     player_id: localPlayerId,
-    target_id: targetId,
+    target_id: normalizedTargets[0] || null,
+    target_ids: normalizedTargets,
   });
 }
 
@@ -464,12 +485,27 @@ async function sendAssociation() {
   clearError();
   touchSession();
   const input = document.querySelector("#associationInput");
-  const text = input?.value || "";
+  const text = input?.value || associationDraft;
   const result = await apiRequest(`/api/rooms/${localRoomCode}/association`, {
     player_id: localPlayerId,
     text,
   });
-  if (result && input) input.value = "";
+  if (result) {
+    associationDraft = "";
+    sessionStorage.removeItem("varalica_association_draft");
+    if (input) input.value = "";
+    updateAssociationComposerState();
+  }
+}
+
+async function sendReaction(emoji, targetPlayerId) {
+  clearError();
+  touchSession();
+  await apiRequest(`/api/rooms/${localRoomCode}/reaction`, {
+    player_id: localPlayerId,
+    target_player_id: targetPlayerId,
+    emoji,
+  });
 }
 
 async function startNewRound() {
@@ -543,7 +579,7 @@ function startRevealCountdown() {
     showReplay: false,
   };
 
-  const isCurrentUserVaralica = roomState.viewer_id === roomState.results.varalica.id;
+  const isCurrentUserVaralica = isViewerVaralica(roomState.results);
   if (isCurrentUserVaralica && navigator.vibrate) {
     navigator.vibrate([120, 80, 200]);
   }
@@ -705,6 +741,58 @@ function inviteLink() {
   return `${inviteOrigin()}/room/${encodeURIComponent(code)}`;
 }
 
+function isAssociationInputFocused() {
+  return document.activeElement?.id === "associationInput";
+}
+
+function currentTurnPlayerId() {
+  return roomState?.discussion?.current_player_id || roomState?.overtime?.current_player_id || "";
+}
+
+function updateAssociationComposerState() {
+  const input = document.querySelector("#associationInput");
+  const button = document.querySelector("#sendAssociationButton");
+  const helper = document.querySelector("#associationHelperText") || document.querySelector(".association-composer .helper-text");
+  if (!input || !button) return;
+  const me = roomState.players.find((player) => player.id === roomState.viewer_id);
+  const isMyTurn = Boolean(me && me.id === currentTurnPlayerId());
+  if (input.value !== associationDraft && !isAssociationInputFocused()) {
+    input.value = associationDraft;
+  }
+  button.dataset.canSend = isMyTurn ? "true" : "false";
+  button.disabled = !isMyTurn || input.value.trim().length === 0;
+  if (helper) {
+    helper.textContent = isMyTurn
+      ? "Tvoj red — pošalji asocijaciju."
+      : "Možeš pripremiti asocijaciju. Poslati možeš kad je tvoj red.";
+  }
+}
+
+function updateDiscussionShellInPlace() {
+  const timerValue = document.querySelector("#discussionTimerValue");
+  const currentName = document.querySelector("#currentPlayerName");
+  const openButton = document.querySelector("#openFinalVotingButton");
+  const votingHelper = document.querySelector("#votingControlHelper");
+  const data = roomState.state === "overtime" ? roomState.overtime : roomState.discussion;
+  if (!data) return false;
+
+  const currentPlayer = roomState.players.find((player) => player.id === data.current_player_id);
+  if (timerValue) timerValue.textContent = formatSeconds(data.remaining_seconds);
+  if (currentName) currentName.textContent = playerNameText(currentPlayer);
+  document.querySelectorAll("[data-reaction-target-id]").forEach((button) => {
+    button.dataset.reactionTargetId = data.current_player_id || "";
+  });
+  if (openButton && roomState.viewer_id === roomState.host_id) {
+    const voteLocked = !data.voting_unlocked;
+    openButton.disabled = voteLocked;
+    if (votingHelper) {
+      votingHelper.textContent = voteLocked ? `Glasanje uskoro: ${formatSeconds(data.voting_seconds_left)}` : "Možeš otvoriti glasanje.";
+    }
+  }
+  updateAssociationComposerState();
+  return true;
+}
+
 function render() {
   if (!roomState) return;
   roomCodeDisplay.textContent = roomState.room_code;
@@ -725,6 +813,7 @@ function render() {
   }
 
   if (roomState.state === "discussion") {
+    if (isAssociationInputFocused() && updateDiscussionShellInPlace()) return;
     renderDiscussion();
     return;
   }
@@ -740,6 +829,7 @@ function render() {
   }
 
   if (roomState.state === "overtime") {
+    if (isAssociationInputFocused() && updateDiscussionShellInPlace()) return;
     renderOvertime();
     return;
   }
@@ -816,6 +906,11 @@ function renderLobby() {
   const canStart = isHost && roomState.player_count >= roomState.min_players;
   const categories = roomState.categories || ["Sve kategorije"];
   const durationOptions = roomState.allowed_discussion_seconds || [120, 180, 300];
+  const allowedVaralicaCounts = roomState.allowed_varalica_counts || [1];
+  if (!allowedVaralicaCounts.includes(selectedVaralicaCount)) {
+    selectedVaralicaCount = 1;
+    localStorage.setItem("varalica_count", "1");
+  }
   if (!categories.includes(selectedCategory)) {
     selectedCategory = roomState.selected_category || "Sve kategorije";
   }
@@ -848,6 +943,14 @@ function renderLobby() {
                   .join("")}
               </select>
             </div>
+            <div class="category-control">
+              <label for="varalicaCountSelect">Broj Varalica</label>
+              <select id="varalicaCountSelect">
+                <option value="1" ${selectedVaralicaCount === 1 ? "selected" : ""}>1 Varalica</option>
+                <option value="2" ${selectedVaralicaCount === 2 ? "selected" : ""} ${allowedVaralicaCounts.includes(2) ? "" : "disabled"}>2 Varalice</option>
+              </select>
+              ${allowedVaralicaCounts.includes(2) ? "" : `<p class="helper-text">2 Varalice dostupne su od 7 igrača.</p>`}
+            </div>
             <button id="startRoundButton" ${canStart ? "" : "disabled"}>
               ${canStart ? "Pokreni rundu" : "Potrebna su najmanje 4 igraca"}
             </button>`
@@ -867,6 +970,13 @@ function renderLobby() {
     durationSelect.addEventListener("change", () => {
       selectedDiscussionSeconds = Number(durationSelect.value);
       localStorage.setItem("varalica_discussion_seconds", String(selectedDiscussionSeconds));
+    });
+  }
+  const varalicaCountSelect = document.querySelector("#varalicaCountSelect");
+  if (varalicaCountSelect) {
+    varalicaCountSelect.addEventListener("change", () => {
+      selectedVaralicaCount = Number(varalicaCountSelect.value) === 2 ? 2 : 1;
+      localStorage.setItem("varalica_count", String(selectedVaralicaCount));
     });
   }
   const startButton = document.querySelector("#startRoundButton");
@@ -960,22 +1070,21 @@ function renderDiscussion() {
   const voteLocked = !discussion.voting_unlocked;
   const votingControl = isHost
     ? `<div class="voting-control-compact">
-         <button id="openFinalVotingButton" ${voteLocked ? "disabled" : ""}>Otvori glasanje</button>
+         <button id="openFinalVotingButton" class="discussion-action-button" ${voteLocked ? "disabled" : ""}>Otvori glasanje</button>
          <p class="helper-text">${voteLocked ? `Glasanje uskoro: ${formatSeconds(discussion.voting_seconds_left)}` : "Možeš otvoriti glasanje."}</p>
        </div>`
-    : `<div class="voting-control-compact status-only">
-         <p class="helper-text">${voteLocked ? "Čeka se glasanje..." : "Čeka se da host otvori glasanje."}</p>
-       </div>`;
+    : "";
 
   phaseContent.innerHTML = `
     <div class="phase-card discussion-card">
       <div class="timer-box compact-timer">
         <span>Diskusija</span>
-        <strong>${formatSeconds(discussion.remaining_seconds)}</strong>
+        <strong id="discussionTimerValue">${formatSeconds(discussion.remaining_seconds)}</strong>
       </div>
+      ${renderReactionRow(discussion.current_player_id)}
       <div class="current-player-card">
         <p class="eyebrow">Trenutni igrac</p>
-        <p class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
+        <p id="currentPlayerName" class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
       </div>
       ${
         isHost
@@ -1003,6 +1112,7 @@ function renderDiscussion() {
 
   const openButton = document.querySelector("#openFinalVotingButton");
   if (openButton) openButton.addEventListener("click", openFinalVoting);
+  bindReactionRow();
   bindAssociationComposer();
 }
 
@@ -1015,7 +1125,7 @@ function renderReadyForFinalVoting() {
       ${
         isHost
           ? `<button id="openFinalVotingButton">Otvori glasanje</button>`
-          : `<p class="helper-text">Cekamo hosta da otvori glasanje.</p>`
+          : ""
       }
     </div>
   `;
@@ -1037,13 +1147,14 @@ function renderOvertime() {
       <p class="eyebrow">Produzetak</p>
       <h2>Glasanje je nerešeno.</h2>
       <p class="helper-text">Diskusija se produžava za 60 sekundi. Varalica se još ne otkriva.</p>
-      <div class="timer-box">
+      <div class="timer-box compact-timer">
         <span>Produzetak</span>
-        <strong>${formatSeconds(overtime.remaining_seconds)}</strong>
+        <strong id="discussionTimerValue">${formatSeconds(overtime.remaining_seconds)}</strong>
       </div>
+      ${renderReactionRow(overtime.current_player_id)}
       <div class="current-player-card">
         <p class="eyebrow">Trenutni igrac</p>
-        <p class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
+        <p id="currentPlayerName" class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
       </div>
       ${
         isHost
@@ -1053,8 +1164,10 @@ function renderOvertime() {
       <div class="voting-control-compact ${isHost ? "" : "status-only"}">
         ${
           isHost && overtime.voting_unlocked
-            ? `<button id="openFinalVotingButton">Otvori glasanje</button>`
-            : `<p class="helper-text">${isHost ? `Glasanje uskoro: ${formatSeconds(overtime.voting_seconds_left)}` : "Diskusija je produžena. Čeka se novo glasanje."}</p>`
+            ? `<button id="openFinalVotingButton" class="discussion-action-button">Otvori glasanje</button>`
+            : isHost
+              ? `<p class="helper-text">Glasanje uskoro: ${formatSeconds(overtime.voting_seconds_left)}</p>`
+              : `<p class="helper-text">Diskusija je produžena.</p>`
         }
       </div>
       ${renderAssociationComposer(overtime.current_player_id)}
@@ -1077,6 +1190,7 @@ function renderOvertime() {
 
   const openButton = document.querySelector("#openFinalVotingButton");
   if (openButton) openButton.addEventListener("click", openFinalVoting);
+  bindReactionRow();
   bindAssociationComposer();
 }
 
@@ -1084,11 +1198,12 @@ function renderAssociationComposer(currentPlayerId) {
   const me = roomState.players.find((player) => player.id === roomState.viewer_id);
   if (me?.play_mode !== "chat") return "";
   const isMyTurn = me.id === currentPlayerId;
+  const draft = escapeHtml(associationDraft);
   return `
     <div class="association-composer">
       <label for="associationInput">Tvoja asocijacija</label>
       <div class="association-input-row">
-        <input id="associationInput" maxlength="80" autocomplete="off" placeholder="npr. nesto za kuhinju" />
+        <input id="associationInput" maxlength="80" autocomplete="off" placeholder="npr. nesto za kuhinju" value="${draft}" />
         <button id="sendAssociationButton" class="small" data-can-send="${isMyTurn ? "true" : "false"}" ${isMyTurn ? "" : "disabled"}>Pošalji</button>
       </div>
       <p class="helper-text">${isMyTurn ? "Tvoj red — pošalji asocijaciju." : "Možeš poslati kada je tvoj red."}</p>
@@ -1096,16 +1211,56 @@ function renderAssociationComposer(currentPlayerId) {
   `;
 }
 
+function renderReactionRow(targetPlayerId) {
+  if (!targetPlayerId) return "";
+  const buttons = REACTION_EMOJIS.map((emoji) => (
+    `<button class="reaction-button" type="button" data-reaction-emoji="${escapeHtml(emoji)}" data-reaction-target-id="${escapeHtml(targetPlayerId)}" aria-label="Reakcija ${escapeHtml(emoji)}">${escapeHtml(emoji)}</button>`
+  )).join("");
+  return `<div class="reaction-row" aria-label="Reakcije">${buttons}</div>`;
+}
+
+function bindReactionRow() {
+  document.querySelectorAll("[data-reaction-emoji]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const targetPlayerId = button.dataset.reactionTargetId || currentTurnPlayerId();
+      if (!targetPlayerId) return;
+      sendReaction(button.dataset.reactionEmoji, targetPlayerId);
+    });
+  });
+}
+
 function bindAssociationComposer() {
   const input = document.querySelector("#associationInput");
   const button = document.querySelector("#sendAssociationButton");
   if (!input || !button) return;
   const updateButton = () => {
-    button.disabled = button.dataset.canSend !== "true" || input.value.trim().length === 0;
+    associationDraft = input.value.slice(0, 80);
+    sessionStorage.setItem("varalica_association_draft", associationDraft);
+    updateAssociationComposerState();
   };
   input.addEventListener("input", updateButton);
   button.addEventListener("click", sendAssociation);
-  updateButton();
+  updateAssociationComposerState();
+}
+
+function renderVotingChecklist(players) {
+  return `
+    <div class="voting-checklist" aria-label="Status glasanja">
+      ${players
+        .map((player) => {
+          const mark = player.has_voted ? "✓" : "";
+          const stateClass = player.has_voted ? "voted" : "pending";
+          const label = player.has_voted ? "Glasao/la" : "Još nije glasao/la";
+          return `
+            <div class="voting-check-item ${stateClass}">
+              <span class="vote-check-box" aria-label="${label}">${mark}</span>
+              <span class="inline-player">${playerNameHtml(player)}</span>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
 }
 
 function renderFinalVoting() {
@@ -1115,45 +1270,79 @@ function renderFinalVoting() {
   const activeRoundPlayers = roomState.players.filter((player) => player.is_active_round_player);
   const votedCount = activeRoundPlayers.filter((player) => player.has_voted).length;
   const isOvertimeVote = roomState.state === "overtime_voting";
+  const requiredTargets = roomState.required_vote_targets || 1;
 
   phaseContent.innerHTML = `
     <div class="phase-card">
       <h2>${isOvertimeVote ? "Glasanje nakon produzetka" : "Finalno glasanje"}</h2>
       <p class="helper-text">
-        Odaberi jednog igraca za kojeg mislis da je Varalica. Glasovi se ne otkrivaju dok svi ne glasaju.
+        ${requiredTargets === 2 ? "Odaberi 2 igrača za koje misliš da su Varalice." : "Odaberi igrača za kojeg misliš da je Varalica."}
+        Glasovi se ne otkrivaju dok svi ne glasaju.
       </p>
       <p class="helper-text">Ne mozes glasati za sebe.</p>
       <div class="vote-progress-private">
         <strong>${votedCount}/${activeRoundPlayers.length}</strong>
-        <span>glasalo</span>
+        <span>igrača glasalo</span>
       </div>
+      ${renderVotingChecklist(activeRoundPlayers)}
+      ${requiredTargets === 2 && !hasVoted ? `<p id="voteSelectionCounter" class="helper-text">Izabrano: 0/2</p>` : ""}
       <div class="vote-list">
         ${activePlayers
           .map(
             (player) => `
-              <div class="vote-option">
+              <div class="vote-option ${requiredTargets === 2 ? "selectable-vote-option" : ""}" data-select-target-id="${escapeHtml(player.id)}">
                 <div>
                   <strong class="inline-player">${playerNameHtml(player)}</strong>
                   ${player.id === roomState.viewer_id ? `<span class="helper-text">Ti</span>` : ""}
                 </div>
                 <button class="small vote-button" data-target-id="${escapeHtml(player.id)}" ${hasVoted ? "disabled" : ""}>
-                  Glasaj
+                  ${requiredTargets === 2 ? "Odaberi" : "Glasaj"}
                 </button>
               </div>
             `,
           )
           .join("")}
       </div>
+      ${requiredTargets === 2 && !hasVoted ? `<button id="submitMultiVoteButton" disabled>Potvrdi izbor</button>` : ""}
       <p class="helper-text">
         ${hasVoted ? "Tvoj glas je zaprimljen. Cekamo ostale igrace." : "Mozes glasati samo jednom."}
       </p>
     </div>
   `;
 
-  if (!hasVoted) {
+  if (!hasVoted && requiredTargets === 1) {
     document.querySelectorAll(".vote-button").forEach((button) => {
       button.addEventListener("click", () => submitFinalVote(button.dataset.targetId));
     });
+  }
+  if (!hasVoted && requiredTargets === 2) {
+    const selectedTargets = new Set();
+    const counter = document.querySelector("#voteSelectionCounter");
+    const submitButton = document.querySelector("#submitMultiVoteButton");
+    const updateSelection = () => {
+      document.querySelectorAll("[data-select-target-id]").forEach((row) => {
+        const targetId = row.dataset.selectTargetId;
+        const selected = selectedTargets.has(targetId);
+        row.classList.toggle("selected", selected);
+        const button = row.querySelector(".vote-button");
+        if (button) button.textContent = selected ? "Izabrano" : "Odaberi";
+      });
+      if (counter) counter.textContent = `Izabrano: ${selectedTargets.size}/2`;
+      if (submitButton) submitButton.disabled = selectedTargets.size !== 2;
+    };
+    document.querySelectorAll(".vote-button").forEach((button) => {
+      button.addEventListener("click", () => {
+        const targetId = button.dataset.targetId;
+        if (selectedTargets.has(targetId)) {
+          selectedTargets.delete(targetId);
+        } else if (selectedTargets.size < 2) {
+          selectedTargets.add(targetId);
+        }
+        updateSelection();
+      });
+    });
+    submitButton?.addEventListener("click", () => submitFinalVote([...selectedTargets]));
+    updateSelection();
   }
 }
 
@@ -1197,11 +1386,23 @@ function renderVotingComplete() {
 
 function finalOutcomeTheme(results) {
   const wasCaught = results.was_varalica_caught === true;
-  const isCurrentUserVaralica = roomState.viewer_id === results.varalica.id;
+  const isCurrentUserVaralica = isViewerVaralica(results);
   if (wasCaught && isCurrentUserVaralica) return "impostor-caught-red";
   if (wasCaught && !isCurrentUserVaralica) return "players-win-green";
   if (!wasCaught && isCurrentUserVaralica) return "impostor-win-green";
   return "players-lost-red";
+}
+
+function resultVaralice(results) {
+  return Array.isArray(results.varalice) && results.varalice.length ? results.varalice : [results.varalica].filter(Boolean);
+}
+
+function isViewerVaralica(results) {
+  return resultVaralice(results).some((player) => player.id === roomState.viewer_id);
+}
+
+function varaliceNameText(results) {
+  return resultVaralice(results).map((player) => playerNameText(player)).join(", ");
 }
 
 function revealTheme(results, phase = "complete") {
@@ -1212,17 +1413,17 @@ function revealTheme(results, phase = "complete") {
 
 function revealOutcomeTitle(results) {
   if (results.was_varalica_caught === true) {
-    return roomState.viewer_id === results.varalica.id ? "PROVALJEN" : "OTKRIVEN";
+    return isViewerVaralica(results) ? "PROVALJEN" : "OTKRIVEN";
   }
-  return roomState.viewer_id === results.varalica.id ? "MAJSTOR MANIPULACIJE" : "VARALICA JE PREŽIVJELA";
+  return isViewerVaralica(results) ? "MAJSTOR MANIPULACIJE" : "VARALICA JE PREŽIVJELA";
 }
 
 function revealOutcomeSubtitle(results) {
-  const isCurrentUserVaralica = roomState.viewer_id === results.varalica.id;
+  const isCurrentUserVaralica = isViewerVaralica(results);
   if (results.was_varalica_caught === true) {
     return isCurrentUserVaralica ? "Manipulacija nije uspjela." : "Igrači su pronašli Varalicu.";
   }
-  return isCurrentUserVaralica ? "Igrači moraju još pasulja da pojedu." : "Varalica vas je preveslala.";
+  return isCurrentUserVaralica ? "Varalica je preživjela." : "Igrači nisu uspjeli otkriti Varalicu.";
 }
 
 function impostorAvatarHtml() {
@@ -1263,7 +1464,7 @@ function renderImpostorReveal(results) {
   const showTitle = phase === "title_reveal" || phase === "nickname_reveal" || phase === "statistics_reveal";
   const showName = phase === "nickname_reveal" || phase === "statistics_reveal";
   const isImpact = phase === "countdown_1" || phase === "nickname_reveal";
-  const nickname = results.varalica?.name || "Nepoznato";
+  const nickname = varaliceNameText(results) || "Nepoznato";
   const title = revealOutcomeTitle(results);
   const subtitle = revealOutcomeSubtitle(results);
 
@@ -1306,7 +1507,7 @@ function renderImpostorReveal(results) {
 
 function renderResultRevealHero(results) {
   const theme = finalOutcomeTheme(results);
-  const nickname = results.varalica?.name || "Nepoznato";
+  const nickname = varaliceNameText(results) || "Nepoznato";
   return `
     <div class="result-reveal-hero ${escapeHtml(theme)}">
       <div class="result-reveal-avatar">
@@ -1341,11 +1542,16 @@ function renderResults() {
     .join("");
   const individualVoteRows = results.individual_votes
     .map(
-      (item) => `
-        <div class="result-row">
-          <span>${escapeHtml(item.voter_avatar || "🎲")} ${escapeHtml(item.voter_name)} → ${escapeHtml(item.target_avatar || "🎲")} ${escapeHtml(item.target_name)}</span>
-        </div>
-      `,
+      (item) => {
+        const targets = Array.isArray(item.targets) && item.targets.length
+          ? item.targets.map((target) => `${target.target_avatar || "🎲"} ${target.target_name}`).join(", ")
+          : `${item.target_avatar || "🎲"} ${item.target_name || ""}`;
+        return `
+          <div class="result-row">
+            <span>${escapeHtml(item.voter_avatar || "🎲")} ${escapeHtml(item.voter_name)} → ${escapeHtml(targets)}</span>
+          </div>
+        `;
+      },
     )
     .join("");
   const scoreboardRows = (roomState.scoreboard || [])
@@ -1368,7 +1574,7 @@ function renderResults() {
     <div class="phase-card results-card">
       ${renderResultRevealHero(results)}
       <h2>Statistika glasanja</h2>
-      <p class="big-result">Varalica je bio/la: ${escapeHtml(playerNameText(results.varalica))}</p>
+      <p class="big-result">${(results.varalice || []).length > 1 ? "Varalice su bile" : "Varalica je bio/la"}: ${escapeHtml(varaliceNameText(results))}</p>
       <p class="word-result">Riječ je bila: ${escapeHtml(results.word.hr)} (${escapeHtml(results.word.sr)})</p>
       <p class="outcome-text">${escapeHtml(results.outcome)}</p>
       <p class="helper-text">
@@ -1423,15 +1629,11 @@ function renderPlayers() {
     const hostLabel = player.is_host ? `<span class="badge">👑 Host</span>` : "";
     const currentLabel = player.is_current ? `<span class="badge active-turn">Na redu</span>` : "";
     const voteLabel = player.requested_vote ? `<span class="badge vote-requested">Trazi glasanje</span>` : "";
-    const finalVoteLabel =
-      (roomState.state === "final_voting" || roomState.state === "overtime_voting" || roomState.state === "voting_complete" || roomState.state === "results") && player.is_active_round_player
-        ? `<span class="badge vote-status ${player.has_voted ? "ready" : "waiting"}">${player.has_voted ? "Glasao/la" : "Nije glasao/la"}</span>`
-        : "";
-    const voteTargetLabel = roomState.state === "results" && player.vote_target
-      ? `<div class="vote-target-line"><span>Glasao/la za:</span> <strong>${escapeHtml(playerNameText(player.vote_target))}</strong></div>`
-      : "";
     const associationBubble = player.association
       ? `<div class="association-bubble">${escapeHtml(player.association.text)}</div>`
+      : "";
+    const reactionBubble = player.reaction
+      ? `<span class="reaction-pop" aria-label="Reakcija">${escapeHtml(player.reaction.emoji)}</span>`
       : "";
 
     row.innerHTML = `
@@ -1439,15 +1641,14 @@ function renderPlayers() {
         <span class="inline-player">
           <span class="status-dot ${escapeHtml(player.connection_status || "offline")}" title="${connectionStatusLabel}"></span>
           ${playerNameHtml(player)}
+          ${reactionBubble}
         </span>
         ${associationBubble}
-        ${voteTargetLabel}
       </div>
       <div class="player-meta">
         ${hostLabel}
         ${currentLabel}
         ${voteLabel}
-        ${finalVoteLabel}
         ${disconnectedLabel}
         ${connectedLabel}
         ${
@@ -1457,7 +1658,7 @@ function renderPlayers() {
         }
         ${
           isViewerHost && player.id !== roomState.viewer_id
-            ? `<button class="small danger player-action-button" data-kick-id="${escapeHtml(player.id)}">Izbaci</button>`
+            ? `<button class="kick-x-button" data-kick-id="${escapeHtml(player.id)}" title="Izbaci igrača" aria-label="Izbaci igrača">×</button>`
             : ""
         }
       </div>
@@ -1585,6 +1786,7 @@ async function bootstrapRoomSession() {
     }
     setupView.classList.add("hidden");
     roomView.classList.remove("hidden");
+    connectionStatus.classList.remove("hidden");
     connectSocket();
     return;
   }
