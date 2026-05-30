@@ -50,25 +50,32 @@
       <section id="roomView" class="room-layout hidden">
         <div class="panel room-panel">
           <div class="room-topline">
-            <div>
-              <p class="eyebrow">Kod sobe</p>
-              <div id="roomCodeDisplay" class="room-code">-----</div>
-              <div id="roundDisplay" class="round-display">Runda 1</div>
+            <div class="room-summary">
+              <p class="eyebrow room-summary-label">Kod sobe</p>
+              <div class="room-summary-row">
+                <div id="roomCodeDisplay" class="room-code">-----</div>
+                <div id="roundDisplay" class="round-display">Runda 1</div>
+              </div>
             </div>
+            <div class="room-topline-controls">
+              <button id="roomPanelToggle" class="room-panel-toggle" type="button" aria-expanded="true" aria-label="Sakrij ili prikaži detalje sobe">▲</button>
+              <button id="leaveRoomButton" class="small secondary leave-button leave-button-inline">Napusti sobu</button>
+            </div>
+          </div>
+          <div id="roomPanelCollapsible" class="room-panel-collapsible">
             <div class="room-actions">
               <button id="copyCodeButton" class="small secondary">Kopiraj kod</button>
               <button id="copyLinkButton" class="small secondary">Kopiraj link</button>
               <button id="showQrButton" class="small secondary">QR</button>
             </div>
-          </div>
-          <div id="qrPanel" class="qr-panel hidden"></div>
-          <div id="hostPanel" class="host-panel hidden">
-            <p class="eyebrow">Host panel</p>
-            <div id="hostPanelActions" class="room-secondary-actions"></div>
-          </div>
-          <div class="room-secondary-actions">
-            <button id="resetRoomButton" class="small replay hidden">Restartuj sobu</button>
-            <button id="leaveRoomButton" class="small secondary leave-button">Napusti sobu</button>
+            <div id="qrPanel" class="qr-panel hidden"></div>
+            <div id="hostPanel" class="host-panel hidden">
+              <p class="eyebrow">Host panel</p>
+              <div id="hostPanelActions" class="room-secondary-actions"></div>
+            </div>
+            <div class="room-secondary-actions">
+              <button id="resetRoomButton" class="small replay hidden">Restartuj sobu</button>
+            </div>
           </div>
 
           <div id="phaseContent" class="phase-content"></div>

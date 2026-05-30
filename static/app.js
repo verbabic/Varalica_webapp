@@ -34,6 +34,7 @@ const confirmActionText = document.querySelector("#confirmActionText");
 const cancelActionButton = document.querySelector("#cancelActionButton");
 const confirmActionButton = document.querySelector("#confirmActionButton");
 const toastContainer = document.querySelector("#toastContainer");
+const roomPanelToggle = document.querySelector("#roomPanelToggle");
 
 const SESSION_MAX_AGE_MS = 15 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 12000;
@@ -87,6 +88,8 @@ let currentTurnId = "";
 let nextPlayerUnlockAt = 0;
 let nextPlayerCountdownTimer = null;
 let pendingConfirmAction = null;
+let roomPanelCollapsed = sessionStorage.getItem("varalica_room_panel_collapsed") === "true";
+let lastAssociationBannerStackKey = "";
 
 const pathRoomMatch = window.location.pathname.match(/^\/room\/([A-Z0-9]{5})$/i);
 if (pathRoomMatch) {
@@ -113,6 +116,7 @@ copyLinkButton.addEventListener("click", copyRoomLink);
 showQrButton.addEventListener("click", toggleQrPanel);
 resetRoomButton.addEventListener("click", promptRestartRoom);
 leaveRoomButton.addEventListener("click", showLeaveModal);
+roomPanelToggle?.addEventListener("click", toggleRoomPanel);
 rulesButton.addEventListener("click", () => showModal(rulesModal));
 liveModeButton.addEventListener("click", () => setPlayMode("live"));
 chatModeButton.addEventListener("click", () => setPlayMode("chat"));
@@ -147,9 +151,24 @@ window.addEventListener("pagehide", (event) => {
 });
 renderAvatarGrid();
 renderModeToggle();
+applyRoomPanelCollapse();
 setConnectionMode("disconnected");
 touchSession();
 updateJoinButtons();
+
+function toggleRoomPanel() {
+  roomPanelCollapsed = !roomPanelCollapsed;
+  sessionStorage.setItem("varalica_room_panel_collapsed", roomPanelCollapsed ? "true" : "false");
+  applyRoomPanelCollapse();
+}
+
+function applyRoomPanelCollapse() {
+  const roomPanel = document.querySelector(".room-panel");
+  if (!roomPanel || !roomPanelToggle) return;
+  roomPanel.classList.toggle("is-collapsed", roomPanelCollapsed);
+  roomPanelToggle.setAttribute("aria-expanded", roomPanelCollapsed ? "false" : "true");
+  roomPanelToggle.textContent = roomPanelCollapsed ? "▼" : "▲";
+}
 
 function hasValidPlayerName() {
   const length = playerNameInput.value.trim().length;
@@ -388,7 +407,11 @@ function connectSocket() {
       resetRevealSequence();
       associationDraft = "";
       sessionStorage.removeItem("varalica_association_draft");
+      lastAssociationBannerStackKey = "";
       syncPlayModeFromRoom();
+    }
+    if (roomState.state !== "discussion" && roomState.state !== "overtime") {
+      lastAssociationBannerStackKey = "";
     }
     if (roomState.state === "results" && previousState !== "results") {
       startRevealCountdown();
@@ -813,7 +836,6 @@ function currentTurnPlayerId() {
 function updateAssociationComposerState() {
   const input = document.querySelector("#associationInput");
   const button = document.querySelector("#sendAssociationButton");
-  const helper = document.querySelector("#associationHelperText") || document.querySelector(".association-composer .helper-text");
   if (!input || !button) return;
   const me = roomState.players.find((player) => player.id === roomState.viewer_id);
   const isMyTurn = Boolean(me && me.id === currentTurnPlayerId());
@@ -822,18 +844,12 @@ function updateAssociationComposerState() {
   }
   button.dataset.canSend = isMyTurn ? "true" : "false";
   button.disabled = !isMyTurn || input.value.trim().length === 0;
-  if (helper) {
-    helper.textContent = isMyTurn
-      ? "Tvoj red — pošalji asocijaciju."
-      : "Možeš pripremiti asocijaciju. Poslati možeš kad je tvoj red.";
-  }
 }
 
 function updateDiscussionShellInPlace() {
   const timerValue = document.querySelector("#discussionTimerValue");
   const currentName = document.querySelector("#currentPlayerName");
   const openButton = document.querySelector("#openFinalVotingButton");
-  const votingHelper = document.querySelector("#votingControlHelper");
   const data = roomState.state === "overtime" ? roomState.overtime : roomState.discussion;
   if (!data) return false;
 
@@ -846,12 +862,55 @@ function updateDiscussionShellInPlace() {
   if (openButton && roomState.viewer_id === roomState.host_id) {
     const voteLocked = !data.voting_unlocked;
     openButton.disabled = voteLocked;
-    if (votingHelper) {
-      votingHelper.textContent = voteLocked ? `Glasanje uskoro: ${formatSeconds(data.voting_seconds_left)}` : "Možeš otvoriti glasanje.";
-    }
   }
   updateAssociationComposerState();
+  syncAssociationBannerStack(roomState.association_banners);
   return true;
+}
+
+function associationBannerStackKey(banners) {
+  return (banners || []).map((banner) => `${banner.id}:${banner.expires_at}`).join("|");
+}
+
+function renderAssociationBannerStack(banners) {
+  if (!banners?.length) return "";
+  const items = banners
+    .map(
+      (banner) => `
+        <div class="association-banner" data-banner-id="${escapeHtml(banner.id)}" data-expires-at="${banner.expires_at}">
+          <span class="association-banner-avatar">${escapeHtml(banner.player_avatar || "🎲")}</span>
+          <span class="association-banner-body">
+            <strong>${escapeHtml(banner.player_name || "Nepoznato")}:</strong>
+            “${escapeHtml(banner.text)}”
+          </span>
+        </div>
+      `,
+    )
+    .join("");
+  return `<div id="associationBannerStack" class="association-banner-stack">${items}</div>`;
+}
+
+function syncAssociationBannerStack(banners) {
+  const card = document.querySelector(".discussion-card, .overtime-card");
+  if (!card) return;
+  const key = associationBannerStackKey(banners);
+  const existingStack = card.querySelector("#associationBannerStack");
+  if (!banners?.length) {
+    existingStack?.remove();
+    lastAssociationBannerStackKey = "";
+    return;
+  }
+  if (key === lastAssociationBannerStackKey && existingStack) return;
+  lastAssociationBannerStackKey = key;
+  const html = renderAssociationBannerStack(banners);
+  if (existingStack) {
+    existingStack.outerHTML = html;
+    return;
+  }
+  const anchor = card.querySelector(".timer-box");
+  if (anchor) {
+    anchor.insertAdjacentHTML("afterend", html);
+  }
 }
 
 function render() {
@@ -861,6 +920,7 @@ function render() {
   playerCountBadge.textContent = `${roomState.player_count}/${roomState.max_players}`;
   resetRoomButton.classList.add("hidden");
   renderModeToggle();
+  applyRoomPanelCollapse();
   renderHostPanel();
   renderPlayers();
 
@@ -1125,6 +1185,28 @@ function renderReveal() {
   }
 }
 
+function renderDiscussionActionRow(discussion, isHost, canAdvanceTurn, nextLockLeft) {
+  const voteLocked = !discussion.voting_unlocked;
+  const buttons = [];
+  if (canAdvanceTurn) {
+    buttons.push(`<button id="nextPlayerButton" class="discussion-action-button compact-action" ${nextLockLeft > 0 ? "disabled" : ""}>Sljedeći igrač</button>`);
+  }
+  if (isHost) {
+    buttons.push(`<button id="openFinalVotingButton" class="discussion-action-button compact-action" ${voteLocked ? "disabled" : ""}>Otvori glasanje</button>`);
+  }
+  if (!buttons.length) return "";
+  return `<div class="discussion-actions">${buttons.join("")}</div>`;
+}
+
+function bindDiscussionActions(canAdvanceTurn, nextLockLeft) {
+  const nextButton = document.querySelector("#nextPlayerButton");
+  if (nextButton && canAdvanceTurn && nextLockLeft <= 0) {
+    nextButton.addEventListener("click", nextPlayer);
+  }
+  const openButton = document.querySelector("#openFinalVotingButton");
+  if (openButton) openButton.addEventListener("click", openFinalVoting);
+}
+
 function renderDiscussion() {
   const isHost = roomState.viewer_id === roomState.host_id;
   const discussion = roomState.discussion;
@@ -1132,17 +1214,6 @@ function renderDiscussion() {
   const currentPlayer = roomState.players.find((player) => player.id === discussion.current_player_id);
   const canAdvanceTurn = isHost || me?.id === discussion.current_player_id;
   const nextLockLeft = nextPlayerLockSecondsLeft();
-  const nextButtonHtml = canAdvanceTurn
-    ? `<button id="nextPlayerButton" ${nextLockLeft > 0 ? "disabled" : ""}>Sljedeci igrac</button>
-       ${nextLockLeft > 0 ? `<p class="helper-text">Dostupno za ${nextLockLeft}...</p>` : ""}`
-    : `<p class="helper-text">Samo host ili trenutni igrac mogu prebaciti red.</p>`;
-  const voteLocked = !discussion.voting_unlocked;
-  const votingControl = isHost
-    ? `<div class="voting-control-compact">
-         <button id="openFinalVotingButton" class="discussion-action-button" ${voteLocked ? "disabled" : ""}>Otvori glasanje</button>
-         <p class="helper-text">${voteLocked ? `Glasanje uskoro: ${formatSeconds(discussion.voting_seconds_left)}` : "Možeš otvoriti glasanje."}</p>
-       </div>`
-    : "";
 
   phaseContent.innerHTML = `
     <div class="phase-card discussion-card">
@@ -1150,39 +1221,21 @@ function renderDiscussion() {
         <span>Diskusija</span>
         <strong id="discussionTimerValue">${formatSeconds(discussion.remaining_seconds)}</strong>
       </div>
+      ${renderAssociationBannerStack(roomState.association_banners)}
       ${renderReactionRow(discussion.current_player_id)}
-      <div class="current-player-card">
-        <p class="eyebrow">Trenutni igrac</p>
+      <div class="current-player-card compact-current-player">
+        <p class="eyebrow">Trenutni igrač</p>
         <p id="currentPlayerName" class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
       </div>
-      ${
-        isHost
-          ? `<button id="nextPlayerButton">Sljedeći igrač</button>`
-          : `<p class="helper-text">Samo host ili trenutni igrac mogu prebaciti red.</p>`
-      }
-      ${votingControl}
+      ${renderDiscussionActionRow(discussion, isHost, canAdvanceTurn, nextLockLeft)}
       ${renderAssociationComposer(discussion.current_player_id)}
     </div>
   `;
 
-  const nextButton = document.querySelector("#nextPlayerButton");
-  if (!nextButton && canAdvanceTurn) {
-    document.querySelector(".discussion-card")?.insertAdjacentHTML("beforeend", `<button id="nextPlayerButton">Sljedeci igrac</button>`);
-  }
-  const insertedNextButton = document.querySelector("#nextPlayerButton");
-  if (insertedNextButton) {
-    if (nextLockLeft > 0) {
-      insertedNextButton.disabled = true;
-      insertedNextButton.insertAdjacentHTML("afterend", `<p class="helper-text">Dostupno za ${nextLockLeft}...</p>`);
-    } else {
-      insertedNextButton.addEventListener("click", nextPlayer);
-    }
-  }
-
-  const openButton = document.querySelector("#openFinalVotingButton");
-  if (openButton) openButton.addEventListener("click", openFinalVoting);
+  bindDiscussionActions(canAdvanceTurn, nextLockLeft);
   bindReactionRow();
   bindAssociationComposer();
+  lastAssociationBannerStackKey = associationBannerStackKey(roomState.association_banners);
 }
 
 function renderReadyForFinalVoting() {
@@ -1213,54 +1266,26 @@ function renderOvertime() {
 
   phaseContent.innerHTML = `
     <div class="phase-card overtime-card">
-      <p class="eyebrow">Produzetak</p>
-      <h2>Glasanje je nerešeno.</h2>
-      <p class="helper-text">Diskusija se produžava za 60 sekundi. Varalica se još ne otkriva.</p>
+      <p class="overtime-compact-title">PRODUŽETAK — Glasanje je nerešeno</p>
       <div class="timer-box compact-timer">
-        <span>Produzetak</span>
+        <span>Produžetak</span>
         <strong id="discussionTimerValue">${formatSeconds(overtime.remaining_seconds)}</strong>
       </div>
+      ${renderAssociationBannerStack(roomState.association_banners)}
       ${renderReactionRow(overtime.current_player_id)}
-      <div class="current-player-card">
-        <p class="eyebrow">Trenutni igrac</p>
+      <div class="current-player-card compact-current-player">
+        <p class="eyebrow">Trenutni igrač</p>
         <p id="currentPlayerName" class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
       </div>
-      ${
-        isHost
-          ? `<button id="nextPlayerButton">Sljedeći igrač</button>`
-          : `<p class="helper-text">Samo host ili trenutni igrac mogu prebaciti red.</p>`
-      }
-      <div class="voting-control-compact ${isHost ? "" : "status-only"}">
-        ${
-          isHost && overtime.voting_unlocked
-            ? `<button id="openFinalVotingButton" class="discussion-action-button">Otvori glasanje</button>`
-            : isHost
-              ? `<p class="helper-text">Glasanje uskoro: ${formatSeconds(overtime.voting_seconds_left)}</p>`
-              : `<p class="helper-text">Diskusija je produžena.</p>`
-        }
-      </div>
+      ${renderDiscussionActionRow(overtime, isHost, canAdvanceTurn, nextLockLeft)}
       ${renderAssociationComposer(overtime.current_player_id)}
     </div>
   `;
 
-  const nextButton = document.querySelector("#nextPlayerButton");
-  if (!nextButton && canAdvanceTurn) {
-    document.querySelector(".overtime-card")?.insertAdjacentHTML("beforeend", `<button id="nextPlayerButton">Sljedeci igrac</button>`);
-  }
-  const insertedNextButton = document.querySelector("#nextPlayerButton");
-  if (insertedNextButton) {
-    if (nextLockLeft > 0) {
-      insertedNextButton.disabled = true;
-      insertedNextButton.insertAdjacentHTML("afterend", `<p class="helper-text">Dostupno za ${nextLockLeft}...</p>`);
-    } else {
-      insertedNextButton.addEventListener("click", nextPlayer);
-    }
-  }
-
-  const openButton = document.querySelector("#openFinalVotingButton");
-  if (openButton) openButton.addEventListener("click", openFinalVoting);
+  bindDiscussionActions(canAdvanceTurn, nextLockLeft);
   bindReactionRow();
   bindAssociationComposer();
+  lastAssociationBannerStackKey = associationBannerStackKey(roomState.association_banners);
 }
 
 function renderAssociationComposer(currentPlayerId) {
@@ -1275,7 +1300,6 @@ function renderAssociationComposer(currentPlayerId) {
         <input id="associationInput" maxlength="80" autocomplete="off" placeholder="npr. nesto za kuhinju" value="${draft}" />
         <button id="sendAssociationButton" class="small" data-can-send="${isMyTurn ? "true" : "false"}" ${isMyTurn ? "" : "disabled"}>Pošalji</button>
       </div>
-      <p class="helper-text">${isMyTurn ? "Tvoj red — pošalji asocijaciju." : "Možeš poslati kada je tvoj red."}</p>
     </div>
   `;
 }
@@ -1674,7 +1698,60 @@ function renderResults() {
   if (restartRoomButton) restartRoomButton.addEventListener("click", promptRestartRoom);
 }
 
+function reactionKey(reaction) {
+  if (!reaction) return "";
+  return `${reaction.emoji}:${reaction.created_at}`;
+}
+
+function syncPlayerReactionBubble(inlinePlayer, reaction) {
+  if (!inlinePlayer) return;
+  const reactionEl = inlinePlayer.querySelector(".reaction-pop");
+  if (!reaction) {
+    reactionEl?.remove();
+    return;
+  }
+  const key = reactionKey(reaction);
+  if (reactionEl && reactionEl.dataset.reactionKey === key) return;
+
+  let bubble = reactionEl;
+  if (!bubble) {
+    bubble = document.createElement("span");
+    bubble.className = "reaction-pop";
+    bubble.setAttribute("aria-label", "Reakcija");
+    inlinePlayer.appendChild(bubble);
+  }
+  bubble.dataset.reactionKey = key;
+  bubble.textContent = reaction.emoji;
+}
+
+function patchDiscussionPlayersInPlace() {
+  if (roomState.state !== "discussion" && roomState.state !== "overtime") return false;
+  const rows = [...playersList.querySelectorAll(".player-row")];
+  if (rows.length === 0 || rows.length !== roomState.players.length) return false;
+
+  roomState.players.forEach((player, index) => {
+    const row = rows[index];
+    row.classList.toggle("is-current", Boolean(player.is_current));
+    syncPlayerReactionBubble(row.querySelector(".inline-player"), player.reaction);
+
+    const nameBlock = row.querySelector(".player-name");
+    let associationEl = row.querySelector(".association-bubble");
+    if (player.association) {
+      const associationText = player.association.text || "";
+      if (!associationEl) {
+        nameBlock?.insertAdjacentHTML("beforeend", `<div class="association-bubble">${escapeHtml(associationText)}</div>`);
+      } else if (associationEl.textContent !== associationText) {
+        associationEl.textContent = associationText;
+      }
+    } else {
+      associationEl?.remove();
+    }
+  });
+  return true;
+}
+
 function renderPlayers() {
+  if (patchDiscussionPlayersInPlace()) return;
   playersList.innerHTML = "";
   for (const player of roomState.players) {
     const row = document.createElement("div");
@@ -1702,7 +1779,7 @@ function renderPlayers() {
       ? `<div class="association-bubble">${escapeHtml(player.association.text)}</div>`
       : "";
     const reactionBubble = player.reaction
-      ? `<span class="reaction-pop" aria-label="Reakcija">${escapeHtml(player.reaction.emoji)}</span>`
+      ? `<span class="reaction-pop" data-reaction-key="${escapeHtml(reactionKey(player.reaction))}" aria-label="Reakcija">${escapeHtml(player.reaction.emoji)}</span>`
       : "";
 
     row.innerHTML = `

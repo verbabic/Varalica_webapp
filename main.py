@@ -37,6 +37,9 @@ VOTING_LOCK_SECONDS = 120
 OVERTIME_SECONDS = 60
 OVERTIME_VOTING_LOCK_SECONDS = 30
 ALLOWED_REACTIONS = {"😂", "🧐", "😎", "🤢", "🤥"}
+REACTION_LIFETIME_SECONDS = 5
+ASSOCIATION_BANNER_LIFETIME_SECONDS = 5
+MAX_ASSOCIATION_BANNERS = 3
 TAB_CLOSE_REMOVE_SECONDS = 60
 ACTIVE_GRACE_SECONDS = 30
 AWAY_AFTER_SECONDS = 30
@@ -164,6 +167,7 @@ class Room:
     timer_task: asyncio.Task | None = None
     sockets: dict[str, WebSocket] = field(default_factory=dict)
     active_associations: dict[str, dict] = field(default_factory=dict)
+    association_banners: list[dict] = field(default_factory=list)
     active_reactions: dict[str, dict] = field(default_factory=dict)
     turn_version: int = 0
 
@@ -528,6 +532,16 @@ async def send_association(room_code: str, action: AssociationAction) -> dict:
         "expires_at": now + 10,
         "turn_version": room.turn_version,
     }
+    room.association_banners.append(
+        {
+            "id": str(uuid.uuid4()),
+            "player_id": action.player_id,
+            "text": text,
+            "created_at": now,
+            "expires_at": now + ASSOCIATION_BANNER_LIFETIME_SECONDS,
+        }
+    )
+    cleanup_association_banners(room)
     persist_room(room)
     await broadcast_room(room)
     return {"ok": True}
@@ -553,7 +567,7 @@ async def send_reaction(room_code: str, action: ReactionAction) -> dict:
         "sender_player_id": action.player_id,
         "emoji": emoji,
         "created_at": now,
-        "expires_at": now + 3,
+        "expires_at": now + REACTION_LIFETIME_SECONDS,
     }
     persist_room(room)
     await broadcast_room(room)
@@ -774,6 +788,7 @@ def room_to_snapshot(room: Room) -> dict:
         "last_event": room.last_event,
         "empty_since": room.empty_since,
         "active_associations": room.active_associations,
+        "association_banners": room.association_banners,
         "active_reactions": room.active_reactions,
         "turn_version": room.turn_version,
         "players": [
@@ -829,6 +844,7 @@ def room_from_snapshot(snapshot: dict) -> Room:
         last_event=snapshot.get("last_event"),
         empty_since=snapshot.get("empty_since"),
         active_associations=dict(snapshot.get("active_associations", {})),
+        association_banners=list(snapshot.get("association_banners", [])),
         active_reactions=dict(snapshot.get("active_reactions", {})),
         turn_version=int(snapshot.get("turn_version", 0)),
     )
@@ -1050,6 +1066,7 @@ def prepare_reveal_round(room: Room, active_players: list[Player]) -> None:
     room.vote_request_player_ids.clear()
     room.final_votes.clear()
     room.active_associations.clear()
+    room.association_banners.clear()
     room.active_reactions.clear()
     room.overtime_started_at = None
     room.overtime_used = False
@@ -1109,6 +1126,7 @@ def reset_room_to_lobby(room: Room) -> None:
     room.vote_request_player_ids.clear()
     room.final_votes.clear()
     room.active_associations.clear()
+    room.association_banners.clear()
     room.active_reactions.clear()
     room.overtime_started_at = None
     room.overtime_used = False
@@ -1181,6 +1199,9 @@ def remove_player_from_room(room: Room, player_id: str) -> None:
         room.varalica_id = room.varalica_ids[0] if room.varalica_ids else None
     room.vote_request_player_ids.discard(player_id)
     room.active_associations.pop(player_id, None)
+    room.association_banners = [
+        banner for banner in room.association_banners if banner.get("player_id") != player_id
+    ]
     room.active_reactions.pop(player_id, None)
     for target_id, reaction in list(room.active_reactions.items()):
         if reaction.get("sender_player_id") == player_id:
@@ -1319,6 +1340,39 @@ def association_for_player(room: Room, player_id: str) -> dict | None:
     }
 
 
+def cleanup_association_banners(room: Room) -> None:
+    now = time.time()
+    room.association_banners = [
+        banner
+        for banner in room.association_banners
+        if banner.get("expires_at", 0) > now and banner.get("player_id") in room.players
+    ]
+    room.association_banners.sort(key=lambda banner: banner.get("created_at", 0))
+    if len(room.association_banners) > MAX_ASSOCIATION_BANNERS:
+        room.association_banners = room.association_banners[-MAX_ASSOCIATION_BANNERS:]
+
+
+def association_banners_state(room: Room) -> list[dict]:
+    cleanup_association_banners(room)
+    banners: list[dict] = []
+    for banner in room.association_banners:
+        player = room.players.get(banner.get("player_id", ""))
+        if player is None:
+            continue
+        banners.append(
+            {
+                "id": banner["id"],
+                "player_id": banner["player_id"],
+                "player_name": player.name,
+                "player_avatar": player.avatar,
+                "text": banner["text"],
+                "created_at": banner["created_at"],
+                "expires_at": banner["expires_at"],
+            }
+        )
+    return banners
+
+
 def cleanup_reactions(room: Room) -> None:
     now = time.time()
     for target_id, reaction in list(room.active_reactions.items()):
@@ -1400,6 +1454,7 @@ def enter_tie_overtime(room: Room) -> None:
     normalize_current_player(room)
     room.turn_version += 1
     room.active_associations.clear()
+    room.association_banners.clear()
     room.active_reactions.clear()
 
 
@@ -1409,6 +1464,7 @@ def enter_discussion_values(room: Room) -> None:
     room.current_player_index = 0
     room.turn_version += 1
     room.active_associations.clear()
+    room.association_banners.clear()
     room.active_reactions.clear()
     room.vote_request_player_ids.clear()
     room.final_votes.clear()
@@ -1548,8 +1604,10 @@ def public_state(room: Room, viewer_id: str) -> dict:
     normalize_current_player(room)
     if room.state not in {"discussion", "overtime"}:
         room.active_associations.clear()
+        room.association_banners.clear()
         room.active_reactions.clear()
     cleanup_associations(room)
+    cleanup_association_banners(room)
     cleanup_reactions(room)
     all_confirmed = room.state == "reveal" and all_active_players_confirmed(room)
     return {
@@ -1580,6 +1638,7 @@ def public_state(room: Room, viewer_id: str) -> dict:
         "all_confirmed": all_confirmed,
         "discussion": discussion_state(room),
         "overtime": overtime_state(room),
+        "association_banners": association_banners_state(room),
         "voting_complete": voting_complete_state(room),
         "results": results_state(room),
         "players": [
