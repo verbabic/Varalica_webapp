@@ -1475,7 +1475,7 @@ function renderHostPanel() {
 function renderLobby() {
   const isHost = roomState.viewer_id === roomState.host_id;
   const canStart = isHost && roomState.player_count >= roomState.min_players;
-  const categories = (roomState.categories || ["Sve kategorije"]).filter((category) => category !== "Balkan");
+  const categories = roomState.categories || ["Sve kategorije"];
   const durationOptions = roomState.allowed_discussion_seconds || [120, 180, 300];
   const allowedVaralicaCounts = roomState.allowed_varalica_counts || [1];
   selectedCategory = roomState.selected_category || selectedCategory;

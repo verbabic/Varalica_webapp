@@ -26,7 +26,7 @@ from storage import (
 )
 from words import ALLOWED_CATEGORIES, DEFAULT_CATEGORY, STARTER_WORDS, normalize_category, words_for_category
 
-UI_CATEGORIES = [category for category in ALLOWED_CATEGORIES if category != "Balkan"]
+UI_CATEGORIES = ALLOWED_CATEGORIES
 
 
 MIN_PLAYERS = 4
