@@ -15,6 +15,7 @@ const connectionStatus = document.querySelector("#connectionStatus");
 const roomCodeDisplay = document.querySelector("#roomCodeDisplay");
 const roundDisplay = document.querySelector("#roundDisplay");
 const phaseContent = document.querySelector("#phaseContent");
+const associationOverlayDock = document.querySelector("#associationOverlayDock");
 const playersList = document.querySelector("#playersList");
 const playerCountBadge = document.querySelector("#playerCountBadge");
 const errorBox = document.querySelector("#errorBox");
@@ -123,6 +124,12 @@ showQrButton.addEventListener("click", toggleQrPanel);
 resetRoomButton.addEventListener("click", promptRestartRoom);
 leaveRoomButton.addEventListener("click", showLeaveModal);
 roomPanelToggle?.addEventListener("click", toggleRoomPanel);
+phaseContent?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-reaction-emoji]");
+  if (!button || button.disabled) return;
+  if (!canSendReactions()) return;
+  sendReaction(button.dataset.reactionEmoji);
+});
 rulesButton.addEventListener("click", () => showModal(rulesModal));
 liveModeButton.addEventListener("click", () => setPlayMode("live"));
 chatModeButton.addEventListener("click", () => setPlayMode("chat"));
@@ -600,13 +607,15 @@ async function sendReaction(emoji) {
   clearError();
   touchSession();
   const target = primaryReactionTarget();
-  if (!target) return;
-  await apiRequest(`/api/rooms/${localRoomCode}/reaction`, {
+  if (!target?.target_type || !target?.target_id || !localPlayerId) return;
+  const payload = {
     player_id: localPlayerId,
-    emoji,
-    target_type: target.target_type,
-    target_id: target.target_id,
-  });
+    emoji: String(emoji || "").trim(),
+    target_type: String(target.target_type),
+    target_id: String(target.target_id),
+  };
+  if (!payload.emoji) return;
+  await apiRequest(`/api/rooms/${localRoomCode}/reaction`, payload);
 }
 
 function primaryReactionTarget() {
@@ -1094,36 +1103,34 @@ function updateDiscussionShellInPlace() {
   if (currentName) currentName.textContent = playerNameText(currentPlayer);
   syncDiscussionMonitorActions();
   updateAssociationComposerState();
-  syncAssociationBannerStack(roomState.association_banners);
-  syncActiveTargetReaction();
+  syncAssociationOverlayDock(roomState.association_banners);
+  syncActiveTargetReactions();
+  syncReactionButtonsEnabled();
   return true;
 }
 
 function associationBannerStackKey(banners) {
-  return (banners || []).map((banner) => banner.id).join("|");
+  return (banners || []).map((banner) => `${banner.id}:${banner.expires_at}`).join("|");
 }
 
-function associationBannerMarkup(banner) {
+function associationOverlayCardMarkup(banner) {
   return `
-    <span class="association-banner-avatar">${escapeHtml(banner.player_avatar || "🎲")}</span>
-    <span class="association-banner-body">
-      <strong>${escapeHtml(banner.player_name || "Nepoznato")}:</strong>
-      “${escapeHtml(banner.text)}”
-    </span>
+    <p class="association-overlay-name">${escapeHtml(banner.player_name || "Nepoznato")}</p>
+    <p class="association-overlay-word">${escapeHtml(banner.text)}</p>
   `;
 }
 
-function createAssociationBannerElement(banner, { animate = false } = {}) {
+function createAssociationOverlayCard(banner, { animate = false } = {}) {
   const element = document.createElement("div");
-  element.className = animate ? "association-banner association-banner-enter" : "association-banner";
+  element.className = animate ? "association-overlay-card association-overlay-enter" : "association-overlay-card";
   element.dataset.bannerId = banner.id;
   element.dataset.expiresAt = String(banner.expires_at);
-  element.innerHTML = associationBannerMarkup(banner);
+  element.innerHTML = associationOverlayCardMarkup(banner);
   if (animate) {
     element.addEventListener(
       "animationend",
       () => {
-        element.classList.remove("association-banner-enter");
+        element.classList.remove("association-overlay-enter");
       },
       { once: true },
     );
@@ -1131,61 +1138,57 @@ function createAssociationBannerElement(banner, { animate = false } = {}) {
   return element;
 }
 
-function updateAssociationBannerElement(element, banner) {
+function updateAssociationOverlayCard(element, banner) {
   element.dataset.expiresAt = String(banner.expires_at);
+  const nameEl = element.querySelector(".association-overlay-name");
+  const wordEl = element.querySelector(".association-overlay-word");
+  const nameText = banner.player_name || "Nepoznato";
+  const wordText = banner.text || "";
+  if (nameEl && nameEl.textContent !== nameText) nameEl.textContent = nameText;
+  if (wordEl && wordEl.textContent !== wordText) wordEl.textContent = wordText;
 }
 
-function renderAssociationBannerStack(banners) {
-  if (!banners?.length) return "";
-  const items = banners
-    .map(
-      (banner) => `
-        <div class="association-banner" data-banner-id="${escapeHtml(banner.id)}" data-expires-at="${banner.expires_at}">
-          ${associationBannerMarkup(banner)}
-        </div>
-      `,
-    )
-    .join("");
-  return `<div id="associationBannerStack" class="association-banner-stack">${items}</div>`;
-}
+function syncAssociationOverlayDock(banners) {
+  const dock = associationOverlayDock;
+  if (!dock) return;
 
-function syncAssociationBannerStack(banners) {
-  const card = document.querySelector(".discussion-card, .overtime-card");
-  if (!card) return;
+  if (!roomState || !["discussion", "overtime"].includes(roomState.state)) {
+    dock.classList.add("hidden");
+    dock.replaceChildren();
+    lastAssociationBannerStackKey = "";
+    syncActiveTargetReactions();
+    return;
+  }
 
   const bannerList = banners || [];
-  let stack = card.querySelector("#associationBannerStack");
-
   if (!bannerList.length) {
-    stack?.remove();
+    dock.classList.add("hidden");
+    dock.replaceChildren();
     lastAssociationBannerStackKey = "";
-    syncActiveTargetReaction();
+    syncActiveTargetReactions();
     return;
   }
 
+  dock.classList.remove("hidden");
   const idsKey = associationBannerStackKey(bannerList);
-  if (idsKey === lastAssociationBannerStackKey && stack) {
-    syncActiveTargetReaction();
+  if (idsKey === lastAssociationBannerStackKey && dock.querySelector(".association-overlay-slot")) {
+    syncActiveTargetReactions();
     return;
   }
 
-  if (!stack) {
-    stack = document.createElement("div");
-    stack.id = "associationBannerStack";
-    stack.className = "association-banner-stack";
-    const body = card.querySelector(".discussion-monitor-body");
-    const anchor = body?.querySelector("#discussionMonitorHeader");
-    if (body && anchor) {
-      body.insertBefore(stack, anchor);
-    } else if (body) {
-      body.prepend(stack);
-    } else {
-      card.prepend(stack);
-    }
+  let leftSlot = dock.querySelector(".association-overlay-left");
+  let rightSlot = dock.querySelector(".association-overlay-right");
+  if (!leftSlot || !rightSlot) {
+    dock.replaceChildren();
+    leftSlot = document.createElement("div");
+    leftSlot.className = "association-overlay-slot association-overlay-left";
+    rightSlot = document.createElement("div");
+    rightSlot.className = "association-overlay-slot association-overlay-right";
+    dock.append(leftSlot, rightSlot);
   }
 
   const existingById = new Map();
-  stack.querySelectorAll(".association-banner").forEach((element) => {
+  dock.querySelectorAll(".association-overlay-card").forEach((element) => {
     existingById.set(element.dataset.bannerId, element);
   });
 
@@ -1197,74 +1200,133 @@ function syncAssociationBannerStack(banners) {
   });
 
   bannerList.forEach((banner, index) => {
-    let element = stack.querySelector(`[data-banner-id="${banner.id}"]`);
+    const slot = index % 2 === 0 ? leftSlot : rightSlot;
+    const slotIndex = Math.floor(index / 2);
+    let element = dock.querySelector(`[data-banner-id="${banner.id}"]`);
     const isNew = !element;
     if (isNew) {
-      element = createAssociationBannerElement(banner, { animate: true });
+      element = createAssociationOverlayCard(banner, { animate: true });
     } else {
-      updateAssociationBannerElement(element, banner);
+      updateAssociationOverlayCard(element, banner);
     }
 
-    const referenceNode = stack.children[index] || null;
-    if (stack.children[index] !== element) {
-      stack.insertBefore(element, referenceNode);
+    if (element.parentElement !== slot || slot.children[slotIndex] !== element) {
+      slot.insertBefore(element, slot.children[slotIndex] || null);
     }
   });
 
+  leftSlot.querySelectorAll(".association-overlay-card").forEach((element) => {
+    if (!nextIds.has(element.dataset.bannerId)) element.remove();
+  });
+  rightSlot.querySelectorAll(".association-overlay-card").forEach((element) => {
+    if (!nextIds.has(element.dataset.bannerId)) element.remove();
+  });
+
   lastAssociationBannerStackKey = idsKey;
-  syncActiveTargetReaction();
+  syncActiveTargetReactions();
 }
 
 function activeTargetReactionKey(reaction) {
   if (!reaction) return "";
-  return `${reaction.target_type}:${reaction.target_id}:${reaction.emoji}:${reaction.created_at}:${reaction.repulse_at || ""}`;
+  if (reaction.identity) return String(reaction.identity);
+  return `${reaction.target_type}:${reaction.target_id}:${reaction.sender_player_id}:${reaction.emoji}:${reaction.created_at}:${reaction.repulse_at || ""}`;
 }
 
-function syncReactionTargetBubble(container, reaction) {
+function syncReactionTargetCluster(container, reactions) {
   if (!container) return;
-  let bubble = container.querySelector(".reaction-target-pop");
-  if (!reaction) {
-    bubble?.remove();
+
+  const reactionList = reactions || [];
+  let cluster = container.querySelector(".reaction-target-cluster");
+  if (!reactionList.length) {
+    cluster?.remove();
+    container.querySelectorAll(":scope > .reaction-target-pop").forEach((element) => element.remove());
     return;
   }
 
-  const key = activeTargetReactionKey(reaction);
-  if (bubble && bubble.dataset.reactionKey === key) return;
-
-  if (!bubble) {
-    bubble = document.createElement("span");
-    bubble.className = "reaction-target-pop";
-    bubble.setAttribute("aria-label", "Reakcija na aktivni cilj");
-    container.appendChild(bubble);
+  if (!cluster) {
+    cluster = document.createElement("span");
+    cluster.className = "reaction-target-cluster";
+    cluster.setAttribute("aria-label", "Reakcije na aktivni cilj");
+    container.appendChild(cluster);
   }
 
-  bubble.dataset.reactionKey = key;
-  bubble.textContent = reaction.emoji;
-  bubble.classList.remove("reaction-target-repulse");
-  void bubble.offsetWidth;
-  bubble.classList.add("reaction-target-repulse");
+  const desiredKeys = reactionList.map((reaction) => activeTargetReactionKey(reaction));
+  const desiredKeySet = new Set(desiredKeys);
+  cluster.querySelectorAll(".reaction-target-pop").forEach((element) => {
+    if (!desiredKeySet.has(element.dataset.reactionKey)) {
+      element.remove();
+    }
+  });
+
+  reactionList.forEach((reaction, index) => {
+    const key = activeTargetReactionKey(reaction);
+    let bubble = cluster.querySelector(`.reaction-target-pop[data-reaction-key="${CSS.escape(key)}"]`);
+    const repulseKey = String(reaction.repulse_at || "");
+    if (bubble && bubble.dataset.reactionKey === key && bubble.dataset.repulseAt === repulseKey) {
+      return;
+    }
+
+    if (!bubble) {
+      bubble = document.createElement("span");
+      bubble.className = "reaction-target-pop";
+      cluster.appendChild(bubble);
+    }
+
+    bubble.dataset.reactionKey = key;
+    bubble.dataset.repulseAt = repulseKey;
+    bubble.textContent = reaction.emoji;
+
+    const referenceNode = cluster.children[index] || null;
+    if (cluster.children[index] !== bubble) {
+      cluster.insertBefore(bubble, referenceNode);
+    }
+
+    bubble.classList.remove("reaction-target-repulse");
+    void bubble.offsetWidth;
+    bubble.classList.add("reaction-target-repulse");
+  });
 }
 
-function syncActiveTargetReaction() {
-  const reaction = roomState?.active_target_reaction || null;
-  if (!reaction) {
-    document.querySelectorAll(".reaction-target-pop").forEach((element) => element.remove());
-    return;
+function syncActiveTargetReactions() {
+  const reactions = roomState?.active_target_reactions?.length
+    ? roomState.active_target_reactions
+    : roomState?.active_target_reaction
+      ? [roomState.active_target_reaction]
+      : [];
+  const grouped = new Map();
+
+  for (const reaction of reactions) {
+    const groupKey = `${reaction.target_type}:${reaction.target_id}`;
+    if (!grouped.has(groupKey)) grouped.set(groupKey, []);
+    grouped.get(groupKey).push(reaction);
   }
 
-  if (reaction.target_type === "live_player") {
-    syncReactionTargetBubble(document.querySelector(".reaction-target-host"), reaction);
-    document.querySelectorAll(".association-banner .reaction-target-pop").forEach((element) => element.remove());
-    return;
+  for (const list of grouped.values()) {
+    list.sort((left, right) => (left.created_at || 0) - (right.created_at || 0));
   }
 
-  if (reaction.target_type === "chat_association") {
-    document.querySelector(".reaction-target-host .reaction-target-pop")?.remove();
-    syncReactionTargetBubble(
-      document.querySelector(`.association-banner[data-banner-id="${reaction.target_id}"]`),
-      reaction,
-    );
-  }
+  const liveHost = document.querySelector(".reaction-target-host");
+  const liveKey = [...grouped.keys()].find((key) => key.startsWith("live_player:"));
+  syncReactionTargetCluster(liveHost, liveKey ? grouped.get(liveKey) : []);
+
+  document.querySelectorAll(".association-overlay-card").forEach((card) => {
+    const groupKey = `chat_association:${card.dataset.bannerId}`;
+    syncReactionTargetCluster(card, grouped.get(groupKey) || []);
+  });
+
+  const activeContainers = new Set();
+  if (liveHost && liveKey) activeContainers.add(liveHost);
+  document.querySelectorAll(".association-overlay-card").forEach((card) => {
+    const groupKey = `chat_association:${card.dataset.bannerId}`;
+    if (grouped.has(groupKey)) activeContainers.add(card);
+  });
+
+  document.querySelectorAll(".reaction-target-cluster").forEach((cluster) => {
+    const container = cluster.parentElement;
+    if (!activeContainers.has(container)) {
+      cluster.remove();
+    }
+  });
 }
 
 function renderDiscussionMonitorPanel(currentPlayer, phaseLabel, remainingSeconds, ctx) {
@@ -1306,6 +1368,10 @@ function render() {
   applyRoomPanelCollapse();
   renderHostPanel();
   renderPlayers();
+
+  if (!["discussion", "overtime"].includes(roomState.state)) {
+    syncAssociationOverlayDock([]);
+  }
 
   if (roomState.state === "lobby") {
     renderLobby();
@@ -1636,7 +1702,6 @@ function renderDiscussion() {
       <div class="discussion-monitor-layout">
         ${renderReactionColumn("left", REACTION_EMOJIS_LEFT)}
         <div class="discussion-monitor-body">
-          ${renderAssociationBannerStack(roomState.association_banners)}
           ${renderDiscussionMonitorPanel(currentPlayer, "Diskusija", discussion.remaining_seconds, ctx)}
           ${renderAssociationComposer(discussion.current_player_id)}
         </div>
@@ -1646,10 +1711,11 @@ function renderDiscussion() {
   `;
 
   bindDiscussionActions(ctx.canAdvanceTurn);
-  bindReactionRow();
   bindAssociationComposer();
   lastAssociationBannerStackKey = associationBannerStackKey(roomState.association_banners);
-  syncActiveTargetReaction();
+  syncAssociationOverlayDock(roomState.association_banners);
+  syncActiveTargetReactions();
+  syncReactionButtonsEnabled();
 }
 
 function renderReadyForFinalVoting() {
@@ -1681,7 +1747,6 @@ function renderOvertime() {
       <div class="discussion-monitor-layout">
         ${renderReactionColumn("left", REACTION_EMOJIS_LEFT)}
         <div class="discussion-monitor-body">
-          ${renderAssociationBannerStack(roomState.association_banners)}
           ${renderDiscussionMonitorPanel(currentPlayer, "Produžetak", overtime.remaining_seconds, ctx)}
           ${renderAssociationComposer(overtime.current_player_id)}
         </div>
@@ -1691,10 +1756,11 @@ function renderOvertime() {
   `;
 
   bindDiscussionActions(ctx.canAdvanceTurn);
-  bindReactionRow();
   bindAssociationComposer();
   lastAssociationBannerStackKey = associationBannerStackKey(roomState.association_banners);
-  syncActiveTargetReaction();
+  syncAssociationOverlayDock(roomState.association_banners);
+  syncActiveTargetReactions();
+  syncReactionButtonsEnabled();
 }
 
 function renderAssociationComposer(currentPlayerId) {
@@ -1714,19 +1780,21 @@ function renderAssociationComposer(currentPlayerId) {
 }
 
 function renderReactionColumn(side, emojis) {
-  if (!canSendReactions() || !emojis.length) return "";
-  const buttons = emojis.map((emoji) => (
-    `<button class="reaction-button" type="button" data-reaction-emoji="${escapeHtml(emoji)}" aria-label="Reakcija ${escapeHtml(emoji)}">${escapeHtml(emoji)}</button>`
-  )).join("");
+  if (!emojis.length) return "";
+  const enabled = canSendReactions();
+  const buttons = emojis
+    .map(
+      (emoji) =>
+        `<button class="reaction-button" type="button" data-reaction-emoji="${escapeHtml(emoji)}" aria-label="Reakcija ${escapeHtml(emoji)}" ${enabled ? "" : "disabled"}>${escapeHtml(emoji)}</button>`,
+    )
+    .join("");
   return `<div class="reaction-row reaction-row-${side}" aria-label="Reakcije">${buttons}</div>`;
 }
 
-function bindReactionRow() {
+function syncReactionButtonsEnabled() {
+  const enabled = canSendReactions();
   document.querySelectorAll("[data-reaction-emoji]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (!canSendReactions()) return;
-      sendReaction(button.dataset.reactionEmoji);
-    });
+    button.disabled = !enabled;
   });
 }
 
@@ -2159,33 +2227,77 @@ function renderResults() {
   if (newRoundButton) newRoundButton.addEventListener("click", startNewRound);
 }
 
-function reactionKey(reaction) {
+function playerReactionKey(reaction) {
   if (!reaction) return "";
+  if (reaction.identity) return String(reaction.identity);
   return `${reaction.emoji}:${reaction.created_at}`;
 }
 
-function syncPlayerReactionBubble(inlinePlayer, reaction) {
+function renderPlayerReactionCluster(reactions) {
+  const list = reactions || [];
+  if (!list.length) return "";
+  const bubbles = list
+    .map(
+      (reaction) =>
+        `<span class="reaction-pop" data-reaction-key="${escapeHtml(playerReactionKey(reaction))}" aria-label="Reakcija">${escapeHtml(reaction.emoji)}</span>`,
+    )
+    .join("");
+  return `<span class="reaction-pop-cluster">${bubbles}</span>`;
+}
+
+function syncPlayerReactionBubbles(inlinePlayer, reactions) {
   if (!inlinePlayer) return;
-  const reactionEl = inlinePlayer.querySelector(".reaction-pop");
-  if (!reaction) {
-    reactionEl?.remove();
+
+  const reactionList = (reactions || []).slice().sort((left, right) => (left.created_at || 0) - (right.created_at || 0));
+  inlinePlayer.querySelectorAll(":scope > .reaction-pop").forEach((element) => element.remove());
+
+  let cluster = inlinePlayer.querySelector(".reaction-pop-cluster");
+  if (!reactionList.length) {
+    cluster?.remove();
     return;
   }
-  const key = reactionKey(reaction);
-  if (reactionEl && reactionEl.dataset.reactionKey === key) return;
 
-  let bubble = reactionEl;
-  if (!bubble) {
-    bubble = document.createElement("span");
-    bubble.className = "reaction-pop";
-    bubble.setAttribute("aria-label", "Reakcija");
-    inlinePlayer.appendChild(bubble);
+  if (!cluster) {
+    cluster = document.createElement("span");
+    cluster.className = "reaction-pop-cluster";
+    inlinePlayer.appendChild(cluster);
   }
-  bubble.dataset.reactionKey = key;
-  bubble.textContent = reaction.emoji;
-  bubble.classList.remove("reaction-pop-repulse");
-  void bubble.offsetWidth;
-  bubble.classList.add("reaction-pop-repulse");
+
+  const desiredKeys = reactionList.map((reaction) => playerReactionKey(reaction));
+  const desiredKeySet = new Set(desiredKeys);
+  cluster.querySelectorAll(".reaction-pop").forEach((element) => {
+    if (!desiredKeySet.has(element.dataset.reactionKey)) {
+      element.remove();
+    }
+  });
+
+  reactionList.forEach((reaction, index) => {
+    const key = playerReactionKey(reaction);
+    let bubble = cluster.querySelector(`.reaction-pop[data-reaction-key="${CSS.escape(key)}"]`);
+    if (bubble && bubble.dataset.reactionKey === key && bubble.textContent === reaction.emoji) {
+      if (cluster.children[index] !== bubble) {
+        cluster.insertBefore(bubble, cluster.children[index] || null);
+      }
+      return;
+    }
+
+    if (!bubble) {
+      bubble = document.createElement("span");
+      bubble.className = "reaction-pop";
+      bubble.setAttribute("aria-label", "Reakcija");
+      cluster.appendChild(bubble);
+    }
+
+    bubble.dataset.reactionKey = key;
+    bubble.textContent = reaction.emoji;
+    if (cluster.children[index] !== bubble) {
+      cluster.insertBefore(bubble, cluster.children[index] || null);
+    }
+
+    bubble.classList.remove("reaction-pop-repulse");
+    void bubble.offsetWidth;
+    bubble.classList.add("reaction-pop-repulse");
+  });
 }
 
 function patchRevealPlayersInPlace() {
@@ -2211,7 +2323,10 @@ function patchDiscussionPlayersInPlace() {
     const row = rows[index];
     row.classList.toggle("is-current", Boolean(player.is_current));
     clearRevealStatusBadges(row);
-    syncPlayerReactionBubble(row.querySelector(".inline-player"), player.reaction);
+    syncPlayerReactionBubbles(
+      row.querySelector(".inline-player"),
+      player.reactions?.length ? player.reactions : player.reaction ? [player.reaction] : [],
+    );
 
     const nameBlock = row.querySelector(".player-name");
     let associationEl = row.querySelector(".association-bubble");
@@ -2268,16 +2383,15 @@ function renderPlayers() {
     const associationBubble = player.association
       ? `<div class="association-bubble">${escapeHtml(player.association.text)}</div>`
       : "";
-    const reactionBubble = player.reaction
-      ? `<span class="reaction-pop" data-reaction-key="${escapeHtml(reactionKey(player.reaction))}" aria-label="Reakcija">${escapeHtml(player.reaction.emoji)}</span>`
-      : "";
+    const playerReactions = player.reactions?.length ? player.reactions : player.reaction ? [player.reaction] : [];
+    const reactionCluster = renderPlayerReactionCluster(playerReactions);
 
     row.innerHTML = `
       <div class="player-name">
         <span class="inline-player">
           <span class="status-dot ${escapeHtml(player.connection_status || "offline")}" title="${connectionStatusLabel}"></span>
           ${playerNameHtml(player)}
-          ${reactionBubble}
+          ${reactionCluster}
         </span>
         ${associationBubble}
       </div>

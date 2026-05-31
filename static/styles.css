@@ -391,6 +391,80 @@ label {
 .room-layout {
   display: grid;
   gap: 14px;
+  position: relative;
+}
+
+.association-overlay-dock {
+  position: relative;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: end;
+  margin: -14px 0 -10px;
+  padding: 0 6px;
+  pointer-events: none;
+}
+
+.association-overlay-dock.hidden {
+  display: none;
+}
+
+.association-overlay-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.association-overlay-left {
+  align-items: flex-start;
+}
+
+.association-overlay-right {
+  align-items: flex-end;
+}
+
+.association-overlay-card {
+  position: relative;
+  pointer-events: auto;
+  width: min(100%, 168px);
+  padding: 8px 10px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.42);
+  background: rgba(15, 23, 42, 0.94);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.34), 0 0 18px rgba(245, 158, 11, 0.12);
+}
+
+.association-overlay-enter {
+  animation: associationBannerIn 0.24s ease-out both;
+}
+
+.association-overlay-name {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #c7d2fe;
+}
+
+.association-overlay-word {
+  margin: 4px 0 0;
+  font-size: clamp(0.95rem, 4.2vw, 1.08rem);
+  font-weight: 900;
+  line-height: 1.18;
+  color: #fde68a;
+  overflow-wrap: anywhere;
+}
+
+.room-panel {
+  position: relative;
+  z-index: 1;
+}
+
+.players-panel {
+  position: relative;
+  z-index: 2;
 }
 
 .room-topline,
@@ -891,7 +965,7 @@ label {
   max-width: 36px;
   height: 30px;
   max-height: 36px;
-  margin-left: 6px;
+  margin-left: 0;
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -908,6 +982,21 @@ label {
     reactionPulse 1s ease-in-out 3 0.22s;
 }
 
+.reaction-pop-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+  flex-wrap: nowrap;
+  max-width: min(140px, 42vw);
+  overflow: hidden;
+}
+
+.reaction-pop-cluster .reaction-pop {
+  margin-left: 0;
+}
+
 .reaction-pop-repulse {
   animation:
     reactionPopIn 0.22s ease-out both,
@@ -916,6 +1005,37 @@ label {
 
 .reaction-target-host {
   position: relative;
+}
+
+.reaction-target-cluster {
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.association-overlay-card .reaction-target-cluster {
+  top: -10px;
+  right: -8px;
+}
+
+.reaction-target-cluster .reaction-target-pop {
+  position: static;
+  top: auto;
+  right: auto;
+  transform: none;
+  min-width: 28px;
+  height: 28px;
+  font-size: 1.08rem;
+  animation: reactionTargetSlowPulseHost 2.4s ease-in-out infinite;
+}
+
+.reaction-target-cluster .reaction-target-repulse {
+  animation: reactionTargetRepulseHost 0.42s ease-out 1, reactionTargetSlowPulseHost 2.4s ease-in-out infinite 0.42s;
 }
 
 .reaction-target-pop {
@@ -2874,10 +2994,35 @@ label {
   gap: 10px;
 }
 
+.reaction-button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  filter: grayscale(0.35);
+}
+
 @media (min-width: 760px) {
   .room-layout {
     grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-rows: auto auto auto;
     align-items: start;
+  }
+
+  .room-panel {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .association-overlay-dock {
+    grid-column: 1;
+    grid-row: 2;
+    margin: -18px 0 -12px;
+    padding: 0 10px;
+  }
+
+  .players-panel {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    align-self: start;
   }
 
   .discussion-monitor-layout {

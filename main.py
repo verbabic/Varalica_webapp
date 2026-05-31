@@ -38,6 +38,7 @@ OVERTIME_SECONDS = 60
 OVERTIME_VOTING_LOCK_SECONDS = 30
 ALLOWED_REACTIONS = {"😂", "🧐", "😎", "🤢", "🤥", "🙈"}
 PLAYER_LIST_REACTION_SECONDS = 3
+MAX_REACTIONS_PER_TARGET = 8
 ASSOCIATION_BANNER_LIFETIME_SECONDS = 5
 MAX_ASSOCIATION_BANNERS = 3
 TAB_CLOSE_REMOVE_SECONDS = 60
@@ -112,8 +113,9 @@ class AssociationAction(PlayerAction):
 
 class ReactionAction(PlayerAction):
     emoji: str
-    target_type: str
-    target_id: str
+    target_type: str | None = None
+    target_id: str | None = None
+    target_player_id: str | None = None
 
 
 @dataclass
@@ -169,8 +171,8 @@ class Room:
     sockets: dict[str, WebSocket] = field(default_factory=dict)
     active_associations: dict[str, dict] = field(default_factory=dict)
     association_banners: list[dict] = field(default_factory=list)
-    player_list_reactions: dict[str, dict] = field(default_factory=dict)
-    active_target_reaction: dict | None = None
+    player_list_reactions: list[dict] = field(default_factory=list)
+    active_target_reactions: list[dict] = field(default_factory=list)
     turn_version: int = 0
 
 
@@ -361,7 +363,7 @@ def advance_to_next_player(room: Room) -> None:
     room.current_player_index = room.round_player_ids.index(next_id)
     room.turn_version += 1
     clear_associations_for_current_turn(room)
-    clear_live_target_reaction(room)
+    clear_live_target_reactions(room)
 
 
 @app.post("/api/rooms/{room_code}/next-player")
@@ -585,45 +587,41 @@ async def send_reaction(room_code: str, action: ReactionAction) -> dict:
         raise HTTPException(status_code=400, detail="Igrac nije u sobi.")
 
     emoji = action.emoji.strip()
-    if emoji not in ALLOWED_REACTIONS:
+    if not emoji or emoji not in ALLOWED_REACTIONS:
         raise HTTPException(status_code=400, detail="Nepoznata reakcija.")
 
-    target_type = action.target_type.strip()
-    target_id = action.target_id.strip()
-    if target_type not in {"live_player", "chat_association"}:
-        raise HTTPException(status_code=400, detail="Nepoznat tip reakcije.")
+    try:
+        target_type, target_id = resolve_reaction_target(action)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     subject_player_id = validate_reaction_target(room, target_type, target_id)
     if subject_player_id not in active_round_player_ids(room):
         raise HTTPException(status_code=400, detail="Ne mozes reagovati na tog igraca.")
 
     now = time.time()
-    existing = room.active_target_reaction
-    if (
-        existing
-        and existing.get("sender_player_id") == action.player_id
-        and existing.get("target_type") == target_type
-        and existing.get("target_id") == target_id
-        and existing.get("emoji") == emoji
-    ):
-        existing["repulse_at"] = now
-        set_player_list_reaction(room, subject_player_id, action.player_id, emoji, now)
-        persist_room(room)
-        await broadcast_room(room)
-        return {"ok": True, "repulsed": True}
-
-    room.active_target_reaction = {
-        "target_type": target_type,
-        "target_id": target_id,
-        "subject_player_id": subject_player_id,
-        "sender_player_id": action.player_id,
-        "emoji": emoji,
-        "created_at": now,
-        "repulse_at": None,
-    }
-    set_player_list_reaction(room, subject_player_id, action.player_id, emoji, now)
+    identity = reaction_identity(action.player_id, target_type, target_id, emoji)
+    repulsed = upsert_active_target_reaction(
+        room,
+        identity=identity,
+        target_type=target_type,
+        target_id=target_id,
+        subject_player_id=subject_player_id,
+        sender_player_id=action.player_id,
+        emoji=emoji,
+        now=now,
+    )
+    upsert_player_list_reaction(
+        room,
+        identity=identity,
+        subject_player_id=subject_player_id,
+        sender_player_id=action.player_id,
+        emoji=emoji,
+        now=now,
+    )
     persist_room(room)
     await broadcast_room(room)
-    return {"ok": True}
+    return {"ok": True, "repulsed": repulsed}
 
 
 @app.post("/api/rooms/{room_code}/start-overtime")
@@ -842,7 +840,7 @@ def room_to_snapshot(room: Room) -> dict:
         "active_associations": room.active_associations,
         "association_banners": room.association_banners,
         "player_list_reactions": room.player_list_reactions,
-        "active_target_reaction": room.active_target_reaction,
+        "active_target_reactions": room.active_target_reactions,
         "turn_version": room.turn_version,
         "players": [
             {
@@ -898,8 +896,11 @@ def room_from_snapshot(snapshot: dict) -> Room:
         empty_since=snapshot.get("empty_since"),
         active_associations=dict(snapshot.get("active_associations", {})),
         association_banners=list(snapshot.get("association_banners", [])),
-        player_list_reactions=dict(snapshot.get("player_list_reactions") or snapshot.get("active_reactions", {})),
-        active_target_reaction=snapshot.get("active_target_reaction"),
+        player_list_reactions=normalize_player_list_reactions(snapshot.get("player_list_reactions")),
+        active_target_reactions=normalize_active_target_reactions(
+            snapshot.get("active_target_reactions"),
+            snapshot.get("active_target_reaction"),
+        ),
         turn_version=int(snapshot.get("turn_version", 0)),
     )
     used_avatars: set[str] = set()
@@ -1256,17 +1257,19 @@ def remove_player_from_room(room: Room, player_id: str) -> None:
     room.association_banners = [
         banner for banner in room.association_banners if banner.get("player_id") != player_id
     ]
-    room.player_list_reactions.pop(player_id, None)
-    for subject_id, reaction in list(room.player_list_reactions.items()):
-        if reaction.get("sender_player_id") == player_id:
-            room.player_list_reactions.pop(subject_id, None)
-    active_target = room.active_target_reaction
-    if active_target and (
-        active_target.get("sender_player_id") == player_id
-        or active_target.get("subject_player_id") == player_id
-        or active_target.get("target_id") == player_id
-    ):
-        room.active_target_reaction = None
+    room.player_list_reactions = [
+        reaction
+        for reaction in room.player_list_reactions
+        if reaction.get("subject_player_id") != player_id
+        and reaction.get("sender_player_id") != player_id
+    ]
+    room.active_target_reactions = [
+        reaction
+        for reaction in room.active_target_reactions
+        if reaction.get("sender_player_id") != player_id
+        and reaction.get("subject_player_id") != player_id
+        and reaction.get("target_id") != player_id
+    ]
     room.final_votes.pop(player_id, None)
     required_count = required_vote_target_count(room)
     for voter_id, target_ids in list(room.final_votes.items()):
@@ -1434,31 +1437,136 @@ def association_banners_state(room: Room) -> list[dict]:
     return banners
 
 
+def resolve_reaction_target(action: ReactionAction) -> tuple[str, str]:
+    target_type = (action.target_type or "").strip()
+    target_id = (action.target_id or "").strip()
+    if target_type and target_id:
+        if target_type not in {"live_player", "chat_association"}:
+            raise ValueError("Nepoznat tip reakcije.")
+        return target_type, target_id
+    legacy_target = (action.target_player_id or "").strip()
+    if legacy_target:
+        return "live_player", legacy_target
+    raise ValueError("Nedostaje meta reakcije.")
+
+
+def reaction_identity(sender_player_id: str, target_type: str, target_id: str, emoji: str) -> str:
+    return f"{sender_player_id}:{target_type}:{target_id}:{emoji}"
+
+
+def normalize_player_list_reactions(raw: object) -> list[dict]:
+    if isinstance(raw, list):
+        return [item for item in raw if isinstance(item, dict)]
+    if isinstance(raw, dict):
+        return [item for item in raw.values() if isinstance(item, dict)]
+    return []
+
+
+def normalize_active_target_reactions(raw: object, legacy_single: object) -> list[dict]:
+    if isinstance(raw, list):
+        return [item for item in raw if isinstance(item, dict)]
+    if isinstance(raw, dict):
+        return [raw]
+    if isinstance(legacy_single, dict):
+        return [legacy_single]
+    return []
+
+
 def clear_all_reactions(room: Room) -> None:
     room.player_list_reactions.clear()
-    room.active_target_reaction = None
+    room.active_target_reactions.clear()
 
 
-def clear_live_target_reaction(room: Room) -> None:
-    active_target = room.active_target_reaction
-    if active_target and active_target.get("target_type") == "live_player":
-        room.active_target_reaction = None
+def clear_live_target_reactions(room: Room) -> None:
+    room.active_target_reactions = [
+        reaction
+        for reaction in room.active_target_reactions
+        if reaction.get("target_type") != "live_player"
+    ]
 
 
-def set_player_list_reaction(
+def upsert_player_list_reaction(
     room: Room,
+    *,
+    identity: str,
     subject_player_id: str,
     sender_player_id: str,
     emoji: str,
     now: float,
 ) -> None:
-    room.player_list_reactions[subject_player_id] = {
-        "subject_player_id": subject_player_id,
-        "sender_player_id": sender_player_id,
-        "emoji": emoji,
-        "created_at": now,
-        "expires_at": now + PLAYER_LIST_REACTION_SECONDS,
-    }
+    for reaction in room.player_list_reactions:
+        if reaction.get("identity") == identity:
+            reaction["expires_at"] = now + PLAYER_LIST_REACTION_SECONDS
+            reaction["created_at"] = now
+            return
+    room.player_list_reactions.append(
+        {
+            "identity": identity,
+            "subject_player_id": subject_player_id,
+            "sender_player_id": sender_player_id,
+            "emoji": emoji,
+            "created_at": now,
+            "expires_at": now + PLAYER_LIST_REACTION_SECONDS,
+        }
+    )
+    trim_player_list_reactions(room)
+
+
+def upsert_active_target_reaction(
+    room: Room,
+    *,
+    identity: str,
+    target_type: str,
+    target_id: str,
+    subject_player_id: str,
+    sender_player_id: str,
+    emoji: str,
+    now: float,
+) -> bool:
+    for reaction in room.active_target_reactions:
+        if reaction.get("identity") == identity:
+            reaction["repulse_at"] = now
+            return True
+    room.active_target_reactions.append(
+        {
+            "identity": identity,
+            "target_type": target_type,
+            "target_id": target_id,
+            "subject_player_id": subject_player_id,
+            "sender_player_id": sender_player_id,
+            "emoji": emoji,
+            "created_at": now,
+            "repulse_at": None,
+        }
+    )
+    trim_active_target_reactions(room, target_type, target_id)
+    return False
+
+
+def trim_player_list_reactions(room: Room) -> None:
+    now = time.time()
+    room.player_list_reactions = [
+        reaction
+        for reaction in room.player_list_reactions
+        if reaction.get("expires_at", 0) > now
+    ]
+
+
+def trim_active_target_reactions(room: Room, target_type: str, target_id: str) -> None:
+    matching = [
+        reaction
+        for reaction in room.active_target_reactions
+        if reaction.get("target_type") == target_type and reaction.get("target_id") == target_id
+    ]
+    if len(matching) <= MAX_REACTIONS_PER_TARGET:
+        return
+    matching.sort(key=lambda reaction: reaction.get("created_at", 0))
+    drop_identities = {reaction.get("identity") for reaction in matching[:-MAX_REACTIONS_PER_TARGET]}
+    room.active_target_reactions = [
+        reaction
+        for reaction in room.active_target_reactions
+        if reaction.get("identity") not in drop_identities
+    ]
 
 
 def validate_reaction_target(room: Room, target_type: str, target_id: str) -> str:
@@ -1488,62 +1596,79 @@ def validate_reaction_target(room: Room, target_type: str, target_id: str) -> st
 
 def cleanup_reactions(room: Room) -> None:
     now = time.time()
-    for player_id, reaction in list(room.player_list_reactions.items()):
-        if player_id not in room.players or reaction.get("expires_at", 0) <= now:
-            room.player_list_reactions.pop(player_id, None)
+    room.player_list_reactions = [
+        reaction
+        for reaction in room.player_list_reactions
+        if reaction.get("subject_player_id") in room.players
+        and reaction.get("expires_at", 0) > now
+    ]
 
-    active_target = room.active_target_reaction
-    if not active_target:
-        return
-
-    target_type = active_target.get("target_type")
-    target_id = active_target.get("target_id")
-    stale = False
-    if target_type == "live_player":
-        if room.state not in {"discussion", "overtime"} or current_player_id(room) != target_id:
-            stale = True
-        else:
+    kept: list[dict] = []
+    for reaction in room.active_target_reactions:
+        target_type = reaction.get("target_type")
+        target_id = reaction.get("target_id")
+        if not target_type or not target_id:
+            continue
+        if target_type == "live_player":
+            if room.state not in {"discussion", "overtime"} or current_player_id(room) != target_id:
+                continue
             player = room.players.get(target_id)
             if player is None or player.play_mode != "live":
-                stale = True
-    elif target_type == "chat_association":
-        cleanup_association_banners(room)
-        if not any(banner.get("id") == target_id for banner in room.association_banners):
-            stale = True
-    else:
-        stale = True
+                continue
+        elif target_type == "chat_association":
+            cleanup_association_banners(room)
+            if not any(banner.get("id") == target_id for banner in room.association_banners):
+                continue
+        else:
+            continue
+        kept.append(reaction)
+    room.active_target_reactions = kept
 
-    if stale:
-        room.active_target_reaction = None
+
+def reactions_for_player(room: Room, player_id: str) -> list[dict]:
+    cleanup_reactions(room)
+    return [
+        {
+            "emoji": reaction["emoji"],
+            "sender_player_id": reaction.get("sender_player_id"),
+            "created_at": reaction["created_at"],
+            "expires_at": reaction["expires_at"],
+            "identity": reaction.get("identity"),
+        }
+        for reaction in room.player_list_reactions
+        if reaction.get("subject_player_id") == player_id
+    ]
 
 
 def reaction_for_player(room: Room, player_id: str) -> dict | None:
-    cleanup_reactions(room)
-    reaction = room.player_list_reactions.get(player_id)
-    if not reaction:
+    reactions = reactions_for_player(room, player_id)
+    if not reactions:
         return None
-    return {
-        "emoji": reaction["emoji"],
-        "sender_player_id": reaction.get("sender_player_id"),
-        "created_at": reaction["created_at"],
-        "expires_at": reaction["expires_at"],
-    }
+    return reactions[-1]
+
+
+def active_target_reactions_state(room: Room) -> list[dict]:
+    cleanup_reactions(room)
+    return [
+        {
+            "identity": reaction.get("identity"),
+            "target_type": reaction["target_type"],
+            "target_id": reaction["target_id"],
+            "subject_player_id": reaction["subject_player_id"],
+            "emoji": reaction["emoji"],
+            "sender_player_id": reaction.get("sender_player_id"),
+            "created_at": reaction["created_at"],
+            "repulse_at": reaction.get("repulse_at"),
+        }
+        for reaction in room.active_target_reactions
+    ]
 
 
 def active_target_reaction_state(room: Room) -> dict | None:
-    cleanup_reactions(room)
-    reaction = room.active_target_reaction
-    if not reaction:
+    reactions = active_target_reactions_state(room)
+    if not reactions:
         return None
-    return {
-        "target_type": reaction["target_type"],
-        "target_id": reaction["target_id"],
-        "subject_player_id": reaction["subject_player_id"],
-        "emoji": reaction["emoji"],
-        "sender_player_id": reaction.get("sender_player_id"),
-        "created_at": reaction["created_at"],
-        "repulse_at": reaction.get("repulse_at"),
-    }
+    return reactions[-1]
 
 
 def vote_counts(room: Room) -> dict[str, int]:
@@ -1792,6 +1917,7 @@ def public_state(room: Room, viewer_id: str) -> dict:
         "discussion": discussion_state(room),
         "overtime": overtime_state(room),
         "association_banners": association_banners_state(room),
+        "active_target_reactions": active_target_reactions_state(room),
         "active_target_reaction": active_target_reaction_state(room),
         "voting_complete": voting_complete_state(room),
         "results": results_state(room),
@@ -1812,6 +1938,7 @@ def public_state(room: Room, viewer_id: str) -> dict:
                 "is_active_round_player": player.id in active_round_player_ids(room),
                 "temporarily_disconnected": player_connection_status(player) in {"away", "idle"},
                 "association": association_for_player(room, player.id),
+                "reactions": reactions_for_player(room, player.id),
                 "reaction": reaction_for_player(room, player.id),
                 "vote_target": vote_target_for_player(room, player.id) if room.state == "results" else None,
             }
