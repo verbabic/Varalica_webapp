@@ -61,8 +61,18 @@ ALLOWED_AVATARS = [
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
+HTML_NO_CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
 app = FastAPI(title="Varalica")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+def html_page_response() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html", headers=HTML_NO_CACHE_HEADERS)
 
 
 @app.on_event("startup")
@@ -181,12 +191,12 @@ rooms: dict[str, Room] = {}
 
 @app.get("/")
 async def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+    return html_page_response()
 
 
 @app.get("/room/{room_code}")
 async def room_page(room_code: str) -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+    return html_page_response()
 
 
 @app.get("/api/rooms/{room_code}/status")
