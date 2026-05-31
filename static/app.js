@@ -1,6 +1,5 @@
 const setupView = document.querySelector("#setupView");
 const expiredRoomView = document.querySelector("#expiredRoomView");
-const expiredRoomCodeDisplay = document.querySelector("#expiredRoomCodeDisplay");
 const homeButton = document.querySelector("#homeButton");
 const roomView = document.querySelector("#roomView");
 const playerNameInput = document.querySelector("#playerName");
@@ -70,6 +69,8 @@ let selectedCategory = localStorage.getItem("varalica_selected_category") || "Sv
 let selectedDiscussionSeconds = Number(localStorage.getItem("varalica_discussion_seconds") || 180);
 let selectedVaralicaCount = Number(localStorage.getItem("varalica_count") || 1);
 let associationDraft = sessionStorage.getItem("varalica_association_draft") || "";
+let associationSentFeedbackUntil = 0;
+let associationSendInFlight = false;
 let hasRevealedPrivateCard = false;
 let lastRoomState = "";
 let revealSequence = {
@@ -95,6 +96,7 @@ let pendingConfirmAction = null;
 let roomPanelCollapsed = sessionStorage.getItem("varalica_room_panel_collapsed") === "true";
 let lastAssociationBannerStackKey = "";
 let lastPlayersListPhase = "";
+let lastRenderedRevealPhase = "";
 
 const pathRoomMatch = window.location.pathname.match(/^\/room\/([A-Z0-9]{5})$/i);
 if (pathRoomMatch) {
@@ -421,13 +423,19 @@ function connectSocket() {
     touchSession();
     handleRoomEvent(roomState.last_event);
     updateTurnLock(roomState);
+    if (roomState.state !== previousState) {
+      lastPlayersListPhase = "";
+    }
     if (roomState.state === "reveal" && previousState !== "reveal") {
       hasRevealedPrivateCard = false;
+      clearAssociationSentFeedback();
       resetRevealSequence();
     }
+    syncRevealCardStateFromRoom();
     if (roomState.state === "lobby" && previousState && previousState !== "lobby") {
       hasRevealedPrivateCard = false;
       lastPlayersListPhase = "";
+      clearAssociationSentFeedback();
       resetRevealSequence();
       associationDraft = "";
       sessionStorage.removeItem("varalica_association_draft");
@@ -557,41 +565,95 @@ async function submitFinalVote(targetIds) {
 }
 
 async function sendAssociation() {
+  if (associationSendInFlight) return;
   clearError();
   touchSession();
   const input = document.querySelector("#associationInput");
   const text = input?.value || associationDraft;
-  const result = await apiRequest(`/api/rooms/${localRoomCode}/association`, {
-    player_id: localPlayerId,
-    text,
-  });
-  if (result) {
+  if (!text.trim()) {
+    showError("Unesi asocijaciju.");
+    return;
+  }
+  associationSendInFlight = true;
+  try {
+    const result = await apiRequest(`/api/rooms/${localRoomCode}/association`, {
+      player_id: localPlayerId,
+      text: text.trim(),
+    });
+    if (!result) return;
     associationDraft = "";
     sessionStorage.removeItem("varalica_association_draft");
     if (input) input.value = "";
+    associationSentFeedbackUntil = Date.now() + 3000;
     updateAssociationComposerState();
+    window.setTimeout(() => {
+      if (Date.now() >= associationSentFeedbackUntil) {
+        updateAssociationComposerState();
+      }
+    }, 3100);
+  } finally {
+    associationSendInFlight = false;
   }
 }
 
-async function sendReaction(emoji, targetPlayerId) {
+async function sendReaction(emoji) {
   clearError();
   touchSession();
+  const target = primaryReactionTarget();
+  if (!target) return;
   await apiRequest(`/api/rooms/${localRoomCode}/reaction`, {
     player_id: localPlayerId,
-    target_player_id: targetPlayerId,
     emoji,
+    target_type: target.target_type,
+    target_id: target.target_id,
   });
+}
+
+function primaryReactionTarget() {
+  if (!roomState || !["discussion", "overtime"].includes(roomState.state)) return null;
+
+  const banners = roomState.association_banners || [];
+  if (banners.length) {
+    const banner = banners[banners.length - 1];
+    if (banner?.id) {
+      return {
+        target_type: "chat_association",
+        target_id: banner.id,
+        subject_player_id: banner.player_id,
+      };
+    }
+  }
+
+  const phaseData = roomState.state === "overtime" ? roomState.overtime : roomState.discussion;
+  const currentId = phaseData?.current_player_id;
+  if (!currentId) return null;
+
+  const currentPlayer = roomState.players.find((player) => player.id === currentId);
+  if (currentPlayer?.play_mode !== "live") return null;
+
+  return {
+    target_type: "live_player",
+    target_id: currentId,
+    subject_player_id: currentId,
+  };
+}
+
+function canSendReactions() {
+  return Boolean(primaryReactionTarget());
 }
 
 async function startNewRound() {
   clearError();
   touchSession();
   hasRevealedPrivateCard = false;
+  resetRevealSequence();
+  clearAssociationSentFeedback();
+  lastPlayersListPhase = "";
   await apiRequest(`/api/rooms/${localRoomCode}/new-round`, { player_id: localPlayerId });
 }
 
 function promptRestartRoom() {
-  showConfirmAction("Restartovati sobu i vratiti je na postavke?", () => resetRoom(), false);
+  showConfirmAction("Resetovati sobu i vratiti je na postavke?", () => resetRoom(), false);
 }
 
 async function resetRoom() {
@@ -600,8 +662,14 @@ async function resetRoom() {
   hasRevealedPrivateCard = false;
   resetRevealSequence();
   associationDraft = "";
+  clearAssociationSentFeedback();
   sessionStorage.removeItem("varalica_association_draft");
   await apiRequest(`/api/rooms/${localRoomCode}/reset`, { player_id: localPlayerId });
+}
+
+function clearAssociationSentFeedback() {
+  associationSentFeedbackUntil = 0;
+  associationSendInFlight = false;
 }
 
 async function kickPlayer(targetId) {
@@ -653,7 +721,7 @@ async function revealResults() {
 
 function startRevealCountdown() {
   resetRevealSequence();
-  if (!roomState?.results?.varalica) return;
+  if (!roomState?.results || !resultVaralice(roomState.results).length) return;
 
   revealSequence = {
     active: true,
@@ -662,6 +730,7 @@ function startRevealCountdown() {
     complete: false,
     showReplay: false,
   };
+  lastRenderedRevealPhase = "";
 
   const isCurrentUserVaralica = isViewerVaralica(roomState.results);
   if (isCurrentUserVaralica && navigator.vibrate) {
@@ -686,19 +755,20 @@ function startRevealCountdown() {
   revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_3", 3), 2300));
   revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_2", 2), 3300));
   revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_1", 1), 4300));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("title_reveal"), 5600));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("nickname_reveal"), 7300));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("statistics_reveal"), 8000));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("complete"), 9300));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("status_reveal"), 5600));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("name_reveal"), 7000));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("subtitle_reveal"), 8800));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("complete"), 9800));
   revealSequenceTimers.push(setTimeout(() => {
     revealSequence = { ...revealSequence, showReplay: true };
     render();
-  }, 10300));
+  }, 10800));
 }
 
 function resetRevealSequence() {
   revealSequenceTimers.forEach((timer) => clearTimeout(timer));
   revealSequenceTimers = [];
+  lastRenderedRevealPhase = "";
   revealSequence = {
     active: false,
     phase: "complete",
@@ -763,14 +833,6 @@ function showExpiredRoomUI(code) {
   inviteNotice.classList.add("hidden");
   connectionStatus.classList.add("hidden");
   clearError();
-
-  if (code) {
-    expiredRoomCodeDisplay.textContent = `Kod: ${code}`;
-    expiredRoomCodeDisplay.classList.remove("hidden");
-  } else {
-    expiredRoomCodeDisplay.textContent = "";
-    expiredRoomCodeDisplay.classList.add("hidden");
-  }
 
   setConnectionMode("disconnected");
   applyRoomPanelCollapse();
@@ -927,47 +989,113 @@ function updateAssociationComposerState() {
   if (!input || !button) return;
   const me = roomState.players.find((player) => player.id === roomState.viewer_id);
   const isMyTurn = Boolean(me && me.id === currentTurnPlayerId());
+  const showingSent = Date.now() < associationSentFeedbackUntil;
   if (input.value !== associationDraft && !isAssociationInputFocused()) {
     input.value = associationDraft;
   }
+  if (showingSent) {
+    button.textContent = "Poslano";
+    button.disabled = true;
+    button.dataset.canSend = "false";
+    return;
+  }
+  button.textContent = "Pošalji";
   button.dataset.canSend = isMyTurn ? "true" : "false";
-  button.disabled = !isMyTurn || input.value.trim().length === 0;
+  button.disabled = !isMyTurn || input.value.trim().length === 0 || associationSendInFlight;
 }
 
 function hasDiscussionShell() {
   if (roomState.state === "discussion") {
-    return Boolean(document.querySelector(".discussion-card #discussionMonitorHeader"));
+    return Boolean(document.querySelector(".discussion-card #discussionMonitorPanel"));
   }
   if (roomState.state === "overtime") {
-    return Boolean(document.querySelector(".overtime-card #discussionMonitorHeader"));
+    return Boolean(document.querySelector(".overtime-card #discussionMonitorPanel"));
   }
   return false;
+}
+
+function discussionMonitorContext() {
+  const isHost = roomState.viewer_id === roomState.host_id;
+  const data = roomState.state === "overtime" ? roomState.overtime : roomState.discussion;
+  const me = roomState.players.find((player) => player.id === roomState.viewer_id);
+  const canAdvanceTurn = Boolean(isHost || (me && data && me.id === data.current_player_id));
+  const isCurrentChatPlayer = Boolean(
+    me && data && me.id === data.current_player_id && me.play_mode === "chat",
+  );
+  const showNextButton = canAdvanceTurn && !isCurrentChatPlayer;
+  return {
+    isHost,
+    data,
+    me,
+    canAdvanceTurn,
+    showNextButton,
+    nextLockLeft: nextPlayerLockSecondsLeft(),
+  };
+}
+
+function syncDiscussionTimerWarning(remainingSeconds) {
+  const timerBox = document.querySelector("#discussionTimerBox");
+  const timerValue = document.querySelector("#discussionTimerValue");
+  const warn = Number(remainingSeconds) <= 15;
+  timerBox?.classList.toggle("timer-warning", warn);
+  timerValue?.classList.toggle("timer-warning", warn);
+}
+
+function renderHostVotingButtonHtml(voteLocked) {
+  return `<button id="openFinalVotingButton" class="discussion-host-vote-button" type="button" ${voteLocked ? "disabled" : ""} title="${voteLocked ? "Glasanje još nije otključano" : "Otvori finalno glasanje"}">Otvori glasanje</button>`;
+}
+
+function renderNextPlayerButtonHtml(nextLockLeft) {
+  const nextLabel = nextLockLeft > 0 ? `Sljedeći (${nextLockLeft})` : "Sljedeći igrač";
+  return `<button id="nextPlayerButton" class="discussion-next-button" type="button" ${nextLockLeft > 0 ? "disabled" : ""} title="${nextLockLeft > 0 ? `Dostupno za ${nextLockLeft}s` : "Prebaci na sljedećeg igrača"}">${nextLabel}</button>`;
+}
+
+function syncDiscussionMonitorActions() {
+  const ctx = discussionMonitorContext();
+  if (!ctx.data) return;
+
+  syncDiscussionTimerWarning(ctx.data.remaining_seconds);
+
+  const openButton = document.querySelector("#openFinalVotingButton");
+  if (openButton && ctx.isHost) {
+    openButton.disabled = !ctx.data.voting_unlocked;
+  }
+
+  const nextSlot = document.querySelector("#discussionNextAction");
+  if (!nextSlot) return;
+
+  if (!ctx.showNextButton) {
+    nextSlot.classList.add("hidden");
+    nextSlot.innerHTML = "";
+    return;
+  }
+
+  nextSlot.classList.remove("hidden");
+  let nextButton = nextSlot.querySelector("#nextPlayerButton");
+  if (!nextButton) {
+    nextSlot.innerHTML = renderNextPlayerButtonHtml(ctx.nextLockLeft);
+    bindDiscussionActions(ctx.canAdvanceTurn);
+    return;
+  }
+
+  nextButton.disabled = ctx.nextLockLeft > 0;
+  nextButton.textContent = ctx.nextLockLeft > 0 ? `Sljedeći (${ctx.nextLockLeft})` : "Sljedeći igrač";
+  nextButton.title = ctx.nextLockLeft > 0 ? `Dostupno za ${ctx.nextLockLeft}s` : "Prebaci na sljedećeg igrača";
 }
 
 function updateDiscussionShellInPlace() {
   const timerValue = document.querySelector("#discussionTimerValue");
   const currentName = document.querySelector("#currentPlayerName");
-  const openButton = document.querySelector("#openFinalVotingButton");
-  const nextButton = document.querySelector("#nextPlayerButton");
   const data = roomState.state === "overtime" ? roomState.overtime : roomState.discussion;
   if (!data || !timerValue) return false;
 
   const currentPlayer = roomState.players.find((player) => player.id === data.current_player_id);
   timerValue.textContent = formatSeconds(data.remaining_seconds);
   if (currentName) currentName.textContent = playerNameText(currentPlayer);
-  document.querySelectorAll("[data-reaction-target-id]").forEach((button) => {
-    button.dataset.reactionTargetId = data.current_player_id || "";
-  });
-  if (openButton && roomState.viewer_id === roomState.host_id) {
-    openButton.disabled = !data.voting_unlocked;
-  }
-  if (nextButton) {
-    const lockLeft = nextPlayerLockSecondsLeft();
-    nextButton.disabled = lockLeft > 0;
-    nextButton.textContent = lockLeft > 0 ? `Sljedeći (${lockLeft})` : "Sljedeći igrač";
-  }
+  syncDiscussionMonitorActions();
   updateAssociationComposerState();
   syncAssociationBannerStack(roomState.association_banners);
+  syncActiveTargetReaction();
   return true;
 }
 
@@ -1031,11 +1159,13 @@ function syncAssociationBannerStack(banners) {
   if (!bannerList.length) {
     stack?.remove();
     lastAssociationBannerStackKey = "";
+    syncActiveTargetReaction();
     return;
   }
 
   const idsKey = associationBannerStackKey(bannerList);
   if (idsKey === lastAssociationBannerStackKey && stack) {
+    syncActiveTargetReaction();
     return;
   }
 
@@ -1082,19 +1212,86 @@ function syncAssociationBannerStack(banners) {
   });
 
   lastAssociationBannerStackKey = idsKey;
+  syncActiveTargetReaction();
 }
 
-function renderDiscussionMonitorHeader(currentPlayer, phaseLabel, remainingSeconds) {
+function activeTargetReactionKey(reaction) {
+  if (!reaction) return "";
+  return `${reaction.target_type}:${reaction.target_id}:${reaction.emoji}:${reaction.created_at}:${reaction.repulse_at || ""}`;
+}
+
+function syncReactionTargetBubble(container, reaction) {
+  if (!container) return;
+  let bubble = container.querySelector(".reaction-target-pop");
+  if (!reaction) {
+    bubble?.remove();
+    return;
+  }
+
+  const key = activeTargetReactionKey(reaction);
+  if (bubble && bubble.dataset.reactionKey === key) return;
+
+  if (!bubble) {
+    bubble = document.createElement("span");
+    bubble.className = "reaction-target-pop";
+    bubble.setAttribute("aria-label", "Reakcija na aktivni cilj");
+    container.appendChild(bubble);
+  }
+
+  bubble.dataset.reactionKey = key;
+  bubble.textContent = reaction.emoji;
+  bubble.classList.remove("reaction-target-repulse");
+  void bubble.offsetWidth;
+  bubble.classList.add("reaction-target-repulse");
+}
+
+function syncActiveTargetReaction() {
+  const reaction = roomState?.active_target_reaction || null;
+  if (!reaction) {
+    document.querySelectorAll(".reaction-target-pop").forEach((element) => element.remove());
+    return;
+  }
+
+  if (reaction.target_type === "live_player") {
+    syncReactionTargetBubble(document.querySelector(".reaction-target-host"), reaction);
+    document.querySelectorAll(".association-banner .reaction-target-pop").forEach((element) => element.remove());
+    return;
+  }
+
+  if (reaction.target_type === "chat_association") {
+    document.querySelector(".reaction-target-host .reaction-target-pop")?.remove();
+    syncReactionTargetBubble(
+      document.querySelector(`.association-banner[data-banner-id="${reaction.target_id}"]`),
+      reaction,
+    );
+  }
+}
+
+function renderDiscussionMonitorPanel(currentPlayer, phaseLabel, remainingSeconds, ctx) {
+  const timerWarning = remainingSeconds <= 15 ? " timer-warning" : "";
+  const hostVoting = ctx.isHost
+    ? renderHostVotingButtonHtml(!ctx.data.voting_unlocked)
+    : "";
+  const nextAction = ctx.showNextButton
+    ? `<div id="discussionNextAction" class="discussion-next-action">${renderNextPlayerButtonHtml(ctx.nextLockLeft)}</div>`
+    : `<div id="discussionNextAction" class="discussion-next-action hidden"></div>`;
+
   return `
-    <div id="discussionMonitorHeader" class="discussion-monitor-top-row">
-      <div class="current-player-card compact-current-player">
-        <p class="eyebrow">Trenutni igrač</p>
-        <p id="currentPlayerName" class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
+    <div id="discussionMonitorPanel" class="discussion-monitor-panel">
+      <div id="discussionMonitorHeader" class="discussion-monitor-top-row">
+        <div class="current-player-card compact-current-player reaction-target-host">
+          <p class="eyebrow">Trenutni igrač</p>
+          <p id="currentPlayerName" class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
+        </div>
+        <div class="discussion-timer-column">
+          <div id="discussionTimerBox" class="timer-box compact-timer compact-timer-inline${timerWarning}">
+            <span>${escapeHtml(phaseLabel)}</span>
+            <strong id="discussionTimerValue" class="${timerWarning.trim()}">${formatSeconds(remainingSeconds)}</strong>
+          </div>
+          ${hostVoting}
+        </div>
       </div>
-      <div class="timer-box compact-timer compact-timer-inline">
-        <span>${escapeHtml(phaseLabel)}</span>
-        <strong id="discussionTimerValue">${formatSeconds(remainingSeconds)}</strong>
-      </div>
+      ${nextAction}
     </div>
   `;
 }
@@ -1166,7 +1363,7 @@ function renderHostPanel() {
   }
 
   const roundHasStarted = roomState.state !== "lobby";
-  const actions = roundHasStarted ? [`<button id="hostResetRoomButton" class="small replay">Restartuj sobu</button>`] : [];
+  const actions = roundHasStarted ? [`<button id="hostResetRoomButton" class="small replay">Resetuj sobu</button>`] : [];
   if (roomState.state === "reveal") {
     actions.unshift(`<button id="hostChangeWordButton" class="small secondary">Promijeni riječ</button>`);
   } else if (["discussion", "vote_request", "ready_for_final_voting", "final_voting", "overtime", "overtime_voting", "voting_complete", "results"].includes(roomState.state)) {
@@ -1308,6 +1505,36 @@ function revealStatusForPlayer(player) {
   return { label: "Nije vidio", className: "waiting" };
 }
 
+function syncRevealCardStateFromRoom() {
+  if (roomState?.state !== "reveal") return;
+  const me = roomState.players.find((player) => player.id === localPlayerId);
+  if (me?.viewed_secret || me?.confirmed) {
+    hasRevealedPrivateCard = true;
+  }
+}
+
+function syncRevealStatusBadge(row, player) {
+  const meta = row.querySelector(".player-meta");
+  if (!meta) return;
+
+  const shouldShow = roomState.state === "reveal" && player.is_active_round_player;
+  const existing = meta.querySelector(".badge.reveal-status");
+  if (!shouldShow) {
+    existing?.remove();
+    return;
+  }
+
+  const status = revealStatusForPlayer(player);
+  const statusKey = `${status.className}:${status.label}`;
+  if (existing && existing.dataset.revealStatusKey === statusKey) return;
+
+  existing?.remove();
+  meta.insertAdjacentHTML(
+    "afterbegin",
+    `<span class="badge reveal-status ${status.className}" data-reveal-status-key="${statusKey}">${status.label}</span>`,
+  );
+}
+
 function clearRevealStatusBadges(row) {
   row.querySelectorAll(".player-meta .badge.reveal-status").forEach((badge) => badge.remove());
 }
@@ -1315,6 +1542,7 @@ function clearRevealStatusBadges(row) {
 function renderReveal() {
   const privateInfo = roomState.private;
   const me = roomState.players.find((player) => player.id === roomState.viewer_id);
+  syncRevealCardStateFromRoom();
   const alreadyConfirmed = Boolean(me?.confirmed);
   if (me?.viewed_secret) {
     hasRevealedPrivateCard = true;
@@ -1365,10 +1593,8 @@ function renderReveal() {
          <div class="hint-box">
            <p class="eyebrow">Smjernica</p>
            <p>${escapeHtml(privateInfo.hint || "Slušaj druge igrače i pokušaj ostati uvjerljiv.")}</p>
-           <span class="badge">Kategorija: ${escapeHtml(privateInfo.category || "Nepoznato")}</span>
          </div>`
-      : `<p class="big-message">${escapeHtml(privateInfo.word.hr)} (${escapeHtml(privateInfo.word.sr)})</p>
-         <p class="helper-text">Kategorija: ${escapeHtml(privateInfo.word.category)}</p>`;
+      : `<p class="big-message">${escapeHtml(privateInfo.word.hr)} (${escapeHtml(privateInfo.word.sr)})</p>`;
 
   phaseContent.innerHTML = `
     <div class="phase-card">
@@ -1387,56 +1613,43 @@ function renderReveal() {
   }
 }
 
-function renderDiscussionActionRow(discussion, isHost, canAdvanceTurn, nextLockLeft) {
-  const voteLocked = !discussion.voting_unlocked;
-  const buttons = [];
-  if (canAdvanceTurn) {
-    const nextLabel = nextLockLeft > 0 ? `Sljedeći (${nextLockLeft})` : "Sljedeći igrač";
-    buttons.push(`<button id="nextPlayerButton" class="discussion-action-button compact-action" ${nextLockLeft > 0 ? "disabled" : ""} title="${nextLockLeft > 0 ? `Dostupno za ${nextLockLeft}s` : "Prebaci na sljedećeg igrača"}">${nextLabel}</button>`);
-  }
-  if (isHost) {
-    buttons.push(`<button id="openFinalVotingButton" class="discussion-action-button compact-action" ${voteLocked ? "disabled" : ""} title="${voteLocked ? "Glasanje još nije otključano" : "Otvori finalno glasanje"}">Otvori glasanje</button>`);
-  }
-  if (!buttons.length) return "";
-  return `<div class="discussion-actions">${buttons.join("")}</div>`;
-}
-
 function bindDiscussionActions(canAdvanceTurn) {
   const nextButton = document.querySelector("#nextPlayerButton");
   if (nextButton && canAdvanceTurn) {
-    nextButton.addEventListener("click", nextPlayer);
+    nextButton.replaceWith(nextButton.cloneNode(true));
+    document.querySelector("#nextPlayerButton")?.addEventListener("click", nextPlayer);
   }
   const openButton = document.querySelector("#openFinalVotingButton");
-  if (openButton) openButton.addEventListener("click", openFinalVoting);
+  if (openButton) {
+    openButton.replaceWith(openButton.cloneNode(true));
+    document.querySelector("#openFinalVotingButton")?.addEventListener("click", openFinalVoting);
+  }
 }
 
 function renderDiscussion() {
-  const isHost = roomState.viewer_id === roomState.host_id;
+  const ctx = discussionMonitorContext();
   const discussion = roomState.discussion;
-  const me = roomState.players.find((player) => player.id === roomState.viewer_id);
   const currentPlayer = roomState.players.find((player) => player.id === discussion.current_player_id);
-  const canAdvanceTurn = isHost || me?.id === discussion.current_player_id;
-  const nextLockLeft = nextPlayerLockSecondsLeft();
 
   phaseContent.innerHTML = `
     <div class="phase-card discussion-card">
       <div class="discussion-monitor-layout">
-        ${renderReactionColumn("left", REACTION_EMOJIS_LEFT, discussion.current_player_id)}
+        ${renderReactionColumn("left", REACTION_EMOJIS_LEFT)}
         <div class="discussion-monitor-body">
           ${renderAssociationBannerStack(roomState.association_banners)}
-          ${renderDiscussionMonitorHeader(currentPlayer, "Diskusija", discussion.remaining_seconds)}
-          ${renderDiscussionActionRow(discussion, isHost, canAdvanceTurn, nextLockLeft)}
+          ${renderDiscussionMonitorPanel(currentPlayer, "Diskusija", discussion.remaining_seconds, ctx)}
           ${renderAssociationComposer(discussion.current_player_id)}
         </div>
-        ${renderReactionColumn("right", REACTION_EMOJIS_RIGHT, discussion.current_player_id)}
+        ${renderReactionColumn("right", REACTION_EMOJIS_RIGHT)}
       </div>
     </div>
   `;
 
-  bindDiscussionActions(canAdvanceTurn);
+  bindDiscussionActions(ctx.canAdvanceTurn);
   bindReactionRow();
   bindAssociationComposer();
   lastAssociationBannerStackKey = associationBannerStackKey(roomState.association_banners);
+  syncActiveTargetReaction();
 }
 
 function renderReadyForFinalVoting() {
@@ -1458,33 +1671,30 @@ function renderReadyForFinalVoting() {
 }
 
 function renderOvertime() {
-  const isHost = roomState.viewer_id === roomState.host_id;
+  const ctx = discussionMonitorContext();
   const overtime = roomState.overtime;
-  const me = roomState.players.find((player) => player.id === roomState.viewer_id);
   const currentPlayer = roomState.players.find((player) => player.id === overtime.current_player_id);
-  const canAdvanceTurn = isHost || me?.id === overtime.current_player_id;
-  const nextLockLeft = nextPlayerLockSecondsLeft();
 
   phaseContent.innerHTML = `
     <div class="phase-card overtime-card">
       <p class="overtime-compact-title">PRODUŽETAK — Glasanje je nerešeno</p>
       <div class="discussion-monitor-layout">
-        ${renderReactionColumn("left", REACTION_EMOJIS_LEFT, overtime.current_player_id)}
+        ${renderReactionColumn("left", REACTION_EMOJIS_LEFT)}
         <div class="discussion-monitor-body">
           ${renderAssociationBannerStack(roomState.association_banners)}
-          ${renderDiscussionMonitorHeader(currentPlayer, "Produžetak", overtime.remaining_seconds)}
-          ${renderDiscussionActionRow(overtime, isHost, canAdvanceTurn, nextLockLeft)}
+          ${renderDiscussionMonitorPanel(currentPlayer, "Produžetak", overtime.remaining_seconds, ctx)}
           ${renderAssociationComposer(overtime.current_player_id)}
         </div>
-        ${renderReactionColumn("right", REACTION_EMOJIS_RIGHT, overtime.current_player_id)}
+        ${renderReactionColumn("right", REACTION_EMOJIS_RIGHT)}
       </div>
     </div>
   `;
 
-  bindDiscussionActions(canAdvanceTurn);
+  bindDiscussionActions(ctx.canAdvanceTurn);
   bindReactionRow();
   bindAssociationComposer();
   lastAssociationBannerStackKey = associationBannerStackKey(roomState.association_banners);
+  syncActiveTargetReaction();
 }
 
 function renderAssociationComposer(currentPlayerId) {
@@ -1503,10 +1713,10 @@ function renderAssociationComposer(currentPlayerId) {
   `;
 }
 
-function renderReactionColumn(side, emojis, targetPlayerId) {
-  if (!targetPlayerId || !emojis.length) return "";
+function renderReactionColumn(side, emojis) {
+  if (!canSendReactions() || !emojis.length) return "";
   const buttons = emojis.map((emoji) => (
-    `<button class="reaction-button" type="button" data-reaction-emoji="${escapeHtml(emoji)}" data-reaction-target-id="${escapeHtml(targetPlayerId)}" aria-label="Reakcija ${escapeHtml(emoji)}">${escapeHtml(emoji)}</button>`
+    `<button class="reaction-button" type="button" data-reaction-emoji="${escapeHtml(emoji)}" aria-label="Reakcija ${escapeHtml(emoji)}">${escapeHtml(emoji)}</button>`
   )).join("");
   return `<div class="reaction-row reaction-row-${side}" aria-label="Reakcije">${buttons}</div>`;
 }
@@ -1514,9 +1724,8 @@ function renderReactionColumn(side, emojis, targetPlayerId) {
 function bindReactionRow() {
   document.querySelectorAll("[data-reaction-emoji]").forEach((button) => {
     button.addEventListener("click", () => {
-      const targetPlayerId = button.dataset.reactionTargetId || currentTurnPlayerId();
-      if (!targetPlayerId) return;
-      sendReaction(button.dataset.reactionEmoji, targetPlayerId);
+      if (!canSendReactions()) return;
+      sendReaction(button.dataset.reactionEmoji);
     });
   });
 }
@@ -1698,16 +1907,30 @@ function varaliceNameText(results) {
 }
 
 function revealTheme(results, phase = "complete") {
-  const countdownPhases = new Set(["overlay_intro", "countdown_5", "countdown_4", "countdown_3", "countdown_2", "countdown_1", "title_reveal"]);
+  const countdownPhases = new Set(["overlay_intro", "countdown_5", "countdown_4", "countdown_3", "countdown_2", "countdown_1"]);
   if (countdownPhases.has(phase)) return "danger-red-for-all";
   return finalOutcomeTheme(results);
 }
 
+function revealStatusLabel(results) {
+  if (results.was_varalica_caught === true) {
+    return isViewerVaralica(results) ? "PROVALJENA" : "OTKRIVENA";
+  }
+  return "PREŽIVJELA";
+}
+
+function revealStatusClass(results) {
+  if (results.was_varalica_caught === true) {
+    return isViewerVaralica(results) ? "status-caught" : "status-exposed";
+  }
+  return "status-survived";
+}
+
 function revealOutcomeTitle(results) {
   if (results.was_varalica_caught === true) {
-    return isViewerVaralica(results) ? "PROVALJEN" : "OTKRIVEN";
+    return isViewerVaralica(results) ? "PROVALJENA" : "OTKRIVENA";
   }
-  return isViewerVaralica(results) ? "MAJSTOR MANIPULACIJE" : "VARALICA JE PREŽIVJELA";
+  return "PREŽIVJELA";
 }
 
 function revealOutcomeSubtitle(results) {
@@ -1750,47 +1973,84 @@ function impostorAvatarHtml() {
   `;
 }
 
+function renderVaralicaNamesHtml(results, { animate = false } = {}) {
+  const names = resultVaralice(results);
+  const animateClass = animate ? " impostor-name-reveal" : "";
+  if (!names.length) {
+    return `<h2 class="impostor-nickname${animateClass}">Nepoznato</h2>`;
+  }
+  if (names.length === 1) {
+    const label = playerNameText(names[0]);
+    return `<h2 class="impostor-nickname${animateClass}" title="${escapeHtml(label)}">${escapeHtml(label)}</h2>`;
+  }
+  return `
+    <div class="impostor-nickname-stack">
+      ${names.map((player) => {
+        const label = playerNameText(player);
+        return `<h2 class="impostor-nickname${animateClass}" title="${escapeHtml(label)}">${escapeHtml(label)}</h2>`;
+      }).join("")}
+    </div>
+  `;
+}
+
+function isCountdownRevealPhase(phase) {
+  return /^countdown_\d$/.test(phase) || phase === "overlay_intro";
+}
+
+function patchImpostorRevealCountdown() {
+  const stage = document.querySelector("#impostorRevealStage");
+  if (!stage || stage.dataset.revealPhase !== revealSequence.phase) return false;
+  const countdownEl = stage.querySelector(".impostor-countdown");
+  if (countdownEl && revealSequence.countdown) {
+    countdownEl.textContent = String(revealSequence.countdown);
+  }
+  return true;
+}
+
 function renderImpostorReveal(results) {
   const phase = revealSequence.phase;
+  if (lastRenderedRevealPhase === phase && patchImpostorRevealCountdown()) {
+    return;
+  }
+  lastRenderedRevealPhase = phase;
+
   const theme = revealTheme(results, phase);
-  const showTitle = phase === "title_reveal" || phase === "nickname_reveal" || phase === "statistics_reveal";
-  const showName = phase === "nickname_reveal" || phase === "statistics_reveal";
-  const isImpact = phase === "countdown_1" || phase === "nickname_reveal";
-  const nickname = varaliceNameText(results) || "Nepoznato";
-  const title = revealOutcomeTitle(results);
+  const isCountdown = isCountdownRevealPhase(phase);
+  const showStatus = phase === "status_reveal" || phase === "name_reveal" || phase === "subtitle_reveal";
+  const showPretitle = phase === "name_reveal" || phase === "subtitle_reveal";
+  const showName = phase === "name_reveal" || phase === "subtitle_reveal";
+  const showSubtitle = phase === "subtitle_reveal";
+  const isImpact = phase === "countdown_1" || phase === "name_reveal";
+  const statusLabel = revealStatusLabel(results);
+  const statusClass = revealStatusClass(results);
   const subtitle = revealOutcomeSubtitle(results);
 
   phaseContent.innerHTML = `
-    <div class="impostor-reveal-stage ${escapeHtml(theme)} ${escapeHtml(phase)} ${isImpact ? "impact" : ""}">
-      <div class="impostor-reveal-vignette"></div>
-      <img
-        class="impostor-smoke-overlay"
-        src="${escapeHtml(IMPOSTOR_REVEAL_SMOKE_URL)}"
-        alt=""
-        aria-hidden="true"
-      >
+    <div
+      id="impostorRevealStage"
+      class="impostor-reveal-stage ${escapeHtml(theme)} ${escapeHtml(phase)} ${isImpact ? "impact" : ""}"
+      data-reveal-phase="${escapeHtml(phase)}"
+    >
+      <div class="impostor-reveal-vignette" aria-hidden="true"></div>
       <div class="impostor-reveal-card">
-        <div class="impostor-avatar-wrap">
-          ${impostorAvatarHtml()}
-          <img
-            class="impostor-scanlines-overlay"
-            src="${escapeHtml(IMPOSTOR_REVEAL_SCANLINES_URL)}"
-            alt=""
-            aria-hidden="true"
-          >
-          <div class="impostor-glitch-lines" aria-hidden="true"></div>
-          ${showTitle ? `<p class="impostor-pretitle impostor-pretitle-overlay">VARALICA JE...</p>` : ""}
+        <div class="impostor-avatar-column">
+          <div class="impostor-avatar-wrap">
+            ${impostorAvatarHtml()}
+            <img
+              class="impostor-scanlines-overlay"
+              src="${escapeHtml(IMPOSTOR_REVEAL_SCANLINES_URL)}"
+              alt=""
+              aria-hidden="true"
+            >
+            <div class="impostor-glitch-lines" aria-hidden="true"></div>
+          </div>
+          ${isCountdown && revealSequence.countdown ? `<div class="impostor-countdown">${revealSequence.countdown}</div>` : ""}
         </div>
-          ${
-            revealSequence.countdown
-              ? `<div class="impostor-countdown">${revealSequence.countdown}</div>`
-              : ""
-          }
-        <div class="impostor-reveal-copy">
-          ${!showTitle ? `<p class="impostor-pretitle ghost">OTKRIVANJE</p>` : ""}
-          ${showName ? `<h2 class="impostor-nickname" title="${escapeHtml(nickname)}">${escapeHtml(nickname)}</h2>` : ""}
-          ${showName ? `<p class="impostor-outcome-title">${escapeHtml(title)}</p>` : ""}
-          ${showName ? `<p class="impostor-subtitle">${escapeHtml(subtitle)}</p>` : ""}
+        <div class="impostor-reveal-copy impostor-reveal-copy-front">
+          ${showStatus ? `<p class="impostor-status-label ${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</p>` : ""}
+          ${showPretitle ? `<p class="impostor-pretitle impostor-pretitle-game">VARALICA JE...</p>` : ""}
+          ${showName ? `<div class="impostor-name-reveal-wrap">${showName && phase === "name_reveal" ? '<span class="impostor-name-smoke" aria-hidden="true"></span>' : ""}${renderVaralicaNamesHtml(results, { animate: phase === "name_reveal" })}</div>` : ""}
+          ${showSubtitle ? `<p class="impostor-subtitle impostor-subtitle-reveal">${escapeHtml(subtitle)}</p>` : ""}
         </div>
       </div>
     </div>
@@ -1799,17 +2059,19 @@ function renderImpostorReveal(results) {
 
 function renderResultRevealHero(results) {
   const theme = finalOutcomeTheme(results);
-  const nickname = varaliceNameText(results) || "Nepoznato";
+  const statusLabel = revealStatusLabel(results);
+  const statusClass = revealStatusClass(results);
+  const subtitle = revealOutcomeSubtitle(results);
   return `
     <div class="result-reveal-hero ${escapeHtml(theme)}">
       <div class="result-reveal-avatar">
         ${impostorAvatarHtml()}
       </div>
-      <div class="result-reveal-text">
-        <p class="impostor-pretitle">VARALICA JE...</p>
-        <h2 class="impostor-nickname" title="${escapeHtml(nickname)}">${escapeHtml(nickname)}</h2>
-        <p class="impostor-outcome-title">${escapeHtml(revealOutcomeTitle(results))}</p>
-        <p class="impostor-subtitle">${escapeHtml(revealOutcomeSubtitle(results))}</p>
+      <div class="result-reveal-text result-reveal-text-front">
+        <p class="impostor-status-label ${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</p>
+        <p class="impostor-pretitle impostor-pretitle-game">VARALICA JE...</p>
+        ${renderVaralicaNamesHtml(results)}
+        <p class="impostor-subtitle">${escapeHtml(subtitle)}</p>
       </div>
     </div>
   `;
@@ -1887,14 +2149,14 @@ function renderResults() {
       }
       ${
         isHost && revealSequence.showReplay
-          ? `<button id="restartRoomButton" class="replay">Restartuj sobu</button>`
-          : `<p class="helper-text">${isHost ? "Restartuj sobu ce biti dostupno za trenutak." : "Host moze restartovati sobu."}</p>`
+          ? `<button id="newRoundButton" class="replay">Nova runda</button>`
+          : `<p class="helper-text">${isHost ? "Nova runda ce biti dostupna za trenutak." : "Host moze pokrenuti novu rundu."}</p>`
       }
     </div>
   `;
 
-  const restartRoomButton = document.querySelector("#restartRoomButton");
-  if (restartRoomButton) restartRoomButton.addEventListener("click", promptRestartRoom);
+  const newRoundButton = document.querySelector("#newRoundButton");
+  if (newRoundButton) newRoundButton.addEventListener("click", startNewRound);
 }
 
 function reactionKey(reaction) {
@@ -1921,6 +2183,23 @@ function syncPlayerReactionBubble(inlinePlayer, reaction) {
   }
   bubble.dataset.reactionKey = key;
   bubble.textContent = reaction.emoji;
+  bubble.classList.remove("reaction-pop-repulse");
+  void bubble.offsetWidth;
+  bubble.classList.add("reaction-pop-repulse");
+}
+
+function patchRevealPlayersInPlace() {
+  if (roomState.state !== "reveal") return false;
+  const rows = [...playersList.querySelectorAll(".player-row")];
+  if (rows.length === 0 || rows.length !== roomState.players.length) return false;
+
+  roomState.players.forEach((player, index) => {
+    const row = rows[index];
+    if (!row) return;
+    row.dataset.playerId = player.id;
+    syncRevealStatusBadge(row, player);
+  });
+  return true;
 }
 
 function patchDiscussionPlayersInPlace() {
@@ -1951,16 +2230,23 @@ function patchDiscussionPlayersInPlace() {
 }
 
 function renderPlayers() {
-  const canPatchInPlace =
-    (roomState.state === "discussion" || roomState.state === "overtime") &&
-    roomState.state === lastPlayersListPhase;
-  if (canPatchInPlace && patchDiscussionPlayersInPlace()) return;
-  lastPlayersListPhase = roomState.state;
+  const phase = roomState.state;
+  let patched = false;
+  if (phase === lastPlayersListPhase) {
+    if (phase === "discussion" || phase === "overtime") {
+      patched = patchDiscussionPlayersInPlace();
+    } else if (phase === "reveal") {
+      patched = patchRevealPlayersInPlace();
+    }
+  }
+  if (patched) return;
+  lastPlayersListPhase = phase;
 
   playersList.innerHTML = "";
   for (const player of roomState.players) {
     const row = document.createElement("div");
     row.className = "player-row";
+    row.dataset.playerId = player.id;
     if (player.is_current) {
       row.classList.add("is-current");
     }
@@ -2002,8 +2288,8 @@ function renderPlayers() {
         ${disconnectedLabel}
         ${connectedLabel}
         ${
-          roomState.state === "reveal" && player.is_active_round_player
-            ? `<span class="badge reveal-status ${revealStatus.className}">${revealStatus.label}</span>`
+          phase === "reveal" && player.is_active_round_player
+            ? `<span class="badge reveal-status ${revealStatus.className}" data-reveal-status-key="${revealStatus.className}:${revealStatus.label}">${revealStatus.label}</span>`
             : ""
         }
         ${
