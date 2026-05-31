@@ -233,6 +233,94 @@ _Add new rows here when bugs are found._
 
 ## 11. Changelog
 
+### 2026-05-31 — Overtime cap and countdown-only reveal fullscreen
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `main.py`
+  - `static/app.js`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Kept normal discussion voting unlock at `VOTING_LOCK_SECONDS = 75`; normal discussion still cannot open voting immediately.
+  - Changed overtime duration to `OVERTIME_SECONDS = 30`.
+  - Changed overtime voting unlock to `OVERTIME_VOTING_LOCK_SECONDS = 0`, so host can open voting immediately during overtime only.
+  - Added backend-authoritative `MAX_OVERTIME_ROUNDS = 2` and `Room.overtime_count`.
+  - Persisted/restored `overtime_count` in room snapshots with backward compatibility for older `overtime_used` snapshots.
+  - Reset `overtime_count` on new round/reveal setup and room reset.
+  - Prevented infinite tie/overtime loops: after two overtime rounds, another no-majority/tie vote becomes `voting_complete` and host can reveal Varalica instead of starting a third overtime.
+  - Kept reveal countdown sequence and timings unchanged (`5, 4, 3, 2, 1`).
+  - Limited fullscreen cinematic reveal overlay to countdown phases only; after countdown, normal results layout returns with vote details and player list.
+  - Bumped `static/app.js` cache query from `v=20260531_3` to `v=20260531_4`.
+- **What was not changed:**
+  - No word database/importer/data files changed.
+  - No QR, room code generation, WebSocket architecture, deploy config, or frontend vendor files changed.
+  - Existing majority logic is preserved except for the requested max-overtime cap.
+  - `Sledeći/Sljedeći igrač` one-second unlock and pending-click guard remain in place.
+  - Balkan category remains absent from runtime category files.
+  - No commit, push, deploy, or service restart.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` — passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` — passed with exit code 0; output reports `STRUCTURE OK: 1014 words` plus existing warning-only duplicate/hint repetition reports from the Excel source.
+  - `node --check static/app.js` — failed to run due Windows `Zugriff verweigert`.
+  - `git diff --check` — passed; only CRLF warnings from Git.
+- **Deploy status:**
+  - Not deployed.
+- **Manual checks needed:**
+  - Normal discussion: confirm host can open voting after 75 seconds, not immediately.
+  - First tied/no-majority vote: confirm overtime starts, lasts 30 seconds, and host can open voting immediately.
+  - Second tied/no-majority vote: confirm second overtime starts and behaves the same.
+  - Third tied/no-majority outcome after two overtimes: confirm no third overtime starts and host can reveal Varalica.
+  - Confirm countdown still runs `5, 4, 3, 2, 1` with fullscreen overlay only during countdown.
+  - Confirm vote details/results and player list return after countdown.
+  - Confirm `Sledeći/Sljedeći igrač` still unlocks after 1 second and advances on one click.
+  - Confirm Balkan category is still absent.
+- **Known issues:**
+  - Node syntax check remains blocked locally by Windows access error (`Zugriff verweigert`).
+  - Manual browser/gameplay testing was not run in this Codex turn.
+- **Notes:**
+  - Rollback: inspect with `git diff -- main.py static/app.js static/index.html PROJECT_STATUS_HANDOVER.md`, then run `git restore main.py static/app.js static/index.html PROJECT_STATUS_HANDOVER.md`.
+
+### 2026-05-31 — Gameplay timing and reveal layering fixes
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `main.py`
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Changed the standard discussion voting unlock from 120 seconds to 75 seconds via `VOTING_LOCK_SECONDS`.
+  - Changed the local `Sledeći/Sljedeći igrač` unlock delay from 3000 ms to 1000 ms via `NEXT_PLAYER_UNLOCK_DELAY_MS`.
+  - Added a pending-turn guard for `Sledeći igrač` so one click disables the button while the backend/WebSocket turn update is in flight.
+  - Stopped rebinding discussion buttons by replacing DOM nodes, which could make action clicks feel unreliable around live rerenders.
+  - Fixed cinematic reveal layering by raising the room panel stacking context only while the reveal sequence is active, and by raising the reveal overlay z-index.
+  - Bumped cache query strings for `static/styles.css` and `static/app.js`.
+- **What was not changed:**
+  - No word database/importer/data files changed.
+  - No voting majority/overtime result logic changed; overtime remains 60 seconds and the overtime voting unlock remains 30 seconds.
+  - No room code, QR, WebSocket architecture, reconnect/session cleanup, deployment, or infrastructure changes.
+  - No commit, push, deploy, or service restart.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` — passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` — passed with exit code 0; output reports `STRUCTURE OK: 1014 words` plus warning-only duplicate/hint repetition reports from the Excel source.
+  - `node --check static/app.js` — failed to run due Windows `Zugriff verweigert`.
+  - `git diff --check` — passed; only CRLF warnings from Git.
+- **Deploy status:**
+  - Not deployed.
+- **Manual checks needed:**
+  - Create a room with host + at least 3 players and confirm `Sledeći igrač` unlocks after about 1 second and advances on one click.
+  - Confirm host voting unlocks after 75 seconds during normal discussion.
+  - Trigger results/reveal and confirm player list does not cover countdown, smoke, dim, pulse, or final reveal on desktop and mobile widths.
+  - Confirm overtime still lasts 60 seconds and existing allowed host actions remain available.
+  - Confirm `Balkan` is still absent from category UI and no word database regression appears.
+- **Known issues:**
+  - Node syntax check remains blocked locally by Windows access error (`Zugriff verweigert`).
+  - Manual browser testing was not run in this Codex turn.
+- **Notes:**
+  - Rollback: inspect with `git diff -- main.py static/app.js static/styles.css static/index.html PROJECT_STATUS_HANDOVER.md`, then run `git restore main.py static/app.js static/styles.css static/index.html PROJECT_STATUS_HANDOVER.md`.
+
 ### 2026-05-31 — Remove Balkan category from Excel word import
 
 - **Tool used:** Codex

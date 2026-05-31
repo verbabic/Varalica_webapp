@@ -41,6 +41,7 @@ const roomPanelToggle = document.querySelector("#roomPanelToggle");
 
 const SESSION_MAX_AGE_MS = 15 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 12000;
+const NEXT_PLAYER_UNLOCK_DELAY_MS = 1000;
 const PRODUCTION_ORIGIN = "https://varalica.autolovac.space";
 const IMPOSTOR_REVEAL_AVATAR_URL = "/static/assets/Varalica_crveno.png";
 const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
@@ -93,6 +94,7 @@ let lastSeenEventId = "";
 let currentTurnId = "";
 let nextPlayerUnlockAt = 0;
 let nextPlayerCountdownTimer = null;
+let pendingNextPlayerTurnId = "";
 let pendingConfirmAction = null;
 let roomPanelCollapsed = sessionStorage.getItem("varalica_room_panel_collapsed") === "true";
 let lastAssociationBannerStackKey = "";
@@ -351,7 +353,8 @@ function updateTurnLock(state) {
   const turnId = state.discussion?.current_player_id || state.overtime?.current_player_id || "";
   if (turnId && turnId !== currentTurnId) {
     currentTurnId = turnId;
-    nextPlayerUnlockAt = Date.now() + 3000;
+    pendingNextPlayerTurnId = "";
+    nextPlayerUnlockAt = Date.now() + NEXT_PLAYER_UNLOCK_DELAY_MS;
     scheduleNextPlayerCountdown();
   }
 }
@@ -545,7 +548,15 @@ async function confirmSeen() {
 async function nextPlayer() {
   clearError();
   touchSession();
-  await apiRequest(`/api/rooms/${localRoomCode}/next-player`, { player_id: localPlayerId });
+  const turnId = currentActivePlayerId();
+  if (pendingNextPlayerTurnId && pendingNextPlayerTurnId === turnId) return;
+  pendingNextPlayerTurnId = turnId;
+  syncDiscussionMonitorActions();
+  const response = await apiRequest(`/api/rooms/${localRoomCode}/next-player`, { player_id: localPlayerId });
+  if (!response?.ok) {
+    pendingNextPlayerTurnId = "";
+    syncDiscussionMonitorActions();
+  }
 }
 
 async function requestVote() {
@@ -1032,12 +1043,14 @@ function discussionMonitorContext() {
     me && data && me.id === data.current_player_id && me.play_mode === "chat",
   );
   const showNextButton = canAdvanceTurn && !isCurrentChatPlayer;
+  const isNextPending = Boolean(data?.current_player_id && pendingNextPlayerTurnId === data.current_player_id);
   return {
     isHost,
     data,
     me,
     canAdvanceTurn,
     showNextButton,
+    isNextPending,
     nextLockLeft: nextPlayerLockSecondsLeft(),
   };
 }
@@ -1054,9 +1067,19 @@ function renderHostVotingButtonHtml(voteLocked) {
   return `<button id="openFinalVotingButton" class="discussion-host-vote-button" type="button" ${voteLocked ? "disabled" : ""} title="${voteLocked ? "Glasanje još nije otključano" : "Otvori finalno glasanje"}">Otvori glasanje</button>`;
 }
 
-function renderNextPlayerButtonHtml(nextLockLeft) {
-  const nextLabel = nextLockLeft > 0 ? `Sljedeći (${nextLockLeft})` : "Sljedeći igrač";
-  return `<button id="nextPlayerButton" class="discussion-next-button" type="button" ${nextLockLeft > 0 ? "disabled" : ""} title="${nextLockLeft > 0 ? `Dostupno za ${nextLockLeft}s` : "Prebaci na sljedećeg igrača"}">${nextLabel}</button>`;
+function nextPlayerButtonLabel(nextLockLeft, isPending = false) {
+  if (isPending) return "Sljedeći...";
+  return nextLockLeft > 0 ? `Sljedeći (${nextLockLeft})` : "Sljedeći igrač";
+}
+
+function nextPlayerButtonTitle(nextLockLeft, isPending = false) {
+  if (isPending) return "Prebacivanje igrača je u toku";
+  return nextLockLeft > 0 ? `Dostupno za ${nextLockLeft}s` : "Prebaci na sljedećeg igrača";
+}
+
+function renderNextPlayerButtonHtml(nextLockLeft, isPending = false) {
+  const disabled = nextLockLeft > 0 || isPending;
+  return `<button id="nextPlayerButton" class="discussion-next-button" type="button" ${disabled ? "disabled" : ""} title="${nextPlayerButtonTitle(nextLockLeft, isPending)}">${nextPlayerButtonLabel(nextLockLeft, isPending)}</button>`;
 }
 
 function syncDiscussionMonitorActions() {
@@ -1082,14 +1105,14 @@ function syncDiscussionMonitorActions() {
   nextSlot.classList.remove("hidden");
   let nextButton = nextSlot.querySelector("#nextPlayerButton");
   if (!nextButton) {
-    nextSlot.innerHTML = renderNextPlayerButtonHtml(ctx.nextLockLeft);
+    nextSlot.innerHTML = renderNextPlayerButtonHtml(ctx.nextLockLeft, ctx.isNextPending);
     bindDiscussionActions(ctx.canAdvanceTurn);
     return;
   }
 
-  nextButton.disabled = ctx.nextLockLeft > 0;
-  nextButton.textContent = ctx.nextLockLeft > 0 ? `Sljedeći (${ctx.nextLockLeft})` : "Sljedeći igrač";
-  nextButton.title = ctx.nextLockLeft > 0 ? `Dostupno za ${ctx.nextLockLeft}s` : "Prebaci na sljedećeg igrača";
+  nextButton.disabled = ctx.nextLockLeft > 0 || ctx.isNextPending;
+  nextButton.textContent = nextPlayerButtonLabel(ctx.nextLockLeft, ctx.isNextPending);
+  nextButton.title = nextPlayerButtonTitle(ctx.nextLockLeft, ctx.isNextPending);
 }
 
 function updateDiscussionShellInPlace() {
@@ -1335,7 +1358,7 @@ function renderDiscussionMonitorPanel(currentPlayer, phaseLabel, remainingSecond
     ? renderHostVotingButtonHtml(!ctx.data.voting_unlocked)
     : "";
   const nextAction = ctx.showNextButton
-    ? `<div id="discussionNextAction" class="discussion-next-action">${renderNextPlayerButtonHtml(ctx.nextLockLeft)}</div>`
+    ? `<div id="discussionNextAction" class="discussion-next-action">${renderNextPlayerButtonHtml(ctx.nextLockLeft, ctx.isNextPending)}</div>`
     : `<div id="discussionNextAction" class="discussion-next-action hidden"></div>`;
 
   return `
@@ -1360,6 +1383,8 @@ function renderDiscussionMonitorPanel(currentPlayer, phaseLabel, remainingSecond
 
 function render() {
   if (!roomState) return;
+  const cinematicRevealActive = roomState.state === "results" && revealSequence.active && isCountdownRevealPhase(revealSequence.phase);
+  roomView.classList.toggle("cinematic-reveal-active", cinematicRevealActive);
   roomCodeDisplay.textContent = roomState.room_code;
   roundDisplay.textContent = `Runda ${roomState.round_number || 1}`;
   playerCountBadge.textContent = `${roomState.player_count}/${roomState.max_players}`;
@@ -1681,14 +1706,14 @@ function renderReveal() {
 
 function bindDiscussionActions(canAdvanceTurn) {
   const nextButton = document.querySelector("#nextPlayerButton");
-  if (nextButton && canAdvanceTurn) {
-    nextButton.replaceWith(nextButton.cloneNode(true));
-    document.querySelector("#nextPlayerButton")?.addEventListener("click", nextPlayer);
+  if (nextButton && canAdvanceTurn && nextButton.dataset.bound !== "true") {
+    nextButton.dataset.bound = "true";
+    nextButton.addEventListener("click", nextPlayer);
   }
   const openButton = document.querySelector("#openFinalVotingButton");
-  if (openButton) {
-    openButton.replaceWith(openButton.cloneNode(true));
-    document.querySelector("#openFinalVotingButton")?.addEventListener("click", openFinalVoting);
+  if (openButton && openButton.dataset.bound !== "true") {
+    openButton.dataset.bound = "true";
+    openButton.addEventListener("click", openFinalVoting);
   }
 }
 
@@ -1919,10 +1944,22 @@ function renderVotingComplete() {
   const isHost = roomState.viewer_id === roomState.host_id;
   const voting = roomState.voting_complete;
   if (voting.is_tie) {
+    if (voting.can_reveal) {
+      phaseContent.innerHTML = `
+        <div class="phase-card overtime-card">
+          <h2>Glasanje je nerešeno.</h2>
+          <p class="helper-text">Produžeci su završeni. Host može prikazati Varalicu.</p>
+          ${isHost ? `<button id="revealResultsButton">Prikaži Varalicu</button>` : `<p class="helper-text">Čeka se da host prikaže Varalicu.</p>`}
+        </div>
+      `;
+      const revealButton = document.querySelector("#revealResultsButton");
+      if (revealButton) revealButton.addEventListener("click", revealResults);
+      return;
+    }
     phaseContent.innerHTML = `
       <div class="phase-card overtime-card">
         <h2>Glasanje je nerešeno.</h2>
-        <p class="helper-text">Varalica se ne otkriva. Diskusija se produžava.</p>
+        <p class="helper-text">Varalica se ne otkriva. Diskusija se produžava za 30 sekundi.</p>
       </div>
     `;
     return;
@@ -1937,8 +1974,8 @@ function renderVotingComplete() {
         voting.can_overtime
           ? `<div class="overtime-card">
               <h2>Glasanje je neriješeno.</h2>
-              <p class="helper-text">Host može produžiti diskusiju za 60 sekundi ili odmah prikazati Varalicu.</p>
-              ${isHost ? `<button id="startOvertimeButton">Produži igru 60 sekundi</button>` : ""}
+              <p class="helper-text">Diskusija se produžava za 30 sekundi.</p>
+              ${isHost ? `<button id="startOvertimeButton">Produži igru 30 sekundi</button>` : ""}
             </div>`
           : ""
       }
@@ -2148,7 +2185,7 @@ function renderResultRevealHero(results) {
 function renderResults() {
   const isHost = roomState.viewer_id === roomState.host_id;
   const results = roomState.results;
-  if (revealSequence.active && !revealSequence.complete) {
+  if (revealSequence.active && isCountdownRevealPhase(revealSequence.phase)) {
     renderImpostorReveal(results);
     return;
   }

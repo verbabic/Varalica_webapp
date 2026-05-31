@@ -33,9 +33,10 @@ MIN_PLAYERS = 4
 MAX_PLAYERS = 8
 DISCUSSION_SECONDS = 180
 ALLOWED_DISCUSSION_SECONDS = {120, 180, 300}
-VOTING_LOCK_SECONDS = 120
-OVERTIME_SECONDS = 60
-OVERTIME_VOTING_LOCK_SECONDS = 30
+VOTING_LOCK_SECONDS = 75
+OVERTIME_SECONDS = 30
+OVERTIME_VOTING_LOCK_SECONDS = 0
+MAX_OVERTIME_ROUNDS = 2
 ALLOWED_REACTIONS = {"😂", "🧐", "😎", "🤢", "🤥", "🙈"}
 PLAYER_LIST_REACTION_SECONDS = 3
 MAX_REACTIONS_PER_TARGET = 8
@@ -168,6 +169,7 @@ class Room:
     final_votes: dict[str, list[str]] = field(default_factory=dict)
     overtime_started_at: float | None = None
     overtime_used: bool = False
+    overtime_count: int = 0
     selected_category: str = DEFAULT_CATEGORY
     discussion_duration_seconds: int = DISCUSSION_SECONDS
     recent_varalica_ids: list[str] = field(default_factory=list)
@@ -469,7 +471,7 @@ async def transfer_host(room_code: str, action: TargetPlayerAction) -> dict:
 @app.post("/api/rooms/{room_code}/request-vote")
 async def request_vote(room_code: str, action: PlayerAction) -> dict:
     get_room(room_code)
-    raise HTTPException(status_code=400, detail="Glasanje otvara samo host nakon 120 sekundi.")
+    raise HTTPException(status_code=400, detail="Glasanje otvara samo host nakon 75 sekundi.")
 
 
 @app.post("/api/rooms/{room_code}/open-final-voting")
@@ -478,12 +480,12 @@ async def open_final_voting(room_code: str, action: PlayerAction) -> dict:
     ensure_host(room, action.player_id)
     if room.state == "discussion":
         if not voting_unlocked(room):
-            raise HTTPException(status_code=400, detail="Glasanje dostupno nakon 120 sekundi.")
+            raise HTTPException(status_code=400, detail="Glasanje dostupno nakon 75 sekundi.")
         stop_timer(room)
         room.state = "final_voting"
     elif room.state == "overtime":
         if not overtime_voting_unlocked(room):
-            raise HTTPException(status_code=400, detail="Glasanje u produzetku dostupno nakon 30 sekundi.")
+            raise HTTPException(status_code=400, detail="Glasanje u produzetku jos nije dostupno.")
         stop_timer(room)
         room.overtime_started_at = None
         room.state = "overtime_voting"
@@ -506,7 +508,7 @@ async def reveal_results(room_code: str, action: PlayerAction) -> dict:
     ensure_host(room, action.player_id)
     if room.state != "voting_complete":
         raise HTTPException(status_code=400, detail="Varalica se moze prikazati tek nakon glasanja.")
-    if is_vote_tied(room):
+    if is_vote_tied(room) and room.overtime_count < MAX_OVERTIME_ROUNDS:
         raise HTTPException(status_code=400, detail="Glasanje je nerijeseno. Produzetak je u toku.")
     if not all_active_players_voted(room):
         raise HTTPException(status_code=400, detail="Svi aktivni igraci moraju glasati.")
@@ -839,6 +841,7 @@ def room_to_snapshot(room: Room) -> dict:
         "final_votes": room.final_votes,
         "overtime_started_at": room.overtime_started_at,
         "overtime_used": room.overtime_used,
+        "overtime_count": room.overtime_count,
         "selected_category": room.selected_category,
         "discussion_duration_seconds": room.discussion_duration_seconds,
         "recent_varalica_ids": room.recent_varalica_ids,
@@ -896,6 +899,7 @@ def room_from_snapshot(snapshot: dict) -> Room:
         final_votes=normalize_stored_votes(snapshot.get("final_votes", {})),
         overtime_started_at=snapshot.get("overtime_started_at"),
         overtime_used=bool(snapshot.get("overtime_used", False)),
+        overtime_count=int(snapshot.get("overtime_count", 1 if snapshot.get("overtime_used") else 0)),
         selected_category=normalize_category(snapshot.get("selected_category")),
         discussion_duration_seconds=normalize_discussion_seconds(snapshot.get("discussion_duration_seconds")),
         recent_varalica_ids=list(snapshot.get("recent_varalica_ids", [])),
@@ -1135,6 +1139,7 @@ def prepare_reveal_round(room: Room, active_players: list[Player]) -> None:
     clear_all_reactions(room)
     room.overtime_started_at = None
     room.overtime_used = False
+    room.overtime_count = 0
     stop_timer(room)
 
 
@@ -1195,6 +1200,7 @@ def reset_room_to_lobby(room: Room) -> None:
     clear_all_reactions(room)
     room.overtime_started_at = None
     room.overtime_used = False
+    room.overtime_count = 0
     room.turn_version += 1
     room.round_number = 1
     room.last_event = None
@@ -1706,6 +1712,10 @@ def is_vote_tied(room: Room) -> bool:
 
 def finish_voting(room: Room) -> bool:
     if not majority_player_ids(room):
+        if room.overtime_count >= MAX_OVERTIME_ROUNDS:
+            room.state = "voting_complete"
+            stop_timer(room)
+            return False
         enter_tie_overtime(room)
         return True
     room.state = "voting_complete"
@@ -1734,6 +1744,7 @@ def players_caught_all_varalice(room: Room) -> bool:
 def enter_tie_overtime(room: Room) -> None:
     stop_timer(room)
     room.state = "overtime"
+    room.overtime_count += 1
     room.overtime_used = True
     room.overtime_started_at = time.time()
     room.final_votes.clear()
@@ -1984,6 +1995,8 @@ def overtime_state(room: Room) -> dict | None:
         "voting_unlocked": overtime_voting_unlocked(room),
         "started": room.overtime_started_at is not None,
         "used": room.overtime_used,
+        "count": room.overtime_count,
+        "max_count": MAX_OVERTIME_ROUNDS,
         "current_player_id": current_player_id(room),
         "active_player_count": len(active_round_player_ids(room)),
     }
@@ -1994,8 +2007,11 @@ def voting_complete_state(room: Room) -> dict | None:
         return None
     return {
         "is_tie": is_vote_tied(room),
-        "can_overtime": is_vote_tied(room) and not room.overtime_used,
+        "can_overtime": is_vote_tied(room) and room.overtime_count < MAX_OVERTIME_ROUNDS,
+        "can_reveal": not is_vote_tied(room) or room.overtime_count >= MAX_OVERTIME_ROUNDS,
         "overtime_used": room.overtime_used,
+        "overtime_count": room.overtime_count,
+        "max_overtime_rounds": MAX_OVERTIME_ROUNDS,
         "active_player_count": len(active_round_player_ids(room)),
         "voted_count": len([player_id for player_id in active_round_player_ids(room) if player_id in room.final_votes]),
     }
