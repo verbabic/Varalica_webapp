@@ -1599,7 +1599,7 @@ def cleanup_reactions(room: Room) -> None:
     room.player_list_reactions = [
         reaction
         for reaction in room.player_list_reactions
-        if reaction.get("subject_player_id") in room.players
+        if reaction.get("sender_player_id") in room.players
         and reaction.get("expires_at", 0) > now
     ]
 
@@ -1636,7 +1636,7 @@ def reactions_for_player(room: Room, player_id: str) -> list[dict]:
             "identity": reaction.get("identity"),
         }
         for reaction in room.player_list_reactions
-        if reaction.get("subject_player_id") == player_id
+        if reaction.get("sender_player_id") == player_id
     ]
 
 
