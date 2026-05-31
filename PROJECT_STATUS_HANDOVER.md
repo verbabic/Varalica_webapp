@@ -233,6 +233,43 @@ _Add new rows here when bugs are found._
 
 ## 11. Changelog
 
+### 2026-05-31 — Hotfix next-player button click handler
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/app.js`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Fixed the `Sledeći/Sljedeći igrač` button not sending a backend request.
+  - Root cause: `nextPlayer()` called a non-existent frontend function `currentActivePlayerId()`, causing a JavaScript `ReferenceError` before `fetch()` could call `/api/rooms/{room_code}/next-player`.
+  - Replaced the bad call with the existing `currentTurnPlayerId()`.
+  - Added `clearPendingNextPlayer()` helper and tracked pending start time so the local pending guard can clear on turn change, request failure, leaving discussion/overtime, or after a short stale timeout.
+  - Bumped `static/app.js` cache query from `v=20260531_4` to `v=20260531_5`.
+- **What was not changed:**
+  - No backend game rules changed.
+  - No overtime, reveal countdown, voting majority, room code, QR, WebSocket architecture, category, word database, or deploy config changes.
+  - Existing 75s normal voting unlock, 30s overtime, immediate overtime voting unlock, max 2 overtimes, countdown-only fullscreen reveal, and Balkan removal remain unchanged.
+  - No commit, push, deploy, or service restart.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` — passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` — passed with exit code 0; output reports `STRUCTURE OK: 1014 words` plus existing warning-only duplicate/hint repetition reports from the Excel source.
+  - `node --check static/app.js` — failed to run due Windows `Zugriff verweigert`.
+  - `git diff --check` — passed; only CRLF warnings from Git.
+- **Deploy status:**
+  - Not deployed.
+- **Manual checks needed:**
+  - Start a room and round, wait about 1 second, then confirm current player can advance with one click.
+  - Confirm host can advance with one click when allowed.
+  - Rapid double click should not skip two players.
+  - Confirm the button does not remain stuck after rerender/WebSocket update.
+  - Confirm overtime/reveal rules remain intact and Balkan category remains absent.
+- **Known issues:**
+  - Node syntax check remains blocked locally by Windows access error (`Zugriff verweigert`).
+  - Manual browser/gameplay testing was not run in this Codex turn.
+- **Notes:**
+  - Rollback: inspect with `git diff -- static/app.js static/index.html PROJECT_STATUS_HANDOVER.md`, then run `git restore static/app.js static/index.html PROJECT_STATUS_HANDOVER.md`.
+
 ### 2026-05-31 — Overtime cap and countdown-only reveal fullscreen
 
 - **Tool used:** Codex

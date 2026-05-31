@@ -95,6 +95,7 @@ let currentTurnId = "";
 let nextPlayerUnlockAt = 0;
 let nextPlayerCountdownTimer = null;
 let pendingNextPlayerTurnId = "";
+let pendingNextPlayerStartedAt = 0;
 let pendingConfirmAction = null;
 let roomPanelCollapsed = sessionStorage.getItem("varalica_room_panel_collapsed") === "true";
 let lastAssociationBannerStackKey = "";
@@ -353,10 +354,15 @@ function updateTurnLock(state) {
   const turnId = state.discussion?.current_player_id || state.overtime?.current_player_id || "";
   if (turnId && turnId !== currentTurnId) {
     currentTurnId = turnId;
-    pendingNextPlayerTurnId = "";
+    clearPendingNextPlayer();
     nextPlayerUnlockAt = Date.now() + NEXT_PLAYER_UNLOCK_DELAY_MS;
     scheduleNextPlayerCountdown();
   }
+}
+
+function clearPendingNextPlayer() {
+  pendingNextPlayerTurnId = "";
+  pendingNextPlayerStartedAt = 0;
 }
 
 function scheduleNextPlayerCountdown() {
@@ -548,13 +554,18 @@ async function confirmSeen() {
 async function nextPlayer() {
   clearError();
   touchSession();
-  const turnId = currentActivePlayerId();
+  const turnId = currentTurnPlayerId();
+  if (!turnId) {
+    showError("Trenutni igrač nije spreman.");
+    return;
+  }
   if (pendingNextPlayerTurnId && pendingNextPlayerTurnId === turnId) return;
   pendingNextPlayerTurnId = turnId;
+  pendingNextPlayerStartedAt = Date.now();
   syncDiscussionMonitorActions();
   const response = await apiRequest(`/api/rooms/${localRoomCode}/next-player`, { player_id: localPlayerId });
   if (!response?.ok) {
-    pendingNextPlayerTurnId = "";
+    clearPendingNextPlayer();
     syncDiscussionMonitorActions();
   }
 }
@@ -1037,6 +1048,13 @@ function hasDiscussionShell() {
 function discussionMonitorContext() {
   const isHost = roomState.viewer_id === roomState.host_id;
   const data = roomState.state === "overtime" ? roomState.overtime : roomState.discussion;
+  if (
+    pendingNextPlayerTurnId
+    && pendingNextPlayerStartedAt
+    && Date.now() - pendingNextPlayerStartedAt > 5000
+  ) {
+    clearPendingNextPlayer();
+  }
   const me = roomState.players.find((player) => player.id === roomState.viewer_id);
   const canAdvanceTurn = Boolean(isHost || (me && data && me.id === data.current_player_id));
   const isCurrentChatPlayer = Boolean(
@@ -1395,6 +1413,7 @@ function render() {
   renderPlayers();
 
   if (!["discussion", "overtime"].includes(roomState.state)) {
+    clearPendingNextPlayer();
     syncAssociationOverlayDock([]);
   }
 
