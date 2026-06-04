@@ -48,7 +48,7 @@ const IMPOSTOR_REVEAL_AVATAR_URL = "/static/assets/Varalica_crveno.png";
 const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
 const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
 const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
-const ASSET_CACHE = "20260604_21";
+const ASSET_CACHE = "20260604_22";
 const PRIVATE_CARD_CLOSED_URL = `/static/assets/wordcard.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_NORMAL_URL = `/static/assets/Prikazikartu_player_normal_eyes.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_VARALICA_URL = `/static/assets/Prikazikartu.png?v=${ASSET_CACHE}`;
@@ -57,9 +57,9 @@ const REVEAL_FLYING_CARD_URL = `/static/assets/reveal_card.png?v=${ASSET_CACHE}`
 const RESULT_CAUGHT_SCENE_URL = `/static/assets/result_caught_scene.png?v=${ASSET_CACHE}`;
 const RESULT_SURVIVED_SCENE_URL = `/static/assets/result_survived_scene_base.png?v=${ASSET_CACHE}`;
 const REVEAL_COUNTDOWN_STEP_MS = 1000;
-const REVEAL_FLYING_MS = 1650;
+const REVEAL_FLYING_MS = 2400;
 const REVEAL_BLACKOUT_MS = 520;
-const FINAL_RESULT_FULLSCREEN_MS = 3000;
+const FINAL_RESULT_FULLSCREEN_MS = 4000;
 const REACTION_EMOJIS_LEFT = ["😂", "🧐", "😎"];
 const REACTION_EMOJIS_RIGHT = ["🤢", "🤥", "🙈"];
 const AVATARS = [
@@ -850,7 +850,6 @@ function startRevealCountdown() {
   revealSequenceTimers.push(setTimeout(() => setRevealPhase("flying_card"), flyingAt));
   revealSequenceTimers.push(setTimeout(() => setRevealPhase("fade_black"), blackoutAt));
   revealSequenceTimers.push(setTimeout(() => {
-    markRevealAnimationComplete(roundKey);
     setRevealPhase("complete");
   }, completeAt));
   revealSequenceTimers.push(setTimeout(() => {
@@ -2285,7 +2284,7 @@ function isRevealTransitionPhase(phase) {
 }
 
 function finalResultHeadline(results) {
-  return results.was_varalica_caught === true ? "Varalica je otkrivena" : "Varalica je preživjela";
+  return results.was_varalica_caught === true ? "VARALICA JE UHVAĆENA" : "VARALICA JE PREŽIVJELA";
 }
 
 function patchImpostorRevealCountdown() {
@@ -2411,6 +2410,7 @@ function renderResultRevealHero(results, displayMode = "fullscreen") {
             decoding="async"
           >
         </div>
+        <p class="final-result-varalica-name">${escapeHtml(varaliceNameText(results))}</p>
       </div>
     `;
   }
@@ -2425,6 +2425,8 @@ function renderResultRevealHero(results, displayMode = "fullscreen") {
           aria-hidden="true"
           decoding="async"
         >
+        <div class="final-result-color-wash" aria-hidden="true"></div>
+        <div class="final-result-smoke" aria-hidden="true"></div>
         <div class="final-result-status-block">
           <h2 class="final-result-title">${escapeHtml(headline)}</h2>
         </div>

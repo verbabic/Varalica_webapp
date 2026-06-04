@@ -213,8 +213,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `v=20260604_21` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result/card/title assets)
-- **Last frontend version update:** 2026-06-04 (card text and countdown asset correction)
+- **Frontend cache/version string:** `v=20260604_22` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result/card/title assets)
+- **Last frontend version update:** 2026-06-04 (Phase 2 cinematic reveal flow)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +232,51 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-06-04 - Phase 2 cinematic reveal flow
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `static/app.js`
+  - `static/styles.css`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Bumped frontend cache strings to `v=20260604_22`.
+  - Kept countdown on `reveal_countdown_base.png` with the existing 5-4-3-2-1 timing and no generated eyes.
+  - Extended the fly-card phase to 2.4s and changed `@keyframes revealCardFlyForward` to a smooth clockwise multi-rotation scale-up toward the camera.
+  - Kept the black fade phase after the fly-card animation.
+  - Extended fullscreen result display to about 4 seconds before compact scoreboard.
+  - Changed fullscreen result labels to exact uppercase text: `VARALICA JE PREŽIVJELA` or `VARALICA JE UHVAĆENA`.
+  - Added fullscreen result color wash and smoke layers with green survived/red caught styling at roughly 50% smoke opacity.
+  - Added Varalica nickname to the compact mini-result area only; fullscreen result still shows no nickname, scoreboard, vote stats, or duplicate status.
+  - Adjusted reveal-complete persistence so reload skipping is marked when the UI transitions to compact scoreboard, not before fullscreen result.
+- **Exact functions/classes touched:**
+  - JS/constants/render: `ASSET_CACHE`, `REVEAL_FLYING_MS`, `FINAL_RESULT_FULLSCREEN_MS`, `startRevealCountdown()`, `finalResultHeadline()`, `renderResultRevealHero()`.
+  - CSS: `.reveal-flying-card`, `.final-result-overlay.result-overlay-green::after`, `.final-result-overlay.result-overlay-red::after`, `.final-result-fullscreen .final-result-title`, `.final-result-fullscreen.result-overlay-red .final-result-title`, `.final-result-color-wash`, `.final-result-smoke`, `.result-overlay-green .final-result-smoke`, `.result-overlay-red .final-result-smoke`, `.final-result-varalica-name`, `@keyframes revealCardFlyForward`.
+  - HTML: `styles.css`, `app.js`, and `Logo_title.png` cache strings.
+- **What was not changed:**
+  - No backend, voting rules, majority/overtime logic, room code logic, QR logic, WebSocket architecture, private card text/content, wordcard behavior, `words.py`, `storage.py`, vendor files, `.env`, deployment config, or services were changed.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` - passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` - passed with existing quality/duplicate/repetition warnings; structure OK with 1014 words.
+  - `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check static\app.js` - passed.
+  - `git diff --check` - passed with LF-to-CRLF warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Run a full vote/reveal flow and confirm countdown remains on `reveal_countdown_base.png` with centered purple/dark numbers.
+  - Confirm purple countdown fog stays atmospheric and does not hide the number.
+  - Confirm the card flies toward the camera, rotates clockwise several times smoothly, then fades to black.
+  - Confirm survived fullscreen uses `result_survived_scene_base.png`, green smoke, and exactly `VARALICA JE PREŽIVJELA` once.
+  - Confirm caught fullscreen uses `result_caught_scene.png`, red smoke, and exactly `VARALICA JE UHVAĆENA` once.
+  - Confirm fullscreen result shows no nickname, scoreboard, voting stats, duplicate status, or generated eyes.
+  - Confirm compact mini scoreboard appears after about 4 seconds and shows the same result image plus Varalica nickname and existing statistics.
+  - Confirm reload on compact mini scoreboard does not replay countdown/fly/fullscreen, and new round resets the animation.
+- **Known issues:**
+  - Manual browser/mobile QA was not run in this Codex turn.
+  - Several asset files were already dirty/untracked before this work and were preserved.
+- **Notes:**
+  - This phase intentionally did not change private card wording/wordcard behavior, gameplay rules, backend state, QR, room code, or WebSocket flow.
 
 ### 2026-06-04 - Card text and countdown asset correction
 
