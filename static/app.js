@@ -48,7 +48,7 @@ const IMPOSTOR_REVEAL_AVATAR_URL = "/static/assets/Varalica_crveno.png";
 const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
 const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
 const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
-const ASSET_CACHE = "20260604_17";
+const ASSET_CACHE = "20260604_18";
 const PRIVATE_CARD_CLOSED_URL = `/static/assets/reveal_card.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_NORMAL_URL = `/static/assets/Prikazikartu_player_normal_eyes.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_VARALICA_URL = `/static/assets/Prikazikartu.png?v=${ASSET_CACHE}`;
@@ -865,12 +865,12 @@ function revealAnimationStorageKey(roundKey = finalResultRoundKey()) {
 
 function hasCompletedRevealAnimation(roundKey = finalResultRoundKey()) {
   const key = revealAnimationStorageKey(roundKey);
-  return Boolean(key && sessionStorage.getItem(key) === "true");
+  return Boolean(key && localStorage.getItem(key) === "true");
 }
 
 function markRevealAnimationComplete(roundKey = finalResultRoundKey()) {
   const key = revealAnimationStorageKey(roundKey);
-  if (key) sessionStorage.setItem(key, "true");
+  if (key) localStorage.setItem(key, "true");
 }
 
 function prefersReducedMotion() {
@@ -971,6 +971,7 @@ function isExpiredRoomDetail(detail) {
 }
 
 function showValidInviteUI(code) {
+  setCinematicRevealActive(false);
   expiredRoomView.classList.add("hidden");
   setupView.classList.remove("hidden");
   roomView.classList.add("hidden");
@@ -984,6 +985,7 @@ function showValidInviteUI(code) {
 }
 
 function showExpiredRoomUI(code) {
+  setCinematicRevealActive(false);
   shouldReconnectSocket = false;
   stopHeartbeat();
   if (socket) socket.close();
@@ -1006,6 +1008,7 @@ function showExpiredRoomUI(code) {
 }
 
 function goToHome() {
+  setCinematicRevealActive(false);
   shouldReconnectSocket = false;
   stopHeartbeat();
   if (socket) socket.close();
@@ -1536,8 +1539,11 @@ function renderDiscussionMonitorPanel(currentPlayer, phaseLabel, remainingSecond
 }
 
 function render() {
-  if (!roomState) return;
-  roomView.classList.toggle("cinematic-reveal-active", isCinematicRevealActive());
+  if (!roomState) {
+    setCinematicRevealActive(false);
+    return;
+  }
+  setCinematicRevealActive(isCinematicRevealActive());
   roomCodeDisplay.textContent = roomState.room_code;
   roundDisplay.textContent = `Runda ${roomState.round_number || 1}`;
   playerCountBadge.textContent = `${roomState.player_count}/${roomState.max_players}`;
@@ -2381,12 +2387,17 @@ function renderRevealCountdownTransition() {
           src="${escapeHtml(REVEAL_COUNTDOWN_BASE_URL)}"
           alt=""
           aria-hidden="true"
+          loading="eager"
           decoding="async"
+          onerror="this.closest('.reveal-countdown-overlay').classList.add('image-failed')"
         >
+        <div class="reveal-countdown-card-surface" aria-hidden="true"></div>
         <div class="reveal-countdown-light" aria-hidden="true"></div>
         <div class="reveal-countdown-eyes" aria-hidden="true">
-          <span class="reveal-countdown-eye reveal-countdown-eye-left"></span>
-          <span class="reveal-countdown-eye reveal-countdown-eye-right"></span>
+          <svg class="reveal-countdown-eyes-svg" viewBox="0 0 220 80" focusable="false" aria-hidden="true">
+            <path class="reveal-countdown-eye-shape reveal-countdown-eye-left" d="M20 40 C46 10 78 14 98 42 C72 53 47 54 20 40 Z"></path>
+            <path class="reveal-countdown-eye-shape reveal-countdown-eye-right" d="M200 40 C174 10 142 14 122 42 C148 53 173 54 200 40 Z"></path>
+          </svg>
         </div>
         ${
           isCountdown && revealSequence.countdown
@@ -2455,16 +2466,21 @@ function isCinematicRevealActive() {
   return finalResultSceneState.roundKey === finalResultRoundKey() && finalResultSceneState.mode === "fullscreen";
 }
 
+function setCinematicRevealActive(active) {
+  roomView.classList.toggle("cinematic-reveal-active", active);
+  document.body.classList.toggle("cinematic-reveal-active", active);
+}
+
 function renderResults() {
   const isHost = roomState.viewer_id === roomState.host_id;
   const results = roomState.results;
   if (revealSequence.active && isRevealTransitionPhase(revealSequence.phase)) {
     renderRevealCountdownTransition();
-    roomView.classList.add("cinematic-reveal-active");
+    setCinematicRevealActive(true);
     return;
   }
   const finalResultDisplayMode = ensureFinalResultSceneTransition();
-  roomView.classList.toggle("cinematic-reveal-active", finalResultDisplayMode === "fullscreen");
+  setCinematicRevealActive(finalResultDisplayMode === "fullscreen");
   const voteRows = results.vote_summary
     .map(
       (item) => `

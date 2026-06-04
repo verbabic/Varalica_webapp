@@ -213,8 +213,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `v=20260604_17` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result/card assets)
-- **Last frontend version update:** 2026-06-04 (mobile reveal/card UI hotfix)
+- **Frontend cache/version string:** `v=20260604_18` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result/card/title assets)
+- **Last frontend version update:** 2026-06-04 (production UI render/selector hotfix)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +232,54 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-06-04 — Production UI render/selector hotfix
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `static/app.js`
+  - `static/styles.css`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Bumped frontend cache strings to `v=20260604_18` for `styles.css`, `app.js`, and app asset URLs.
+  - Switched the title/header image from `Logo_title.png` to clean `Logo.png` because `Logo_title.png` has purple eyes baked in.
+  - Kept `Mobilna party igra` removed and kept the always-visible `Početna` button.
+  - Changed reveal completion storage from `sessionStorage` to `localStorage` in `hasCompletedRevealAnimation()` / `markRevealAnimationComplete()` so reloads on the compact scoreboard do not replay countdown/reveal for the same round.
+  - Added `setCinematicRevealActive()` to toggle both `roomView.cinematic-reveal-active` and `body.cinematic-reveal-active`, and clear that state on home/invite/expired/no-room paths.
+  - Updated the actual generated countdown markup in `renderRevealCountdownTransition()` with `loading="eager"`, an image-failure class, a visible `.reveal-countdown-card-surface`, and inline SVG eyes (`.reveal-countdown-eyes-svg`) instead of span/dash eyes.
+  - Moved `.reveal-countdown-number` to the lower card area and raised countdown/fullscreen result z-index to `10000`.
+  - Added body-level cinematic CSS to hide the real `.hero`, `.players-panel`, and `.association-overlay-dock` DOM during countdown/fullscreen result.
+  - Repositioned `.private-card-text-panel` into the lower black card area and tightened text sizing for `.private-card-open-stage.is-normal` and `.private-card-open-stage.is-varalica`.
+  - Strengthened `.private-card-closed-button` and `@keyframes privateCardPulse` so the closed `Dodirni kartu` card visibly pulses again.
+- **Exact functions/classes touched:**
+  - JS: `renderRevealCountdownTransition()`, `hasCompletedRevealAnimation()`, `markRevealAnimationComplete()`, `render()`, `renderResults()`, `setCinematicRevealActive()`, `showValidInviteUI()`, `showExpiredRoomUI()`, `goToHome()`.
+  - CSS: `.hero-title-logo`, `body.cinematic-reveal-active ...`, `.room-layout.cinematic-reveal-active ...`, `.private-card-closed-button`, `.private-card-text-panel`, `.private-card-open-stage.is-normal .private-card-text-panel`, `.private-card-open-stage.is-varalica .private-card-text-panel`, `.reveal-countdown-overlay`, `.reveal-countdown-card-surface`, `.reveal-countdown-eyes-svg`, `.reveal-countdown-eye-shape`, `.reveal-countdown-number`, `.final-result-overlay.final-result-fullscreen`, `@keyframes privateCardPulse`.
+- **What was not changed:**
+  - No backend, voting logic, majority/overtime rule, room code logic, QR logic, vendor QR file, landing image/splash behavior, `words.py`, `.env`, deployment config, or services were changed.
+  - `reveal_card_full.png` remains unused by app code; the asset file was not deleted.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` — passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` — passed with existing quality/duplicate warnings; structure OK with 1014 words.
+  - `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check static\app.js` — passed.
+  - `git diff --check` — passed with LF-to-CRLF warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Confirm production loads `app.js?v=20260604_18` and `styles.css?v=20260604_18` after deploy.
+  - Confirm the title uses clean `Logo.png` without purple eyes and `Mobilna party igra` stays removed.
+  - Confirm `Početna` is visible and does not overlap important mobile room UI.
+  - Confirm closed `Dodirni kartu` has a visible pulse.
+  - Confirm normal/Varalica private card text is inside the lower black card area and Varalica sees only hint/Varalica text.
+  - Confirm countdown shows the base scene/card or fallback card surface, with number centered on the card area.
+  - Confirm countdown eyes are fuller SVG eye shapes and pulse.
+  - Confirm countdown/fullscreen result fully covers the real player list and header.
+  - Confirm compact scoreboard appears after fullscreen result and reload on compact scoreboard does not replay the reveal for the same round.
+  - Confirm new round still allows reveal animation again.
+- **Known issues:**
+  - Manual browser/mobile QA was not run in this Codex turn.
+  - Word validation warnings are pre-existing data quality warnings, not caused by this UI hotfix.
+- **Notes:**
+  - Existing untracked local files from previous work were preserved.
 
 ### 2026-06-04 — Restore title Logo_title image
 

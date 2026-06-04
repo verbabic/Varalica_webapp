@@ -214,10 +214,11 @@ label {
 
 .hero-title-logo {
   width: auto;
-  height: clamp(54px, 7vw, 92px);
-  max-height: none;
+  height: 1.25em;
+  max-height: 1.25em;
   flex-shrink: 0;
   object-fit: contain;
+  opacity: 0.92;
   filter:
     saturate(1.35)
     brightness(1.15)
@@ -227,7 +228,8 @@ label {
 
 @media (max-width: 640px) {
   .hero-title-logo {
-    height: clamp(38px, 12vw, 64px);
+    height: 1.2em;
+    max-height: 1.2em;
   }
 }
 
@@ -538,6 +540,13 @@ label {
   pointer-events: none;
 }
 
+body.cinematic-reveal-active .hero,
+body.cinematic-reveal-active .players-panel,
+body.cinematic-reveal-active .association-overlay-dock {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 .players-panel {
   position: relative;
   z-index: 2;
@@ -545,8 +554,8 @@ label {
 
 .room-layout.cinematic-reveal-active .players-panel,
 .room-layout.cinematic-reveal-active .association-overlay-dock {
-  visibility: hidden;
-  pointer-events: none;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 .room-topline,
@@ -906,9 +915,9 @@ label {
   border-radius: 18px;
   background: transparent;
   box-shadow:
-    0 0 0 1px rgba(192, 132, 252, 0.18),
-    0 0 28px rgba(124, 58, 237, 0.34),
-    0 0 54px rgba(88, 28, 135, 0.18);
+    0 0 0 1px rgba(192, 132, 252, 0.22),
+    0 0 30px rgba(124, 58, 237, 0.42),
+    0 0 70px rgba(88, 28, 135, 0.24);
   transform-origin: center;
   animation: privateCardPulse 2.15s ease-in-out infinite;
 }
@@ -987,32 +996,34 @@ label {
 
 .private-card-text-panel {
   position: absolute;
-  left: 9%;
-  top: 43%;
+  left: 25.5%;
+  top: 66%;
   display: grid;
-  align-content: start;
+  align-content: center;
   justify-items: center;
-  width: 52%;
-  max-width: 52%;
-  max-height: 28%;
-  padding: 1.5% 3% 1.5% 1.5%;
+  width: 42%;
+  max-width: 42%;
+  height: 17%;
+  max-height: 17%;
+  padding: 1.2% 2.4%;
   color: #f8fafc;
   pointer-events: none;
   overflow: hidden;
 }
 
 .private-card-open-stage.is-normal .private-card-text-panel {
-  top: 44%;
+  top: 66%;
 }
 
 .private-card-open-stage.is-varalica .private-card-text-panel {
-  top: 40.5%;
-  max-height: 34%;
+  top: 64%;
+  height: 21%;
+  max-height: 21%;
 }
 
 .private-card-secret {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   width: 100%;
   min-width: 0;
   justify-items: center;
@@ -1025,7 +1036,7 @@ label {
 
 .private-card-secret-kicker {
   color: rgba(216, 180, 254, 0.72);
-  font-size: clamp(0.62rem, 2.5vw, 0.84rem);
+  font-size: clamp(0.5rem, 2.05vw, 0.72rem);
   font-weight: 950;
   text-transform: uppercase;
 }
@@ -1033,7 +1044,7 @@ label {
 .private-card-secret-title {
   max-width: 100%;
   color: #f5f3ff;
-  font-size: clamp(0.9rem, 4.8vw, 1.6rem);
+  font-size: clamp(0.82rem, 4.1vw, 1.38rem);
   font-weight: 950;
   line-height: 1.05;
   overflow-wrap: anywhere;
@@ -1046,7 +1057,7 @@ label {
 .private-card-secret-hint {
   max-width: 100%;
   color: #c4b5fd;
-  font-size: clamp(0.68rem, 2.75vw, 0.86rem);
+  font-size: clamp(0.56rem, 2.25vw, 0.76rem);
   font-weight: 850;
   line-height: 1.18;
   overflow-wrap: anywhere;
@@ -1069,7 +1080,7 @@ label {
 
 .private-card-secret-varalica .private-card-secret-title {
   color: #e9d5ff;
-  font-size: clamp(0.94rem, 4.9vw, 1.56rem);
+  font-size: clamp(0.82rem, 4vw, 1.32rem);
 }
 
 .private-card-confirm-button {
@@ -1098,16 +1109,16 @@ label {
   0%, 100% {
     transform: scale(1);
     box-shadow:
-      0 0 0 1px rgba(192, 132, 252, 0.16),
-      0 0 24px rgba(124, 58, 237, 0.3),
-      0 0 50px rgba(88, 28, 135, 0.16);
+      0 0 0 1px rgba(192, 132, 252, 0.18),
+      0 0 26px rgba(124, 58, 237, 0.34),
+      0 0 60px rgba(88, 28, 135, 0.2);
   }
   50% {
-    transform: scale(1.018);
+    transform: scale(1.035);
     box-shadow:
-      0 0 0 1px rgba(216, 180, 254, 0.28),
-      0 0 40px rgba(168, 85, 247, 0.5),
-      0 0 76px rgba(88, 28, 135, 0.26);
+      0 0 0 2px rgba(216, 180, 254, 0.32),
+      0 0 48px rgba(168, 85, 247, 0.58),
+      0 0 92px rgba(88, 28, 135, 0.32);
   }
 }
 
@@ -1946,7 +1957,7 @@ label {
 .reveal-countdown-overlay {
   position: fixed;
   inset: 0;
-  z-index: 120;
+  z-index: 10000;
   display: grid;
   place-items: center;
   padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
@@ -1990,6 +2001,35 @@ label {
   pointer-events: none;
 }
 
+.reveal-countdown-overlay.image-failed .reveal-countdown-base {
+  display: none;
+}
+
+.reveal-countdown-card-surface {
+  position: absolute;
+  left: 50%;
+  top: 72%;
+  z-index: 2;
+  width: 22%;
+  height: 27%;
+  transform: translate(-50%, -50%);
+  border-radius: 7%;
+  border: 2px solid rgba(216, 180, 254, 0.62);
+  background:
+    radial-gradient(circle at 50% 45%, rgba(168, 85, 247, 0.14), transparent 54%),
+    rgba(1, 2, 10, 0.82);
+  box-shadow:
+    inset 0 0 22px rgba(0, 0, 0, 0.72),
+    0 0 18px rgba(192, 132, 252, 0.42),
+    0 0 38px rgba(124, 58, 237, 0.24);
+  opacity: 0.34;
+  pointer-events: none;
+}
+
+.reveal-countdown-overlay.image-failed .reveal-countdown-card-surface {
+  opacity: 1;
+}
+
 .reveal-countdown-light {
   position: absolute;
   left: 50%;
@@ -2012,8 +2052,8 @@ label {
   left: 50%;
   top: 36.8%;
   z-index: 3;
-  width: 22%;
-  height: 7.5%;
+  width: 24%;
+  height: 9%;
   transform: translate(-50%, -50%);
   pointer-events: none;
   opacity: 0.9;
@@ -2021,38 +2061,38 @@ label {
   animation: revealEyesPulse 1.15s ease-in-out infinite;
 }
 
-.reveal-countdown-eye {
-  position: absolute;
-  top: 18%;
-  width: 29%;
-  height: 30%;
-  border-radius: 999px 20px 999px 20px;
-  background: linear-gradient(135deg, #f1e7ff 0%, #b45cff 45%, #6d28d9 100%);
-  box-shadow:
-    0 0 8px rgba(192, 132, 252, 0.55),
-    0 0 16px rgba(124, 58, 237, 0.28);
-  transform-origin: center;
-  opacity: 0.88;
+.reveal-countdown-eyes-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.reveal-countdown-eye-shape {
+  fill: url("#revealEyeGradient");
+  fill: #b45cff;
+  filter:
+    drop-shadow(0 0 5px rgba(216, 180, 254, 0.68))
+    drop-shadow(0 0 14px rgba(168, 85, 247, 0.42));
+  opacity: 0.9;
 }
 
 .reveal-countdown-eye-left {
-  left: 18%;
-  clip-path: polygon(0 20%, 100% 0, 88% 66%, 8% 86%);
-  transform: rotate(-8deg);
+  transform-origin: 60px 42px;
+  transform: rotate(-3deg);
 }
 
 .reveal-countdown-eye-right {
-  right: 18%;
-  clip-path: polygon(0 0, 100% 20%, 92% 86%, 12% 66%);
-  transform: rotate(8deg);
+  transform-origin: 160px 42px;
+  transform: rotate(3deg);
 }
 
 .reveal-countdown-number {
   position: absolute;
   left: 50%;
-  top: 54%;
+  top: 72%;
   z-index: 6;
-  width: 28%;
+  width: 22%;
   transform: translate(-50%, -50%);
   margin: 0;
   color: #f7f2ff;
@@ -2873,7 +2913,7 @@ label {
 .final-result-overlay.final-result-fullscreen {
   position: fixed;
   inset: 0;
-  z-index: 125;
+  z-index: 10000;
   min-height: 100svh;
   margin: 0;
   padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
