@@ -214,8 +214,8 @@ label {
 
 .hero-title-logo {
   width: auto;
-  height: 1.4em;
-  max-height: 1.4em;
+  height: 1.55em;
+  max-height: 1.55em;
   flex-shrink: 0;
   object-fit: contain;
   opacity: 0.92;
@@ -228,8 +228,8 @@ label {
 
 @media (max-width: 640px) {
   .hero-title-logo {
-    height: 1.34em;
-    max-height: 1.34em;
+    height: 1.48em;
+    max-height: 1.48em;
   }
 }
 
@@ -317,7 +317,7 @@ label {
 .hero h1 {
   margin: 0;
   color: rgba(248, 250, 252, 0.88);
-  font-size: clamp(2rem, 9vw, 4rem);
+  font-size: clamp(1.82rem, 8vw, 3.55rem);
   line-height: 1;
   text-shadow: 0 0 22px rgba(99, 102, 241, 0.18);
 }
@@ -1054,9 +1054,9 @@ body.cinematic-reveal-active .association-overlay-dock {
 .private-card-secret-hint {
   max-width: 100%;
   color: #c4b5fd;
-  font-size: clamp(0.52rem, 2.05vw, 0.7rem);
+  font-size: clamp(0.62rem, 2.45vw, 0.86rem);
   font-weight: 850;
-  line-height: 1.12;
+  line-height: 1.16;
   overflow-wrap: anywhere;
 }
 
@@ -1077,7 +1077,7 @@ body.cinematic-reveal-active .association-overlay-dock {
 
 .private-card-secret-varalica .private-card-secret-title {
   color: #e9d5ff;
-  font-size: clamp(0.82rem, 4vw, 1.32rem);
+  font-size: clamp(0.86rem, 4.05vw, 1.34rem);
 }
 
 .private-card-confirm-button {
@@ -1986,7 +1986,7 @@ body.cinematic-reveal-active .association-overlay-dock {
   z-index: 1;
   width: min(38vw, 340px);
   pointer-events: none;
-  opacity: 0.28;
+  opacity: 0.5;
   filter: blur(0.4px);
   mix-blend-mode: screen;
   animation: revealCountdownSmokeEdge 4.8s ease-in-out infinite;
@@ -1995,22 +1995,22 @@ body.cinematic-reveal-active .association-overlay-dock {
 .reveal-countdown-overlay::before {
   left: -8%;
   background:
-    radial-gradient(ellipse at 14% 42%, rgba(126, 34, 206, 0.18), transparent 58%),
-    linear-gradient(90deg, rgba(76, 29, 149, 0.24), transparent);
+    radial-gradient(ellipse at 14% 42%, rgba(126, 34, 206, 0.34), transparent 58%),
+    linear-gradient(90deg, rgba(76, 29, 149, 0.42), transparent);
 }
 
 .reveal-countdown-overlay::after {
   right: -8%;
   background:
-    radial-gradient(ellipse at 86% 58%, rgba(168, 85, 247, 0.16), transparent 58%),
-    linear-gradient(270deg, rgba(76, 29, 149, 0.22), transparent);
+    radial-gradient(ellipse at 86% 58%, rgba(168, 85, 247, 0.32), transparent 58%),
+    linear-gradient(270deg, rgba(76, 29, 149, 0.4), transparent);
   animation-delay: -2.4s;
 }
 
 .reveal-countdown-scene {
   position: relative;
   z-index: 2;
-  width: min(88vw, 88svh, 620px);
+  width: min(100vw, 100vh, 760px);
   aspect-ratio: 1;
   max-width: 100%;
   max-height: 100%;
@@ -2035,7 +2035,7 @@ body.cinematic-reveal-active .association-overlay-dock {
 .reveal-countdown-light {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: 72%;
   z-index: 2;
   width: 58%;
   height: 58%;
@@ -2052,7 +2052,7 @@ body.cinematic-reveal-active .association-overlay-dock {
 .reveal-countdown-number {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: 72%;
   z-index: 6;
   width: 58%;
   transform: translate(-50%, -50%);
@@ -3394,11 +3394,11 @@ body.cinematic-reveal-active .association-overlay-dock {
 
 @keyframes revealCountdownSmokeEdge {
   0%, 100% {
-    opacity: 0.18;
+    opacity: 0.38;
     transform: translate3d(0, 0, 0) scaleX(0.96);
   }
   50% {
-    opacity: 0.34;
+    opacity: 0.56;
     transform: translate3d(5%, 0, 0) scaleX(1.04);
   }
 }

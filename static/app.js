@@ -48,11 +48,11 @@ const IMPOSTOR_REVEAL_AVATAR_URL = "/static/assets/Varalica_crveno.png";
 const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
 const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
 const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
-const ASSET_CACHE = "20260604_20";
+const ASSET_CACHE = "20260604_21";
 const PRIVATE_CARD_CLOSED_URL = `/static/assets/wordcard.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_NORMAL_URL = `/static/assets/Prikazikartu_player_normal_eyes.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_VARALICA_URL = `/static/assets/Prikazikartu.png?v=${ASSET_CACHE}`;
-const REVEAL_COUNTDOWN_BASE_URL = `/static/assets/reveal_card.png?v=${ASSET_CACHE}`;
+const REVEAL_COUNTDOWN_BASE_URL = `/static/assets/reveal_countdown_base.png?v=${ASSET_CACHE}`;
 const REVEAL_FLYING_CARD_URL = `/static/assets/reveal_card.png?v=${ASSET_CACHE}`;
 const RESULT_CAUGHT_SCENE_URL = `/static/assets/result_caught_scene.png?v=${ASSET_CACHE}`;
 const RESULT_SURVIVED_SCENE_URL = `/static/assets/result_survived_scene_base.png?v=${ASSET_CACHE}`;
@@ -1860,7 +1860,6 @@ function renderReveal() {
   const openCardUrl = isVaralica ? PRIVATE_CARD_OPEN_VARALICA_URL : PRIVATE_CARD_OPEN_NORMAL_URL;
   const secretHtml = isVaralica
     ? `<div class="private-card-secret private-card-secret-varalica">
-         <p class="private-card-secret-kicker">Varalica</p>
          <p class="private-card-secret-title">Ti si Varalica</p>
          <p class="private-card-secret-label">Smjernica</p>
          <p class="private-card-secret-hint">${escapeHtml(privateInfo.hint || "Pokušaj da se uklopiš.")}</p>
@@ -1868,7 +1867,6 @@ function renderReveal() {
     : `<div class="private-card-secret private-card-secret-word">
          <p class="private-card-secret-kicker">Tvoja riječ</p>
          <p class="private-card-secret-title">${escapeHtml(privateInfo.word.hr)}</p>
-         <p class="private-card-secret-category">${escapeHtml(privateInfo.word.category || "")}</p>
        </div>`;
 
   phaseContent.innerHTML = `

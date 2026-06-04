@@ -213,8 +213,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `v=20260604_20` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result/card/title assets)
-- **Last frontend version update:** 2026-06-04 (Phase 1.1 asset routing and countdown card cleanup)
+- **Frontend cache/version string:** `v=20260604_21` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result/card/title assets)
+- **Last frontend version update:** 2026-06-04 (card text and countdown asset correction)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +232,48 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-06-04 - Card text and countdown asset correction
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `static/app.js`
+  - `static/styles.css`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Bumped frontend cache strings to `v=20260604_21`.
+  - Preserved `wordcard.png` for the closed private `Dodirni kartu` card.
+  - Reverted the countdown scene asset to `reveal_countdown_base.png` and kept `reveal_card.png` out of the active countdown base path.
+  - Removed normal player category text from the opened private card render; normal players now see only `Tvoja riječ` and the word.
+  - Removed the extra upper `Varalica` kicker from the Varalica private card render; Varalica now sees `Ti si Varalica`, `Smjernica`, and the hint only.
+  - Increased Varalica hint text size slightly while keeping it centered in the board area.
+  - Made the `Varalica` title text slightly smaller and `Logo_title.png` slightly larger/aligned beside it.
+  - Strengthened countdown edge fog opacity toward roughly 50% while keeping it CSS-only and away from generated-eye systems.
+- **Exact functions/classes touched:**
+  - JS/constants/render: `ASSET_CACHE`, `REVEAL_COUNTDOWN_BASE_URL`, `renderReveal()`.
+  - CSS: `.hero-title-logo`, `.hero h1`, `.private-card-secret-hint`, `.private-card-secret-varalica .private-card-secret-title`, `.reveal-countdown-overlay::before`, `.reveal-countdown-overlay::after`, `.reveal-countdown-scene`, `.reveal-countdown-light`, `.reveal-countdown-number`, `@keyframes revealCountdownSmokeEdge`.
+  - HTML: `styles.css`, `app.js`, and `Logo_title.png` cache strings.
+- **What was not changed:**
+  - No backend, voting/overtime logic, room code logic, QR logic, WebSocket architecture, fly-card animation, fullscreen result timing, mini scoreboard transition, reload-result logic, `words.py`, `storage.py`, vendor files, `.env`, deployment config, or services were changed.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` - passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` - passed with existing quality/duplicate/repetition warnings; structure OK with 1014 words.
+  - `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check static\app.js` - passed.
+  - `git diff --check` - passed with LF-to-CRLF warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Confirm `wordcard.png` still appears for closed private card and pulses with `Dodirni kartu` below.
+  - Confirm countdown uses `reveal_countdown_base.png`, not `reveal_card.png`, and no broken image appears.
+  - Confirm countdown numbers sit centered in the intended card area with dark fill and purple neon glow.
+  - Confirm normal opened card shows only `Tvoja riječ` and word, with no category.
+  - Confirm Varalica opened card shows only `Ti si Varalica`, `Smjernica`, and hint; no secret word and no duplicate `Varalica` label.
+  - Confirm title text/logo balance on mobile and desktop.
+- **Known issues:**
+  - Manual browser/mobile QA was not run in this Codex turn.
+  - Several asset files were already dirty/untracked before this work and were preserved.
+- **Notes:**
+  - This phase intentionally did not address fly-card animation, mini scoreboard transition, reload-result logic, voting, overtime, room codes, QR, or WebSocket flow.
 
 ### 2026-06-04 - Phase 1.1 asset routing and countdown card cleanup
 
