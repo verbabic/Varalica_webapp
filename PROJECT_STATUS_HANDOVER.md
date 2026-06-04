@@ -213,8 +213,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `v=20260604_16` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result assets)
-- **Last frontend version update:** 2026-06-04 (Phase D+E: countdown, reveal transition, fullscreen result)
+- **Frontend cache/version string:** `v=20260604_17` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result/card assets)
+- **Last frontend version update:** 2026-06-04 (mobile reveal/card UI hotfix)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +232,83 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-06-04 — Restore title Logo_title image
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Restored `static/assets/Logo_title.png?v=20260604_17` as the visible inline logo beside the `Varalica` title.
+  - Kept the existing `.hero-title-logo` styling; no separate CSS/JS title eye overlays or animated eyes were added.
+  - Kept `Mobilna party igra` removed.
+  - Kept the `Početna` button visible.
+  - Kept current cache version `v=20260604_17` as requested.
+- **What was not changed:**
+  - No landing image/splash behavior, `static/app.js`, `static/styles.css`, backend/game logic, room logic, voting logic, reveal/countdown logic, QR logic, words data, deployment config, or services were changed.
+- **Tests run:**
+  - Not run; HTML-only restore with no JS/CSS/backend edits.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Hard refresh and confirm `Logo_title.png` appears cleanly near the `Varalica` title on desktop/mobile.
+  - Confirm no separate animated title eyes appear.
+  - Confirm `Mobilna party igra` remains removed and `Početna` remains visible.
+- **Known issues:**
+  - Manual browser/mobile QA was not run in this Codex turn.
+- **Notes:**
+  - Existing dirty/untracked files from prior work were preserved.
+
+### 2026-06-04 — Mobile reveal/card UI hotfix
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `main.py`
+  - `static/index.html`
+  - `static/app.js`
+  - `static/styles.css`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Changed backend default discussion duration from 180s to 120s for new rooms/settings.
+  - Changed frontend first-load default discussion duration from 180s to 120s while preserving any existing host-selected value in `localStorage`.
+  - Bumped frontend cache strings to `v=20260604_17` for `styles.css`, `app.js`, and app asset URLs.
+  - Removed the visible `Mobilna party igra` subtitle from the title area.
+  - Removed the title logo image from the title row so no extra `Logo_title` eyes appear near `Varalica`; the title now renders as clean text.
+  - Kept `Početna` visible on the home/setup/invite flows and preserved its existing safe return-to-root behavior.
+  - Added a session-scoped result reveal completion marker keyed by player/room/round/result so reloads after reveal go directly to compact scoreboard instead of replaying countdown.
+  - Kept new rounds reset-safe because the reveal completion key includes the round/result identity.
+  - During countdown/fullscreen result, cinematic mode now hides room header controls, player list, and association dock so they cannot appear over the reveal.
+  - Strengthened the closed `Dodirni kartu` pulse/glow without adding aggressive motion.
+  - Tightened private card text panel placement and font sizes for both normal and Varalica cards so text stays inside the intended card area on mobile.
+  - Updated countdown eye CSS from thin dash-like slits to fuller, sharper purple angled eye shapes with the existing subtle pulse.
+- **What was not changed:**
+  - No room code logic, QR logic, vendor QR file, `words.py`, deploy config, WebSocket architecture, score calculation, unrelated voting/overtime logic, or `.env` was changed.
+  - `reveal_card_full.png` remains unused by the frontend flow; the asset file was not deleted.
+  - Voting/result rule for `2 vs 1 vs 1` was not changed because current documented app rules require `>50%` majority. With 4 voters, 2 votes is not more than 50%, so it remains no-majority/overtime under existing rules.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` — passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` — passed with existing quality/duplicate hint warnings; structure OK with 1014 words.
+  - `node --check static/app.js` — blocked by Windows with `Zugriff verweigert`.
+  - `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check static\app.js` — passed.
+  - `git diff --check` — passed with LF-to-CRLF warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Create a room on mobile and confirm default timer is 2 minutes.
+  - Confirm `Mobilna party igra` is gone and `Početna` is visible/usable without overlapping important room UI.
+  - Open normal and Varalica private cards and confirm text stays inside each card; Varalica sees only Varalica/hint text and no secret word.
+  - Confirm the closed `Dodirni kartu` card pulse is visible but subtle.
+  - Run a full vote/reveal and confirm countdown/fullscreen result fully covers player list/room UI.
+  - Confirm countdown numbers remain centered and use `reveal_countdown_base.png`; confirm `reveal_card_full.png` does not appear in the flow.
+  - Confirm countdown eyes look like fuller purple card-style eyes and pulse subtly.
+  - Confirm mini scoreboard appears after fullscreen result.
+  - Reload on compact scoreboard and confirm countdown/reveal does not replay; start a new round and confirm reveal can run again.
+  - Manually verify the `2 vs 1 vs 1` vote behavior against the desired game rule before any future voting-rule change.
+- **Known issues:**
+  - Manual browser/mobile QA was not run in this Codex turn.
+  - System `node.exe` is blocked on this Windows environment; bundled Node was used successfully for JS syntax checking.
+  - `static/assets/Logo_title.png` was already modified before this task and remains dirty; this hotfix no longer references it in the title area.
+- **Notes:**
+  - Existing dirty/untracked files from prior work were preserved.
 
 ### 2026-06-04 — Phase D+E: countdown, reveal transition, fullscreen result
 
