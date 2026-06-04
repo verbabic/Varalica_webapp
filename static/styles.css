@@ -214,8 +214,8 @@ label {
 
 .hero-title-logo {
   width: auto;
-  height: 1.55em;
-  max-height: 1.55em;
+  height: 1.68em;
+  max-height: 1.68em;
   flex-shrink: 0;
   object-fit: contain;
   opacity: 0.92;
@@ -228,8 +228,8 @@ label {
 
 @media (max-width: 640px) {
   .hero-title-logo {
-    height: 1.48em;
-    max-height: 1.48em;
+    height: 1.6em;
+    max-height: 1.6em;
   }
 }
 
@@ -1534,6 +1534,27 @@ body.cinematic-reveal-active .association-overlay-dock {
   text-shadow: 0 0 10px rgba(239, 68, 68, 0.42);
 }
 
+.timer-box.timer-voting-ready,
+#discussionTimerValue.timer-voting-ready {
+  color: #60a5fa;
+}
+
+.timer-box.timer-voting-ready {
+  border-color: rgba(96, 165, 250, 0.58);
+  background: rgba(37, 99, 235, 0.12);
+  box-shadow:
+    inset 0 0 0 1px rgba(147, 197, 253, 0.12),
+    0 0 18px rgba(59, 130, 246, 0.22);
+}
+
+.timer-box.timer-voting-ready strong,
+#discussionTimerValue.timer-voting-ready {
+  color: #93c5fd;
+  text-shadow:
+    0 0 10px rgba(96, 165, 250, 0.56),
+    0 0 22px rgba(37, 99, 235, 0.34);
+}
+
 .discussion-host-vote-button {
   width: 100%;
   min-height: 30px;
@@ -2034,11 +2055,11 @@ body.cinematic-reveal-active .association-overlay-dock {
 
 .reveal-countdown-light {
   position: absolute;
-  left: 50%;
-  top: 72%;
+  left: 49.2%;
+  top: 72.6%;
   z-index: 2;
-  width: 58%;
-  height: 58%;
+  width: 28%;
+  height: 28%;
   transform: translate(-50%, -50%);
   border-radius: 999px;
   background:
@@ -2051,23 +2072,23 @@ body.cinematic-reveal-active .association-overlay-dock {
 
 .reveal-countdown-number {
   position: absolute;
-  left: 50%;
-  top: 72%;
+  left: 49.2%;
+  top: 72.6%;
   z-index: 6;
-  width: 58%;
+  width: 28%;
   transform: translate(-50%, -50%);
   margin: 0;
-  color: rgba(4, 0, 10, 0.36);
-  -webkit-text-fill-color: rgba(4, 0, 10, 0.36);
-  -webkit-text-stroke: clamp(2px, 0.48vw, 3.4px) #c084fc;
-  font-size: clamp(4.4rem, 22vw, 10.5rem);
+  color: rgba(4, 0, 10, 0.16);
+  -webkit-text-fill-color: rgba(4, 0, 10, 0.16);
+  -webkit-text-stroke: clamp(2.2px, 0.52vw, 3.8px) #c084fc;
+  font-size: clamp(4.2rem, 18vw, 9.4rem);
   line-height: 1;
   font-weight: 950;
   text-align: center;
   text-shadow:
-    0 0 3px rgba(233, 213, 255, 0.95),
-    0 0 14px rgba(192, 132, 252, 0.95),
-    0 0 32px rgba(168, 85, 247, 0.76),
+    0 0 4px rgba(233, 213, 255, 0.95),
+    0 0 16px rgba(192, 132, 252, 0.98),
+    0 0 34px rgba(168, 85, 247, 0.78),
     0 0 58px rgba(91, 33, 182, 0.5);
   opacity: 0.94;
   pointer-events: none;
@@ -3483,23 +3504,23 @@ body.cinematic-reveal-active .association-overlay-dock {
   }
   30% {
     opacity: 1;
-    transform: translate(-51%, -60%) scale(1.32) rotate(640deg);
+    transform: translate(-51%, -60%) scale(1.32) rotate(900deg);
   }
   62% {
     opacity: 1;
-    transform: translate(-50%, -76%) scale(2.15) rotate(1440deg);
+    transform: translate(-50%, -76%) scale(2.15) rotate(2200deg);
   }
   84% {
     opacity: 1;
-    transform: translate(-50%, -88%) scale(3.08) rotate(2020deg);
+    transform: translate(-50%, -88%) scale(3.08) rotate(3200deg);
   }
   92% {
     opacity: 1;
-    transform: translate(-50%, -94%) scale(3.55) rotate(2320deg);
+    transform: translate(-50%, -94%) scale(3.55) rotate(3500deg);
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -98%) scale(4.1) rotate(2520deg);
+    transform: translate(-50%, -98%) scale(4.1) rotate(3780deg);
   }
 }
 

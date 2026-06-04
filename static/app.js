@@ -48,7 +48,7 @@ const IMPOSTOR_REVEAL_AVATAR_URL = "/static/assets/Varalica_crveno.png";
 const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
 const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
 const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
-const ASSET_CACHE = "20260604_23";
+const ASSET_CACHE = "20260604_24";
 const PRIVATE_CARD_CLOSED_URL = `/static/assets/wordcard.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_NORMAL_URL = `/static/assets/Prikazikartu_player_normal_eyes.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_VARALICA_URL = `/static/assets/Prikazikartu.png?v=${ASSET_CACHE}`;
@@ -59,7 +59,7 @@ const RESULT_SURVIVED_SCENE_URL = `/static/assets/result_survived_scene_base.png
 const REVEAL_COUNTDOWN_STEP_MS = 1000;
 const REVEAL_FLYING_MS = 2400;
 const REVEAL_BLACKOUT_MS = 520;
-const FINAL_RESULT_FULLSCREEN_MS = 4000;
+const FINAL_RESULT_FULLSCREEN_MS = 3000;
 const REACTION_EMOJIS_LEFT = ["😂", "🧐", "😎"];
 const REACTION_EMOJIS_RIGHT = ["🤢", "🤥", "🙈"];
 const AVATARS = [
@@ -1215,8 +1215,12 @@ function syncDiscussionTimerWarning(remainingSeconds) {
   const timerBox = document.querySelector("#discussionTimerBox");
   const timerValue = document.querySelector("#discussionTimerValue");
   const warn = Number(remainingSeconds) <= 15;
+  const data = roomState?.state === "overtime" ? roomState.overtime : roomState?.discussion;
+  const votingReady = Boolean(data?.voting_unlocked);
   timerBox?.classList.toggle("timer-warning", warn);
+  timerBox?.classList.toggle("timer-voting-ready", votingReady);
   timerValue?.classList.toggle("timer-warning", warn);
+  timerValue?.classList.toggle("timer-voting-ready", votingReady);
 }
 
 function renderHostVotingButtonHtml(voteLocked) {
@@ -1510,6 +1514,8 @@ function syncActiveTargetReactions() {
 
 function renderDiscussionMonitorPanel(currentPlayer, phaseLabel, remainingSeconds, ctx) {
   const timerWarning = remainingSeconds <= 15 ? " timer-warning" : "";
+  const votingReady = ctx.data?.voting_unlocked ? " timer-voting-ready" : "";
+  const phaseText = phaseLabel ? `<span>${escapeHtml(phaseLabel)}</span>` : "";
   const hostVoting = ctx.isHost
     ? renderHostVotingButtonHtml(!ctx.data.voting_unlocked)
     : "";
@@ -1525,9 +1531,9 @@ function renderDiscussionMonitorPanel(currentPlayer, phaseLabel, remainingSecond
           <p id="currentPlayerName" class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
         </div>
         <div class="discussion-timer-column">
-          <div id="discussionTimerBox" class="timer-box compact-timer compact-timer-inline${timerWarning}">
-            <span>${escapeHtml(phaseLabel)}</span>
-            <strong id="discussionTimerValue" class="${timerWarning.trim()}">${formatSeconds(remainingSeconds)}</strong>
+          <div id="discussionTimerBox" class="timer-box compact-timer compact-timer-inline${timerWarning}${votingReady}">
+            ${phaseText}
+            <strong id="discussionTimerValue" class="${`${timerWarning}${votingReady}`.trim()}">${formatSeconds(remainingSeconds)}</strong>
           </div>
           ${hostVoting}
         </div>
@@ -1614,13 +1620,15 @@ function renderHostPanel() {
 
   const roundHasStarted = roomState.state !== "lobby";
   const actions = roundHasStarted ? [`<button id="hostResetRoomButton" class="small replay">Resetuj sobu</button>`] : [];
-  if (roomState.state === "reveal") {
-    actions.unshift(`<button id="hostChangeWordButton" class="small secondary">Promijeni riječ</button>`);
-  } else if (["discussion", "vote_request", "ready_for_final_voting", "final_voting", "overtime", "overtime_voting", "voting_complete", "results"].includes(roomState.state)) {
+  if (roomState.state === "reveal" || (roomState.state === "discussion" && roomState.change_word_available)) {
+    const secondsLeft = roomState.state === "discussion" ? Number(roomState.change_word_seconds_left || 0) : 0;
+    const helper = roomState.state === "discussion" && secondsLeft > 0
+      ? `<p class="helper-text">Dostupno još ${secondsLeft}s</p>`
+      : "";
     actions.unshift(`
       <div class="host-helper">
-        <button class="small secondary" disabled>Promijeni riječ</button>
-        <p class="helper-text">Riječ se može promijeniti samo prije početka diskusije.</p>
+        <button id="hostChangeWordButton" class="small secondary">Promijeni riječ</button>
+        ${helper}
       </div>
     `);
   }
@@ -1953,7 +1961,7 @@ function renderOvertime() {
       <div class="discussion-monitor-layout">
         ${renderReactionColumn("left", REACTION_EMOJIS_LEFT)}
         <div class="discussion-monitor-body">
-          ${renderDiscussionMonitorPanel(currentPlayer, "Produžetak", overtime.remaining_seconds, ctx)}
+          ${renderDiscussionMonitorPanel(currentPlayer, "", overtime.remaining_seconds, ctx)}
           ${renderAssociationComposer(overtime.current_player_id)}
         </div>
         ${renderReactionColumn("right", REACTION_EMOJIS_RIGHT)}
@@ -2682,7 +2690,7 @@ function renderPlayers() {
     const connectedLabel = "";
     const isViewerHost = roomState.viewer_id === roomState.host_id;
     const hostLabel = player.is_host ? `<span class="badge host-badge" title="Host">👑 H</span>` : "";
-    const currentLabel = player.is_current ? `<span class="badge active-turn">Na redu</span>` : "";
+    const currentLabel = "";
     const voteLabel = player.requested_vote ? `<span class="badge vote-requested">Trazi glasanje</span>` : "";
     const associationBubble = player.association
       ? `<div class="association-bubble">${escapeHtml(player.association.text)}</div>`

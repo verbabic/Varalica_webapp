@@ -33,10 +33,11 @@ MIN_PLAYERS = 4
 MAX_PLAYERS = 8
 DISCUSSION_SECONDS = 120
 ALLOWED_DISCUSSION_SECONDS = {120, 180, 300}
-VOTING_LOCK_SECONDS = 75
+VOTING_LOCK_SECONDS = 70
 OVERTIME_SECONDS = 30
 OVERTIME_VOTING_LOCK_SECONDS = 0
 MAX_OVERTIME_ROUNDS = 2
+CHANGE_WORD_GRACE_SECONDS = 10
 ALLOWED_REACTIONS = {"😂", "🧐", "😎", "🤢", "🤥", "🙈"}
 PLAYER_LIST_REACTION_SECONDS = 3
 MAX_REACTIONS_PER_TARGET = 8
@@ -173,6 +174,7 @@ class Room:
     selected_category: str = DEFAULT_CATEGORY
     discussion_duration_seconds: int = DISCUSSION_SECONDS
     recent_varalica_ids: list[str] = field(default_factory=list)
+    last_first_player_id: str | None = None
     round_number: int = 1
     scoreboard: dict[str, dict[str, int]] = field(default_factory=dict)
     kicked_player_ids: set[str] = field(default_factory=set)
@@ -314,19 +316,30 @@ async def view_secret(room_code: str, action: PlayerAction) -> dict:
 async def change_word(room_code: str, action: PlayerAction) -> dict:
     room = get_room(room_code)
     ensure_host(room, action.player_id)
-    if room.state != "reveal":
-        raise HTTPException(status_code=400, detail="Riječ se može promijeniti samo prije početka diskusije.")
+    if not change_word_allowed(room):
+        raise HTTPException(status_code=400, detail="Rijec se moze promijeniti samo prvih 10 sekundi runde.")
     if room.varalica_id is None:
         raise HTTPException(status_code=400, detail="Runda nije spremna.")
 
+    stop_timer(room)
+    room.state = "reveal"
     room.current_word_id = None
     room.selected_hint = None
     room.word = choose_word(room)
+    room.discussion_started_at = None
+    room.vote_request_player_ids.clear()
+    room.final_votes.clear()
+    room.active_associations.clear()
+    room.association_banners.clear()
+    clear_all_reactions(room)
+    room.turn_version += 1
     for player_id in active_round_player_ids(room):
         player = room.players.get(player_id)
         if player is not None:
             player.viewed_secret = False
             player.confirmed = False
+            player.requested_vote = False
+            player.has_voted = False
     if not selected_word_matches_room(room):
         raise HTTPException(status_code=500, detail="Nova riječ i hint nisu usklađeni.")
     set_room_event(room, "change_word", room.players[action.player_id])
@@ -471,7 +484,7 @@ async def transfer_host(room_code: str, action: TargetPlayerAction) -> dict:
 @app.post("/api/rooms/{room_code}/request-vote")
 async def request_vote(room_code: str, action: PlayerAction) -> dict:
     get_room(room_code)
-    raise HTTPException(status_code=400, detail="Glasanje otvara samo host nakon 75 sekundi.")
+    raise HTTPException(status_code=400, detail="Glasanje otvara samo host nakon 70 sekundi.")
 
 
 @app.post("/api/rooms/{room_code}/open-final-voting")
@@ -480,7 +493,7 @@ async def open_final_voting(room_code: str, action: PlayerAction) -> dict:
     ensure_host(room, action.player_id)
     if room.state == "discussion":
         if not voting_unlocked(room):
-            raise HTTPException(status_code=400, detail="Glasanje dostupno nakon 75 sekundi.")
+            raise HTTPException(status_code=400, detail="Glasanje dostupno nakon 70 sekundi.")
         stop_timer(room)
         room.state = "final_voting"
     elif room.state == "overtime":
@@ -845,6 +858,7 @@ def room_to_snapshot(room: Room) -> dict:
         "selected_category": room.selected_category,
         "discussion_duration_seconds": room.discussion_duration_seconds,
         "recent_varalica_ids": room.recent_varalica_ids,
+        "last_first_player_id": room.last_first_player_id,
         "round_number": room.round_number,
         "scoreboard": room.scoreboard,
         "kicked_player_ids": list(room.kicked_player_ids),
@@ -903,6 +917,7 @@ def room_from_snapshot(snapshot: dict) -> Room:
         selected_category=normalize_category(snapshot.get("selected_category")),
         discussion_duration_seconds=normalize_discussion_seconds(snapshot.get("discussion_duration_seconds")),
         recent_varalica_ids=list(snapshot.get("recent_varalica_ids", [])),
+        last_first_player_id=snapshot.get("last_first_player_id"),
         round_number=int(snapshot.get("round_number", 1)),
         scoreboard=dict(snapshot.get("scoreboard", {})),
         kicked_player_ids=set(snapshot.get("kicked_player_ids", [])),
@@ -1186,6 +1201,7 @@ def reset_room_to_lobby(room: Room) -> None:
     room.varalica_id = None
     room.varalica_ids.clear()
     room.recent_varalica_ids.clear()
+    room.last_first_player_id = None
     room.selected_varalica_count = normalize_varalica_count(1, len(room.players))
     room.word = None
     room.current_word_id = None
@@ -1761,7 +1777,10 @@ def pick_discussion_start_index(room: Room) -> int:
     active_ids = active_round_player_ids(room)
     if not active_ids:
         return 0
-    start_id = random.choice(active_ids)
+    candidates = list(active_ids)
+    if len(candidates) > 1 and room.last_first_player_id in candidates:
+        candidates = [player_id for player_id in candidates if player_id != room.last_first_player_id]
+    start_id = secrets.choice(candidates)
     return room.round_player_ids.index(start_id)
 
 
@@ -1769,6 +1788,7 @@ def enter_discussion_values(room: Room) -> None:
     room.state = "discussion"
     room.discussion_started_at = time.time()
     room.current_player_index = pick_discussion_start_index(room)
+    room.last_first_player_id = current_player_id(room)
     room.turn_version += 1
     room.active_associations.clear()
     room.association_banners.clear()
@@ -1870,6 +1890,20 @@ def voting_unlocked(room: Room) -> bool:
     return voting_seconds_left(room) == 0
 
 
+def change_word_seconds_left(room: Room) -> int:
+    if room.state == "reveal":
+        return CHANGE_WORD_GRACE_SECONDS
+    if room.state != "discussion" or room.discussion_started_at is None:
+        return 0
+    elapsed = max(0.0, time.time() - room.discussion_started_at)
+    remaining = CHANGE_WORD_GRACE_SECONDS - elapsed
+    return max(0, int(remaining + 0.999))
+
+
+def change_word_allowed(room: Room) -> bool:
+    return room.state == "reveal" or change_word_seconds_left(room) > 0
+
+
 def overtime_remaining(room: Room) -> int:
     if room.overtime_started_at is None:
         return 0
@@ -1943,6 +1977,8 @@ def public_state(room: Room, viewer_id: str) -> dict:
         "player_count": len(room.players),
         "not_enough_players_message": "Nema dovoljno igraca za nastavak igre." if 0 < len(active_round_player_ids(room)) < MIN_PLAYERS and room.state != "lobby" else "",
         "all_confirmed": all_confirmed,
+        "change_word_available": change_word_allowed(room),
+        "change_word_seconds_left": change_word_seconds_left(room),
         "discussion": discussion_state(room),
         "overtime": overtime_state(room),
         "association_banners": association_banners_state(room),

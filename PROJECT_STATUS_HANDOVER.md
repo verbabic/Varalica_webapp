@@ -213,8 +213,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `v=20260604_23` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result/card/title assets)
-- **Last frontend version update:** 2026-06-04 (visual/reveal flow fixes)
+- **Frontend cache/version string:** `v=20260604_24` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result/card/title assets)
+- **Last frontend version update:** 2026-06-04 (Phase 2A gameplay/UI fixes)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +232,54 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-06-04 - Phase 2A gameplay/UI fixes
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `main.py`
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Changed normal discussion voting unlock from 75s to 70s and updated host-facing backend messages.
+  - Added backend-authoritative first-player randomization that avoids repeating the previous first discussion player when another active round player exists.
+  - Added a 10s host change-word grace window after discussion starts; clicking it assigns a new word/hint, returns the room to private-card reveal, clears seen/confirmed/vote flags, and requires all active round players to confirm again.
+  - Exposed `change_word_available` and `change_word_seconds_left` in public room state so the frontend can show/hide the host control.
+  - Removed the textual `Na redu` badge from the player list while keeping current-player highlighting/monitoring.
+  - Removed the `Produžetak` label from the overtime timer area so only the time is shown there.
+  - Added blue timer styling when voting is unlocked.
+  - Reduced fullscreen result duration to about 3s.
+  - Re-centered the countdown number/glow on the card area in `reveal_countdown_base.png`, kept one second per number, and kept purple outline/dark-fill styling.
+  - Increased fly-card clockwise rotation speed while preserving travel duration and opacity during flight.
+  - Slightly enlarged `Logo_title.png` beside the title.
+  - Bumped frontend cache strings to `v=20260604_24`.
+- **Exact functions/classes touched:**
+  - Backend: `VOTING_LOCK_SECONDS`, `CHANGE_WORD_GRACE_SECONDS`, `Room.last_first_player_id`, `change_word()`, `request_vote()`, `open_final_voting()`, `room_to_snapshot()`, `room_from_snapshot()`, `reset_room_to_lobby()`, `pick_discussion_start_index()`, `enter_discussion_values()`, `change_word_seconds_left()`, `change_word_allowed()`, `public_state()`.
+  - Frontend JS: `ASSET_CACHE`, `FINAL_RESULT_FULLSCREEN_MS`, `syncDiscussionTimerWarning()`, `renderDiscussionMonitorPanel()`, `renderHostPanel()`, `renderOvertime()`, `renderPlayers()`.
+  - CSS: `.hero-title-logo`, `.timer-voting-ready`, `.reveal-countdown-light`, `.reveal-countdown-number`, `@keyframes revealCardFlyForward`.
+  - HTML: cache strings for `styles.css`, `app.js`, and `Logo_title.png`.
+- **What was not changed:**
+  - No spectator/rejoin logic, voting result rules, overtime result rules, QR logic, room code generation, WebSocket architecture, `words.py`, `storage.py`, vendor files, image assets, `.env`, deployment config, or services were changed.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` - passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` - passed with existing quality/duplicate warnings; structure OK with 1014 words.
+  - `node --check static\app.js` - blocked by Windows with `Zugriff verweigert`.
+  - Bundled Node syntax check for `static\app.js` - passed.
+  - `git diff --check` - passed with line-ending warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Start several rounds and verify first discussion player is not repeated back-to-back when alternatives exist.
+  - Verify normal voting unlocks after 70s and timer turns blue when available.
+  - Verify overtime timer shows only time and still allows immediate voting.
+  - Verify `Na redu` text is gone while current-player highlight/monitor remains clear.
+  - Verify host can change word only during reveal or the first 10s of discussion, and that all players return to private-card reveal with a new word/hint.
+  - Verify countdown number sits centered on the card area, fly card rotates quickly while opaque, fullscreen result lasts about 3s, and logo size feels right.
+- **Known issues:**
+  - Manual browser QA is still required for precise mobile countdown positioning and fly-card motion feel.
+- **Notes:**
+  - Existing uncommitted asset/untracked files were preserved and not reverted.
 
 ### 2026-06-04 - Visual/reveal flow fixes
 
