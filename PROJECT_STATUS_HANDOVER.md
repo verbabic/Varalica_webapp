@@ -213,8 +213,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `v=20260531_1` (verified in `static/index.html` for `styles.css`, `app.js`, `qrcode.min.js`)
-- **Last frontend version update:** 2026-05-31 (inferred from version string)
+- **Frontend cache/version string:** `v=20260604_16` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result assets)
+- **Last frontend version update:** 2026-06-04 (Phase D+E: countdown, reveal transition, fullscreen result)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +232,576 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-06-04 — Phase D+E: countdown, reveal transition, fullscreen result
+
+- **Tool used:** Cursor
+- **Changed files:**
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - **Countdown:** Centered 5→1 numbers (~1s each); replaced dash-style eyes with Prikazikartu-style purple slanted eyes and subtle glow pulse.
+  - **Transition:** Slower flying card (~1.65s); removed `reveal_card_full.png` from flow; added `fade_black` beat into fullscreen result (no abrupt full-card jump).
+  - **Fullscreen result (~3s):** Uses `result_caught_scene.png` / `result_survived_scene_base.png` with `object-fit: contain`; single purple headline (`Varalica je otkrivena` / `Varalica je preživjela`); status block centered low; green/red slanted eye overlays with subtle pulse.
+  - **Mini scoreboard:** After 3s, compact layout shows smaller scene image + one outcome headline; voting/score sections remain below.
+  - Cache bumped to `v=20260604_16`.
+- **What was not changed:**
+  - Backend voting/result logic, `words.py`, `storage.py`, private card Phase A–C, room codes, QR vendor, `main.py`.
+- **Tests run:**
+  - `node --check static/app.js` — passed.
+  - `git diff --check` — passed (CRLF warnings only if present).
+- **Deploy status:** Not deployed.
+- **Manual checks needed:** Full reveal flow on desktop + mobile (countdown centering/timing, flying card, blackout, 3s fullscreen, compact scoreboard, Nova runda / Resetuj sobu).
+- **Known issues:** Manual browser QA not run; eye overlay positions may need fine-tuning per scene asset.
+
+### 2026-06-04 — Phase A+B+C: logo eyes, private card, host & first player
+
+- **Tool used:** Cursor
+- **Changed files:**
+  - `static/assets/Logo_title.png`
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/index.html`
+  - `main.py`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - **A:** Drew subtle purple slanted eyes onto `Logo_title.png` (Pillow composite); transparent background preserved.
+  - **B:** Private reveal uses role-specific PNGs only (`Prikazikartu_player_normal_eyes.png` / `Prikazikartu.png`); removed CSS/JS eye/mouth overlays; HTML text on black card area (word + category for players; Varalica labels + hint, no secret word); text panel moved up and constrained left of fingers; post-confirm locked closed card + disabled `Potvrđeno` button.
+  - **C:** Host badge shows `👑 H` instead of text `Host`; discussion starts with a random active player via `pick_discussion_start_index()` in `main.py` (turn order unchanged after first player).
+  - Cache bumped to `v=20260604_15` for `styles.css`, `app.js`, and referenced assets.
+- **What was not changed:**
+  - Countdown/reveal full-screen, result scenes, voting logic, `words.py`, `storage.py`, `static/vendor/qrcode.min.js`, Landing splash, room codes, QR.
+- **Tests run:**
+  - `node --check static/app.js` — passed.
+  - `python -m py_compile main.py` — passed.
+  - `git diff --check` — passed (CRLF warnings only if present).
+- **Deploy status:** Not deployed.
+- **Manual checks needed:** See task checklist (private card both roles, confirm lock, random first player, crown+H host, create/join, Live/Chat).
+- **Known issues:** Manual browser QA not run; logo eye position may need fine-tuning after device review.
+- **Notes:** Pillow installed in local `.venv` only for asset edit (not a repo dependency change).
+
+### 2026-06-04 — Tiny Phase 1 title logo visual size fix
+
+- **Tool used:** Cursor
+- **Changed files:**
+  - `static/styles.css`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Fixed title logo sizing: `.hero-title-logo` used `em` height but sits beside `h1`, not inside it, so it inherited ~16px body scale instead of the title’s `clamp(2rem, 9vw, 4rem)`.
+  - Replaced `height: 1.15em` with responsive explicit heights: `clamp(54px, 7vw, 92px)` on desktop/tablet and `clamp(38px, 12vw, 64px)` at `max-width: 640px` for small screens.
+  - Kept inline flex layout, purple filter styling, and `Logo_title.png` asset.
+  - Bumped cache strings to `v=20260604_14` for `styles.css` and `Logo_title.png`; `static/app.js` unchanged.
+- **What was not changed:**
+  - No `static/app.js`, Landing.png, splash behavior, background watermark, backend/game logic, room/voting/reveal/countdown logic, Phase 2 card reveal, result scenes, QR, or deployment.
+- **Tests run:**
+  - `git diff --check` — passed (LF-to-CRLF warnings only if present).
+  - No JS syntax check (`static/app.js` not edited).
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Hard refresh desktop (`Ctrl + F5`): logo beside `Varalica` is much larger and matches capital `V` height without looking like a badge.
+  - Confirm purple/intense styling and vertical alignment; no watermark; splash and name/create/join still work.
+- **Known issues:**
+  - Manual browser/mobile QA not run in this session.
+- **Notes:**
+  - Prior dirty worktree files preserved.
+
+### 2026-06-04 — Tiny Phase 1 title logo asset switch
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `static/styles.css`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Switched the inline title logo beside `Varalica` from `/static/assets/Logo.png` to `/static/assets/Logo_title.png?v=20260604_13`.
+  - Confirmed `static/assets/Logo_title.png` exists locally.
+  - Kept `Logo.png` in `static/assets` for future use.
+  - Adjusted `.hero-title-logo` height from `1.4em` to `1.15em` for the tighter cropped title asset.
+  - Preserved the existing purple saturation/brightness/drop-shadow styling.
+  - Bumped the stylesheet cache string to `v=20260604_13`; `static/app.js` cache stayed unchanged because app JS was not edited.
+- **What was not changed:**
+  - No `static/app.js`, Landing image/path, splash behavior, background watermark state, backend/game logic, room logic, voting logic, reveal/countdown logic, card reveal/Phase 2, result scenes, QR, or deployment config was changed.
+- **Tests run:**
+  - `git diff --check` — passed with existing LF-to-CRLF warnings only.
+  - No JS syntax check was needed because `static/app.js` was not changed in this task.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Hard refresh desktop with `Ctrl + F5` and confirm the title uses `Logo_title.png`, not `Logo.png`.
+  - Confirm the logo beside `Varalica` visually matches the capital `V` height without becoming too large.
+  - Confirm the logo remains purple/intense and vertically aligned.
+  - Confirm no background watermark returned, landing splash still works, and name/create/join flows still work.
+- **Known issues:**
+  - Manual browser/mobile QA was not run in this Codex turn.
+- **Notes:**
+  - Existing dirty worktree changes from prior phases were preserved.
+
+### 2026-06-04 — Tiny Phase 1 title logo size fix
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/styles.css`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Increased `.hero-title-logo` height from `1.05em` to `1.4em` so `Logo.png` better matches the capital `V` height beside `Varalica`.
+  - Kept the existing purple saturation/drop-shadow styling and inline title alignment.
+  - Bumped the stylesheet cache string to `v=20260604_12`; `static/app.js` cache stayed unchanged because app JS was not edited.
+- **What was not changed:**
+  - No `static/app.js`, Landing image/path, splash logic, watermark, backend/game logic, room logic, voting logic, reveal/countdown logic, card reveal/Phase 2, result scenes, QR, or deployment config was changed.
+- **Tests run:**
+  - `git diff --check` — passed with existing LF-to-CRLF warnings only.
+  - No JS syntax check was needed because `static/app.js` was not changed in this task.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Hard refresh desktop and confirm the logo beside `Varalica` visually matches the capital `V` height without becoming a badge.
+  - Confirm the logo remains purple/intense and vertically aligned.
+  - Confirm no background watermark returned and the start screen still works.
+- **Known issues:**
+  - Manual browser/mobile QA was not run in this Codex turn.
+- **Notes:**
+  - Existing dirty worktree changes from prior phases were preserved.
+
+### 2026-06-04 — Phase 1 asset replacement verification for Landing.png
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Confirmed `static/assets/Landing.png` exists and was updated locally on 2026-06-04.
+  - Confirmed no landing overlay eyes, `data-landing-eye-pair`, landing blink JS, `randomBlinkDelay`, or `setup-watermark` references remain in the inspected frontend files.
+  - Bumped the landing image URL to `/static/assets/Landing.png?v=20260604_11`.
+  - Bumped `styles.css` and `app.js` cache strings to `v=20260604_11` for consistency.
+- **What was not changed:**
+  - No `static/app.js`, `static/styles.css`, backend/game logic, voting logic, room logic, WebSocket logic, word logic, score logic, QR logic, Phase 2 card reveal, countdown, reveal animation, result scenes, or deployment config was changed.
+- **Tests run:**
+  - `git diff --check` — passed with existing LF-to-CRLF warnings only.
+  - No JS syntax check was needed because `static/app.js` was not changed in this task.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Hard-refresh desktop with `Ctrl + F5` and confirm `Landing.png?v=20260604_11` loads with baked-in eyes.
+  - Open mobile in incognito/private tab and confirm the new landing image appears.
+  - Confirm splash remains centered, uncropped, and fades after about 3 seconds.
+  - Confirm no extra animated eyes appear and create/join room still works.
+- **Known issues:**
+  - Manual browser/mobile QA was not run in this Codex turn.
+- **Notes:**
+  - Existing dirty worktree changes from prior phases were preserved.
+
+### 2026-06-04 — Phase 1 cleanup fix 2 landing scale and title logo
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `static/styles.css`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Kept the splash image source on `/static/assets/Landing.png` and added `?v=20260604_10` directly to the image URL to help mobile/browser cache refresh.
+  - Changed the landing splash wrapper to a fixed full-viewport flex stage with centered content and black background.
+  - Constrained the landing image with `max-width: 100vw`, `max-height: 100vh`, `width: auto`, `height: auto`, and `object-fit: contain` so the full composition is visible without cropping or stretching.
+  - Strengthened the `Logo.png` title icon with purple saturation/brightness/drop-shadow styling and set it to `1.05em` height so it aligns like an inline mark beside `Varalica`.
+  - Bumped frontend cache strings for `styles.css` and `app.js` to `v=20260604_10`.
+- **What was not changed:**
+  - No backend/game logic, voting logic, room logic, WebSocket logic, word logic, score logic, QR logic, Phase 2 card reveal, countdown/flying card, result scenes, or deployment config was changed.
+  - Landing eye overlays and setup watermark remain removed.
+- **Tests run:**
+  - `& 'C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --check static\app.js` — passed.
+  - `git diff --check` — passed with existing LF-to-CRLF warnings only.
+  - Search confirmed no remaining `landing-eye`, `data-landing-eye-pair`, `randomBlinkDelay`, or `setup-watermark` references in inspected frontend files.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Hard-refresh local desktop/mobile browser and confirm `Landing.png?v=20260604_10` loads.
+  - Confirm the splash shows the full composition centered, not cropped to the top/middle.
+  - Confirm splash fades after about 3 seconds.
+  - Confirm the title logo is purple, visually stronger, and about capital-`V` height.
+  - Confirm name input, create room, join room, and browser console asset loading.
+- **Known issues:**
+  - Manual browser/mobile QA was not run in this Codex turn.
+  - If desktop still appears vertically cropped after this CSS change, the issue may be in the source image composition or browser cache and needs screenshot-based tuning.
+- **Notes:**
+  - Existing dirty worktree changes from prior phases were preserved.
+
+### 2026-06-04 — Phase 1 cleanup landing/start screen visuals
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `static/app.js`
+  - `static/styles.css`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Kept the landing splash on `/static/assets/Landing.png` and changed the image fit to `object-fit: contain` so the final image is shown without cropping or distortion.
+  - Removed separate landing eye overlay elements from `static/index.html`.
+  - Removed landing random blink timers and related JS scheduling from `static/app.js`.
+  - Restored splash duration to about 3 seconds with a 5-second safety fallback and image-error fallback.
+  - Kept `Logo.png` beside the `Varalica` title, resized as an inline icon at about `1em` height.
+  - Removed the large setup background Logo watermark/silhouette and related CSS.
+  - Bumped frontend cache strings for `styles.css` and `app.js` to `v=20260604_9`.
+- **What was not changed:**
+  - No backend/game logic, voting logic, room logic, WebSocket logic, word logic, score logic, QR logic, Phase 2 card reveal, countdown/flying card, result scenes, or deployment config was changed.
+- **Tests run:**
+  - `& 'C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --check static\app.js` — passed.
+  - `git diff --check` — passed with existing LF-to-CRLF warnings only.
+  - Search confirmed no remaining `landing-eye`, `data-landing-eye-pair`, `randomBlinkDelay`, or `setup-watermark` references in the inspected frontend files.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Open local app and verify final `Landing.png` appears, scales correctly on desktop/mobile, and fades after about 3 seconds.
+  - Confirm no extra animated/CSS eyes appear over the landing image.
+  - Confirm the title logo is about the height of the capital `V` in `Varalica`.
+  - Confirm the setup background watermark is gone.
+  - Confirm name input, create room, join room, and browser console asset loading.
+- **Known issues:**
+  - Manual browser/mobile QA was not run in this Codex turn.
+  - If `Landing.png` is not the intended final artwork, asset selection needs manual verification; only one Landing file was found in `static/assets`.
+- **Notes:**
+  - Existing dirty worktree changes from prior phases were preserved.
+
+### 2026-06-04 — Phase 4B result scene minimization and mini score dashboard transition
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Added frontend-only result scene display state that starts Phase 4A in fullscreen mode and switches to compact mode after a short delay.
+  - The minimization is keyed by room code, round number, Varalica IDs, and caught/survived outcome so it runs once per result phase/round and does not replay on ordinary WebSocket re-renders.
+  - Fullscreen result scene stays visible for about 2.6 seconds, then settles into a compact result header.
+  - Reduced-motion users get a shorter delay and no heavy animation.
+  - Compact mode keeps result text, Varalica nickname, caught/survived visual identity, and viewer-specific red/green meaning with lower intensity.
+  - Existing vote statistics, individual vote breakdown, scoreboard, and Nova runda controls remain rendered below the compact result area.
+  - Bumped frontend cache strings for `styles.css` and `app.js` to `v=20260604_8`.
+- **What was not changed:**
+  - No backend logic, result correctness, score calculation, voting logic, winner logic, majority/overtime logic, WebSocket game state, room logic, word selection, QR logic, deployment config, or Phase 4A result data was changed.
+- **Tests run:**
+  - `& 'C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --check static\app.js` — passed.
+  - `git diff --check` — passed with existing LF-to-CRLF warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Run a full local round and verify Phase 3 countdown/flying-card still appears first.
+  - Confirm the Phase 4A fullscreen result scene remains visible briefly, then minimizes after about 2–3 seconds.
+  - Confirm vote statistics, individual vote breakdown, scoreboard, and Nova runda controls remain visible and correct after minimization.
+  - Confirm the minimization does not replay endlessly on WebSocket updates.
+  - Test mobile portrait layout and reduced-motion behavior.
+- **Known issues:**
+  - Manual browser/mobile QA was not run in this Codex turn.
+  - Compact scene crop/text placement may need small visual tuning after device testing.
+- **Notes:**
+  - Existing dirty worktree changes from prior phases were preserved.
+  - This is a visual/layout transition only; game data and result calculations remain untouched.
+
+### 2026-06-04 — Phase 4A final result scene visual layer
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/index.html`
+  - `static/assets/result_caught_scene.png`
+  - `static/assets/result_survived_scene_base.png`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Added a frontend-only cinematic result scene layer after the Phase 3 countdown/flying-card transition completes.
+  - Uses `result_caught_scene.png` when `results.was_varalica_caught === true`.
+  - Uses `result_survived_scene_base.png` when Varalica survives/wins.
+  - Reuses existing frontend result data and viewer role helpers without changing result calculation.
+  - Added viewer-specific premium color overlays: green for winning viewers, red for losing viewers.
+  - Added decorative frontend-only emotion layers: evil eyes/smile for surviving Varalica viewer and sad eyes for caught Varalica viewer.
+  - Keeps the existing vote statistics, individual vote breakdown, scoreboard, and Nova runda controls below the visual scene.
+  - Bumped frontend cache strings for `styles.css` and `app.js` to `v=20260604_7`.
+- **What was not changed:**
+  - No backend logic, voting logic, winner logic, majority/overtime logic, score calculation, WebSocket game state, word selection, room logic, QR logic, deployment config, or Phase 4B/dashboard minimization was changed.
+  - Result text/data is still based on existing `roomState.results`.
+- **Tests run:**
+  - `& 'C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --check static\app.js` — passed.
+  - `git diff --check` — passed with existing LF-to-CRLF warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Run a full local round and verify Phase 3 still appears first.
+  - Verify caught result shows `result_caught_scene.png`.
+  - Verify survived result shows `result_survived_scene_base.png`.
+  - Verify normal players and Varalica see the correct red/green overlay for win/loss context.
+  - Confirm nickname and result text remain readable on mobile.
+  - Confirm vote statistics, scoreboard, and Nova runda still work below the scene.
+- **Known issues:**
+  - Manual browser/mobile QA was not run in this Codex turn.
+  - Decorative eye/smile positioning is hand-tuned and may need small visual adjustment after device testing.
+- **Notes:**
+  - Existing dirty worktree changes from prior phases were preserved.
+  - New result scene assets were copied from `Fotos` into `static/assets` with exact casing for Linux deployment.
+
+### 2026-06-04 — Phase 3 fullscreen reveal countdown and flying card transition
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/index.html`
+  - `static/assets/reveal_countdown_base.png`
+  - `static/assets/reveal_card_full.png`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Added the Phase 3 frontend-only result transition that runs when the room enters `results`.
+  - Uses `reveal_countdown_base.png` as a fullscreen cinematic countdown scene.
+  - Renders countdown numbers `5, 4, 3, 2, 1` as HTML over the card area, one number per second.
+  - Added subtle purple eye/glow pulse during countdown.
+  - Added a flying `reveal_card.png` layer after countdown, then a brief `reveal_card_full.png` frame before existing results render.
+  - Added reduced-motion-aware shorter transition timings.
+  - Bumped frontend cache strings for `styles.css` and `app.js` to `v=20260604_6`.
+- **What was not changed:**
+  - No backend logic, room logic, voting logic, majority/overtime/winner logic, WebSocket architecture, word selection, score calculation, QR logic, or final result data was changed.
+  - Phase 4/final caught-survived scenes, red/green result smoke logic, nickname reveal changes, and score dashboard minimization were not started.
+- **Tests run:**
+  - `node --check static/app.js` via system Node: blocked by Windows with `Zugriff verweigert`.
+  - `& 'C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --check static\app.js` — passed.
+  - `git diff --check` — passed with existing LF-to-CRLF warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Create/join a room, finish card confirmation, vote, and verify the fullscreen countdown appears after voting/result reveal.
+  - Confirm numbers sit on the hand-card area and the flying card transitions to the full-card frame.
+  - Confirm existing results/vote statistics render correctly after the transition and that Nova runda remains delayed as before.
+  - Check mobile portrait layout and reduced-motion behavior.
+- **Known issues:**
+  - System `node.exe` is blocked on this Windows environment; bundled Node was used successfully for syntax checking.
+  - Visual positioning may still need browser/device tuning after manual QA.
+- **Notes:**
+  - Existing dirty worktree changes from prior phases were preserved.
+  - New web assets were copied from `Fotos` into `static/assets` with exact casing for Linux deployment.
+
+### 2026-06-04 — Phase 2 clickable private card reveal flow
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/assets/reveal_card.png`
+  - `static/assets/Prikazikartu.png`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Copied `Fotos/reveal_card.png` and `Fotos/Prikazikartu.png` into `static/assets/` using exact filename casing for Linux-safe production references.
+  - Replaced the simple private card reveal button with a large clickable closed card using `reveal_card.png`.
+  - Added a subtle pulse/glow and tap label (`Dodirni kartu`) to the closed card.
+  - Kept the card click separate from confirmation: clicking opens the card and uses the existing `view-secret` behavior; confirmation still uses the existing `confirm` endpoint.
+  - Added an opened private card view using `Prikazikartu.png`.
+  - Rendered the normal word or Varalica status/hint as HTML over the black card text panel.
+  - Added frontend-only visual face layers: neutral purple eyes/smile for normal players and sharper evil eyes/smile for Varalica.
+  - Restyled the confirm button as a purple neon card button with text `Video sam kartu`; disabled state still shows confirmed text.
+  - Added reduced-motion handling for the closed-card pulse.
+  - Bumped frontend cache query strings for `static/styles.css` and `static/app.js` to `v=20260604_5`.
+- **What was not changed:**
+  - No backend logic changed.
+  - No room, voting, WebSocket/game state, word selection, score, QR, reveal/results, countdown, flying-card, smoke, scene transition, or dashboard logic changed.
+  - No deployment files, word database files, or vendor QR files changed.
+  - No commit, push, deploy, or service restart.
+- **Tests run:**
+  - `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check static\app.js` — passed.
+  - `git diff --check` — passed; only CRLF warnings from Git.
+- **Deploy status:**
+  - Not deployed.
+- **Manual checks needed:**
+  - Start a local room with 3–4 players/tabs and begin a round.
+  - Confirm the first private card view is the closed `reveal_card.png` card.
+  - Tap/click the closed card and confirm it opens visually without confirming seen.
+  - Confirm `Prikazikartu.png` appears and word/status/hint text is readable on the black panel.
+  - Confirm normal players see the correct assigned word and Varalica sees the existing correct Varalica/hint data.
+  - Confirm normal/Varalica visual face layers look acceptable and do not expose state beyond the private viewer.
+  - Confirm `Video sam kartu` triggers the existing seen confirmation and discussion starts normally after all active players confirm.
+- **Known issues:**
+  - Manual browser/mobile visual testing was not run in this Codex turn.
+  - Text and face overlay positions are hand-tuned over `Prikazikartu.png` and may need small visual adjustment after device/browser QA.
+- **Notes:**
+  - Rollback: inspect with `git diff -- static/index.html static/app.js static/styles.css PROJECT_STATUS_HANDOVER.md`, then run `git restore static/index.html static/app.js static/styles.css PROJECT_STATUS_HANDOVER.md`; remove copied assets with `Remove-Item -LiteralPath static\assets\reveal_card.png -Force` and `Remove-Item -LiteralPath static\assets\Prikazikartu.png -Force` if needed.
+
+### 2026-06-04 — Landing splash eyes and 5-second timing fix
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `static/app.js`
+  - `static/styles.css`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Changed landing splash visible duration from about 3 seconds to about 5 seconds, with the safety fallback moved to 7.5 seconds.
+  - Kept image-error fallback so the splash still removes itself if the landing image fails.
+  - Reshaped the CSS-drawn landing eyes into sharper, narrow, purple filled slits.
+  - Removed the white dot/highlight from the eye shapes.
+  - Reduced glow intensity and opacity to keep the landing mood darker and more premium.
+  - Moved all three eye pairs higher into the hooded face shadows and kept individual percentage coordinates for each visible hooded face.
+  - Kept the independent random blink scheduler unchanged.
+  - Bumped frontend cache query strings for `static/styles.css` and `static/app.js` to `v=20260604_4`.
+- **What was not changed:**
+  - No backend logic changed.
+  - No room, voting, word, WebSocket, QR, reveal, score, role, Nova runda/Resetuj sobu, or gameplay logic changed.
+  - No deployment files, word database files, or vendor QR files changed.
+  - No commit, push, deploy, or service restart.
+- **Tests run:**
+  - `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check static\app.js` — passed.
+  - `git diff --check` — passed; only CRLF warnings from Git.
+- **Deploy status:**
+  - Not deployed.
+- **Manual checks needed:**
+  - Open the app locally and confirm the splash remains for about 5 seconds before fading.
+  - Confirm no rectangular eye boxes and no white dots/pupils appear.
+  - Confirm eyes sit higher inside each hood, look narrow/slanted/aggressive, and do not cover cards or hands.
+  - Confirm blink timing is still subtle and random.
+  - Confirm start screen, name input, create room, and join room still work.
+- **Known issues:**
+  - Manual browser/mobile visual testing was not run in this Codex turn.
+  - Eye placement is still hand-tuned with percentage coordinates and may need final artist-directed adjustment after visual QA.
+- **Notes:**
+  - Rollback: inspect with `git diff -- static/index.html static/app.js static/styles.css PROJECT_STATUS_HANDOVER.md`, then run `git restore static/index.html static/app.js static/styles.css PROJECT_STATUS_HANDOVER.md`.
+
+### 2026-06-04 — Landing splash eye position and scale tuning
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `static/styles.css`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Fine-tuned the CSS-drawn landing splash eye pairs so they are smaller, narrower, dimmer, and placed deeper inside the hood openings on `Landing.png`.
+  - Added per-eye CSS variables for width, rotation, opacity, and glow strength.
+  - Reduced eye glow/brightness so the dark hood shadows remain dominant.
+  - Adjusted desktop and mobile percentage coordinates independently for the three visible hooded faces.
+  - Kept the existing random independent blink behavior unchanged.
+  - Bumped only the stylesheet cache query string to `v=20260604_3`.
+- **What was not changed:**
+  - No backend logic changed.
+  - No room, voting, role, WebSocket, reveal, word selection, score, QR, Nova runda/Resetuj sobu, or gameplay logic changed.
+  - `static/app.js` logic was not changed in this tuning pass.
+  - No deployment files, word database files, or vendor QR files changed.
+  - No commit, push, deploy, or service restart.
+- **Tests run:**
+  - `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check static\app.js` — passed.
+  - `git diff --check` — passed; only CRLF warnings from Git.
+- **Deploy status:**
+  - Not deployed.
+- **Manual checks needed:**
+  - Open the app locally and confirm all three eye pairs sit naturally inside the visible hood shadows.
+  - Check that the eyes are not oversized, floating above faces, touching hood edges, or covering cards/hands.
+  - Verify desktop and mobile viewports after the `object-fit: cover` splash scaling.
+  - Confirm blink timing still feels subtle and random.
+- **Known issues:**
+  - Manual browser/mobile visual testing was not run in this Codex turn.
+  - Final eye placement is still hand-tuned with percentage coordinates and may need small artist-directed adjustments after visual QA.
+- **Notes:**
+  - Rollback: inspect with `git diff -- static/index.html static/styles.css PROJECT_STATUS_HANDOVER.md`, then run `git restore static/index.html static/styles.css PROJECT_STATUS_HANDOVER.md`.
+
+### 2026-06-04 — Landing splash eye overlay cleanup
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `static/app.js`
+  - `static/styles.css`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Replaced the previous landing splash eye `<img>` overlays with CSS-drawn purple glowing eye pairs.
+  - Removed visible rectangular/gray/white image-box artifacts by no longer rendering `eyes_normal.png` as a full overlay image.
+  - Added three separate manually positioned eye-pair elements for the visible hooded faces on `Landing.png`.
+  - Added a small random blink scheduler so each eye pair blinks independently every ~2.5–6 seconds, with short 120–220 ms blink duration and occasional double blink.
+  - Kept eyes purple, filled, glowing, subtle, and pointer-events free.
+  - Bumped frontend cache query strings for `static/styles.css` and `static/app.js` to `v=20260604_2`.
+- **What was not changed:**
+  - No backend logic changed.
+  - No room, voting, WebSocket, reveal, word selection, score calculation, QR, Nova runda/Resetuj sobu, or gameplay logic changed.
+  - No deployment files, word database files, or vendor QR files changed.
+  - No commit, push, deploy, or service restart.
+- **Tests run:**
+  - `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check static\app.js` — passed.
+  - `git diff --check` — passed; only CRLF warnings from Git.
+- **Deploy status:**
+  - Not deployed.
+- **Manual checks needed:**
+  - Open the app locally and confirm the landing splash eyes appear without any rectangular background.
+  - Confirm the three eye pairs align naturally inside the visible hooded faces on desktop and mobile viewports.
+  - Confirm random blinking looks subtle and not synchronized.
+  - Confirm the splash still fades after about 3 seconds and the start screen controls remain usable.
+- **Known issues:**
+  - Manual browser/mobile visual testing was not run in this Codex turn.
+  - The old copied `static/assets/eyes_normal.png` remains present but is no longer referenced by the landing splash.
+- **Notes:**
+  - Rollback: inspect with `git diff -- static/index.html static/app.js static/styles.css PROJECT_STATUS_HANDOVER.md`, then run `git restore static/index.html static/app.js static/styles.css PROJECT_STATUS_HANDOVER.md`.
+
+### 2026-06-04 — Phase 1 landing screen and branding update
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/assets/Landing.png`
+  - `static/assets/Logo.png`
+  - `static/assets/eyes_normal.png`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Copied `Fotos/Landing.png`, `Fotos/Logo.png`, and `Fotos/eyes_normal.png` into `static/assets/` using exact filename casing for Linux-safe production references.
+  - Added a fullscreen landing splash that shows `Landing.png`, fades out after about 3 seconds, and removes itself safely even if the landing image fails to load.
+  - Added subtle `eyes_normal.png` blink overlays on visible hooded faces/card area in the splash using CSS-only animation.
+  - Added `Logo.png` beside the main `Varalica` title without replacing the title text.
+  - Added `Logo.png` as a low-opacity, non-clickable start-screen watermark behind the setup form.
+  - Added reduced-motion handling for splash/eye animations.
+  - Bumped frontend cache query strings for `static/styles.css` and `static/app.js` to `v=20260604_1`.
+- **What was not changed:**
+  - No backend logic changed.
+  - No voting, room, WebSocket, word selection, score calculation, QR, Nova runda/Resetuj sobu, or reveal/gameplay logic changed.
+  - `static/vendor/qrcode.min.js`, `words.py`, `validate_words.py`, importer/data files, deployment files, and infrastructure were not modified.
+  - No commit, push, deploy, or service restart.
+- **Tests run:**
+  - `node --check static\app.js` — blocked locally by Windows `Zugriff verweigert`.
+  - `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check static\app.js` — passed.
+  - `git diff --check` — passed; only CRLF warnings from Git.
+- **Deploy status:**
+  - Not deployed.
+- **Manual checks needed:**
+  - Open the app locally and confirm `Landing.png` appears on first load and fades after about 3 seconds.
+  - Confirm the blink overlays line up acceptably on mobile and desktop.
+  - Confirm `Logo.png` appears beside the title and as a subtle setup watermark.
+  - Confirm name input, `Napravi sobu`, join room flow, QR/link behavior, and refresh behavior still work.
+  - Confirm browser console has no missing asset errors for `/static/assets/Landing.png`, `/static/assets/Logo.png`, or `/static/assets/eyes_normal.png`.
+- **Known issues:**
+  - Manual browser/mobile testing was not run in this Codex turn.
+  - `Fotos/`, `scripts/prepare_avatar_transparency.py`, and `varalica_curated_words_sample_200_old.py` were already untracked before this phase and remain untracked.
+- **Notes:**
+  - Rollback: inspect with `git diff -- static/index.html static/app.js static/styles.css PROJECT_STATUS_HANDOVER.md`, then run `git restore static/index.html static/app.js static/styles.css PROJECT_STATUS_HANDOVER.md`; remove copied assets with `Remove-Item -LiteralPath static\assets\Landing.png -Force`, `Remove-Item -LiteralPath static\assets\Logo.png -Force`, and `Remove-Item -LiteralPath static\assets\eyes_normal.png -Force` if needed.
+
+### 2026-06-02 — Avatar card transparency cutout asset
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `scripts/prepare_avatar_transparency.py`
+  - `Fotos/Varalicakarta_cutouts.png`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Added a small Pillow-based script to process `Fotos/Varalicakarta.png` as RGBA.
+  - Generated `Fotos/Varalicakarta_cutouts.png` with transparent cutout areas for the two X eyes, visible stitched smile/teeth regions, and the horizontal card interior.
+  - Preserved the original image dimensions (`1254x1254`) and alpha channel.
+  - Used tight eye boxes, split smile boxes to keep the finger intact, and a polygon clipped to the card interior to preserve the neon card border.
+- **What was not changed:**
+  - No gameplay, voting, overtime, reveal logic, room code, QR, WebSocket, word database, frontend UI, deployment, or infrastructure logic changed.
+  - The original `Fotos/Varalicakarta.png` source image was not modified.
+  - `varalica_curated_words_sample_200_old.py` remains untracked and untouched.
+  - No commit, push, deploy, or service restart.
+- **Tests run:**
+  - `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\prepare_avatar_transparency.py` — passed; wrote `Fotos/Varalicakarta_cutouts.png`.
+  - `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m py_compile scripts\prepare_avatar_transparency.py` — passed.
+  - Alpha sanity check — passed; source `RGB (1254, 1254)`, output `RGBA (1254, 1254)`, `87297` fully transparent pixels, `0` partial-alpha pixels.
+  - `git diff --check` — passed.
+- **Deploy status:**
+  - Not deployed.
+- **Manual checks needed:**
+  - Visually inspect `Fotos/Varalicakarta_cutouts.png` composited over a bright/checker background and confirm the eye, smile, and card cutouts are aligned exactly as desired.
+  - Fine-tune the hard-coded cutout ratios in `scripts/prepare_avatar_transparency.py` if the artist wants tighter or wider transparent holes.
+- **Known issues:**
+  - Pillow is not installed in the project `.venv`; the script was run with the bundled Codex Python runtime where Pillow 12.2.0 is available.
+  - `Fotos/` is currently untracked, so both the existing source image and generated output appear under the same untracked folder in git status.
+- **Notes:**
+  - Rollback: inspect with `git diff -- PROJECT_STATUS_HANDOVER.md scripts/prepare_avatar_transparency.py`, then run `git restore PROJECT_STATUS_HANDOVER.md` and remove generated/untracked files with `Remove-Item -LiteralPath scripts\prepare_avatar_transparency.py -Force` and `Remove-Item -LiteralPath Fotos\Varalicakarta_cutouts.png -Force` if needed.
 
 ### 2026-05-31 — Hotfix next-player button click handler
 

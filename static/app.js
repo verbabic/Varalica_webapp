@@ -1,4 +1,5 @@
 const setupView = document.querySelector("#setupView");
+const landingSplash = document.querySelector("#landingSplash");
 const expiredRoomView = document.querySelector("#expiredRoomView");
 const homeButton = document.querySelector("#homeButton");
 const roomView = document.querySelector("#roomView");
@@ -47,6 +48,18 @@ const IMPOSTOR_REVEAL_AVATAR_URL = "/static/assets/Varalica_crveno.png";
 const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
 const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
 const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
+const ASSET_CACHE = "20260604_16";
+const PRIVATE_CARD_CLOSED_URL = `/static/assets/reveal_card.png?v=${ASSET_CACHE}`;
+const PRIVATE_CARD_OPEN_NORMAL_URL = `/static/assets/Prikazikartu_player_normal_eyes.png?v=${ASSET_CACHE}`;
+const PRIVATE_CARD_OPEN_VARALICA_URL = `/static/assets/Prikazikartu.png?v=${ASSET_CACHE}`;
+const REVEAL_COUNTDOWN_BASE_URL = `/static/assets/reveal_countdown_base.png?v=${ASSET_CACHE}`;
+const REVEAL_FLYING_CARD_URL = `/static/assets/reveal_card.png?v=${ASSET_CACHE}`;
+const RESULT_CAUGHT_SCENE_URL = `/static/assets/result_caught_scene.png?v=${ASSET_CACHE}`;
+const RESULT_SURVIVED_SCENE_URL = `/static/assets/result_survived_scene_base.png?v=${ASSET_CACHE}`;
+const REVEAL_COUNTDOWN_STEP_MS = 1000;
+const REVEAL_FLYING_MS = 1650;
+const REVEAL_BLACKOUT_MS = 520;
+const FINAL_RESULT_FULLSCREEN_MS = 3000;
 const REACTION_EMOJIS_LEFT = ["😂", "🧐", "😎"];
 const REACTION_EMOJIS_RIGHT = ["🤢", "🤥", "🙈"];
 const AVATARS = [
@@ -59,6 +72,7 @@ const AVATARS = [
   "🏀","🎾","🎱","⛷️","🏋️","🪂","🚵‍♀️","🎹","🎷","🎸","🪗","🎲","🚗","🚕","🚒","🚜","🚓","🚑","🚛","✈️","🧸",
 ];
 
+initLandingSplash();
 expireOldSession();
 
 let roomState = null;
@@ -83,6 +97,11 @@ let revealSequence = {
   showReplay: false,
 };
 let revealSequenceTimers = [];
+let finalResultSceneState = {
+  roundKey: "",
+  mode: "fullscreen",
+  timer: null,
+};
 let inviteRoomCode = "";
 let reconnectTimer = null;
 let heartbeatTimer = null;
@@ -101,6 +120,23 @@ let roomPanelCollapsed = sessionStorage.getItem("varalica_room_panel_collapsed")
 let lastAssociationBannerStackKey = "";
 let lastPlayersListPhase = "";
 let lastRenderedRevealPhase = "";
+
+function initLandingSplash() {
+  if (!landingSplash) return;
+  const splashImage = landingSplash.querySelector(".landing-splash-image");
+  let removed = false;
+
+  const removeSplash = () => {
+    if (removed) return;
+    removed = true;
+    landingSplash.classList.add("is-hiding");
+    window.setTimeout(() => landingSplash.remove(), 760);
+  };
+
+  window.setTimeout(removeSplash, 3000);
+  window.setTimeout(removeSplash, 5000);
+  splashImage?.addEventListener("error", removeSplash, { once: true });
+}
 
 const pathRoomMatch = window.location.pathname.match(/^\/room\/([A-Z0-9]{5})$/i);
 if (pathRoomMatch) {
@@ -754,10 +790,17 @@ function startRevealCountdown() {
   resetRevealSequence();
   if (!roomState?.results || !resultVaralice(roomState.results).length) return;
 
+  const reducedMotion = prefersReducedMotion();
+  const numberDuration = reducedMotion ? 280 : REVEAL_COUNTDOWN_STEP_MS;
+  const afterOnePause = reducedMotion ? 80 : 180;
+  const flyingDuration = reducedMotion ? 220 : REVEAL_FLYING_MS;
+  const blackoutDuration = reducedMotion ? 120 : REVEAL_BLACKOUT_MS;
+  const replayDelay = 2000;
+
   revealSequence = {
     active: true,
-    phase: "overlay_intro",
-    countdown: 0,
+    phase: "countdown_5",
+    countdown: 5,
     complete: false,
     showReplay: false,
   };
@@ -780,20 +823,25 @@ function startRevealCountdown() {
     render();
   };
 
-  setRevealPhase("overlay_intro");
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_5", 5), 300));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_4", 4), 1300));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_3", 3), 2300));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_2", 2), 3300));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_1", 1), 4300));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("status_reveal"), 5600));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("name_reveal"), 7000));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("subtitle_reveal"), 8800));
-  revealSequenceTimers.push(setTimeout(() => setRevealPhase("complete"), 9800));
+  setRevealPhase("countdown_5", 5);
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_4", 4), numberDuration));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_3", 3), numberDuration * 2));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_2", 2), numberDuration * 3));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("countdown_1", 1), numberDuration * 4));
+  const flyingAt = numberDuration * 5 + afterOnePause;
+  const blackoutAt = flyingAt + flyingDuration;
+  const completeAt = blackoutAt + blackoutDuration;
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("flying_card"), flyingAt));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("fade_black"), blackoutAt));
+  revealSequenceTimers.push(setTimeout(() => setRevealPhase("complete"), completeAt));
   revealSequenceTimers.push(setTimeout(() => {
     revealSequence = { ...revealSequence, showReplay: true };
     render();
-  }, 10800));
+  }, completeAt + replayDelay));
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 function resetRevealSequence() {
@@ -807,6 +855,60 @@ function resetRevealSequence() {
     complete: false,
     showReplay: false,
   };
+  resetFinalResultSceneState();
+}
+
+function resetFinalResultSceneState() {
+  if (finalResultSceneState.timer) {
+    clearTimeout(finalResultSceneState.timer);
+  }
+  finalResultSceneState = {
+    roundKey: "",
+    mode: "fullscreen",
+    timer: null,
+  };
+}
+
+function finalResultRoundKey() {
+  if (!roomState || roomState.state !== "results") return "";
+  const varalicaIds = resultVaralice(roomState.results || {})
+    .map((player) => player.id)
+    .join(",");
+  return `${roomState.room_code || ""}:${roomState.round_number || 1}:${varalicaIds}:${roomState.results?.was_varalica_caught === true}`;
+}
+
+function ensureFinalResultSceneTransition() {
+  const roundKey = finalResultRoundKey();
+  if (!roundKey) return "fullscreen";
+
+  if (finalResultSceneState.roundKey !== roundKey) {
+    if (finalResultSceneState.timer) {
+      clearTimeout(finalResultSceneState.timer);
+    }
+    finalResultSceneState = {
+      roundKey,
+      mode: "fullscreen",
+      timer: null,
+    };
+  }
+
+  if (finalResultSceneState.mode === "fullscreen" && !finalResultSceneState.timer) {
+    const minimizeDelay = prefersReducedMotion() ? 600 : FINAL_RESULT_FULLSCREEN_MS;
+    finalResultSceneState.timer = setTimeout(() => {
+      if (roomState?.state !== "results" || finalResultRoundKey() !== roundKey) {
+        resetFinalResultSceneState();
+        return;
+      }
+      finalResultSceneState = {
+        ...finalResultSceneState,
+        mode: "compact",
+        timer: null,
+      };
+      render();
+    }, minimizeDelay);
+  }
+
+  return finalResultSceneState.mode;
 }
 
 function expireOldSession() {
@@ -1401,7 +1503,7 @@ function renderDiscussionMonitorPanel(currentPlayer, phaseLabel, remainingSecond
 
 function render() {
   if (!roomState) return;
-  const cinematicRevealActive = roomState.state === "results" && revealSequence.active && isCountdownRevealPhase(revealSequence.phase);
+  const cinematicRevealActive = roomState.state === "results" && revealSequence.active && isRevealTransitionPhase(revealSequence.phase);
   roomView.classList.toggle("cinematic-reveal-active", cinematicRevealActive);
   roomCodeDisplay.textContent = roomState.room_code;
   roundDisplay.textContent = `Runda ${roomState.round_number || 1}`;
@@ -1680,12 +1782,30 @@ function renderReveal() {
     return;
   }
 
+  if (alreadyConfirmed) {
+    phaseContent.innerHTML = `
+      <div class="phase-card private-card-phase private-card-phase-locked">
+        <h2>Tvoja tajna kartica</h2>
+        <p class="helper-text">Kartica je potvrđena i zaključana.</p>
+        <div class="private-card-closed-static" aria-hidden="true">
+          <img class="private-card-closed-img" src="${escapeHtml(PRIVATE_CARD_CLOSED_URL)}" alt="" decoding="async" />
+        </div>
+        <button id="confirmSeenButton" class="private-card-confirm-button" type="button" disabled>Potvrđeno</button>
+        <p class="helper-text">Diskusija ne moze poceti dok svi aktivni igraci ne potvrde.</p>
+      </div>
+    `;
+    return;
+  }
+
   if (!hasRevealedPrivateCard) {
     phaseContent.innerHTML = `
-      <div class="phase-card">
+      <div class="phase-card private-card-phase private-card-phase-closed">
         <h2>Tvoja tajna kartica</h2>
         <p class="helper-text">Provjeri je na svom telefonu i ne pokazuj drugim igracima.</p>
-        <button id="showWordButton">Prikazi moju rijec</button>
+        <button id="showWordButton" class="private-card-closed-button" type="button" aria-label="Dodirni kartu">
+          <img class="private-card-closed-img" src="${escapeHtml(PRIVATE_CARD_CLOSED_URL)}" alt="" aria-hidden="true" decoding="async" />
+          <span class="private-card-tap-label">Dodirni kartu</span>
+        </button>
       </div>
     `;
     document.querySelector("#showWordButton").addEventListener("click", async () => {
@@ -1697,30 +1817,36 @@ function renderReveal() {
     return;
   }
 
-  const secretHtml =
-    privateInfo.role === "varalica"
-      ? `<p class="big-message">Ti si Varalica</p>
-         <div class="hint-box">
-           <p class="eyebrow">Smjernica</p>
-           <p>${escapeHtml(privateInfo.hint || "Slušaj druge igrače i pokušaj ostati uvjerljiv.")}</p>
-         </div>`
-      : `<p class="big-message">${escapeHtml(privateInfo.word.hr)} (${escapeHtml(privateInfo.word.sr)})</p>`;
+  const isVaralica = privateInfo.role === "varalica";
+  const openCardUrl = isVaralica ? PRIVATE_CARD_OPEN_VARALICA_URL : PRIVATE_CARD_OPEN_NORMAL_URL;
+  const secretHtml = isVaralica
+    ? `<div class="private-card-secret private-card-secret-varalica">
+         <p class="private-card-secret-kicker">Varalica</p>
+         <p class="private-card-secret-title">Ti si Varalica</p>
+         <p class="private-card-secret-label">Smjernica</p>
+         <p class="private-card-secret-hint">${escapeHtml(privateInfo.hint || "Pokušaj da se uklopiš.")}</p>
+       </div>`
+    : `<div class="private-card-secret private-card-secret-word">
+         <p class="private-card-secret-kicker">Tvoja riječ</p>
+         <p class="private-card-secret-title">${escapeHtml(privateInfo.word.hr)}</p>
+         <p class="private-card-secret-category">${escapeHtml(privateInfo.word.category || "")}</p>
+       </div>`;
 
   phaseContent.innerHTML = `
-    <div class="phase-card">
+    <div class="phase-card private-card-phase private-card-phase-open">
       <h2>Tvoja tajna kartica</h2>
-      ${secretHtml}
-      <button id="confirmSeenButton" ${alreadyConfirmed ? "disabled" : ""}>
-        ${alreadyConfirmed ? "Potvrdjeno" : "OK, vidio sam"}
-      </button>
+      <div class="private-card-open-stage ${isVaralica ? "is-varalica" : "is-normal"}">
+        <img class="private-card-open-img" src="${escapeHtml(openCardUrl)}" alt="" aria-hidden="true" decoding="async" />
+        <div class="private-card-text-panel">
+          ${secretHtml}
+        </div>
+      </div>
+      <button id="confirmSeenButton" class="private-card-confirm-button" type="button">Video sam kartu</button>
       <p class="helper-text">Diskusija ne moze poceti dok svi aktivni igraci ne potvrde.</p>
     </div>
   `;
 
-  const confirmButton = document.querySelector("#confirmSeenButton");
-  if (confirmButton && !alreadyConfirmed) {
-    confirmButton.addEventListener("click", confirmSeen);
-  }
+  document.querySelector("#confirmSeenButton")?.addEventListener("click", confirmSeen);
 }
 
 function bindDiscussionActions(canAdvanceTurn) {
@@ -2121,6 +2247,25 @@ function isCountdownRevealPhase(phase) {
   return /^countdown_\d$/.test(phase) || phase === "overlay_intro";
 }
 
+function isRevealTransitionPhase(phase) {
+  return isCountdownRevealPhase(phase) || phase === "flying_card" || phase === "fade_black";
+}
+
+function finalResultHeadline(results) {
+  return results.was_varalica_caught === true ? "Varalica je otkrivena" : "Varalica je preživjela";
+}
+
+function renderResultOutcomeEyes(wasCaught, { compact = false } = {}) {
+  const modifier = wasCaught ? "is-caught" : "is-survived";
+  const compactClass = compact ? " is-compact" : "";
+  return `
+    <div class="result-outcome-eyes ${modifier}${compactClass}" aria-hidden="true">
+      <span class="result-outcome-eye result-outcome-eye-left"></span>
+      <span class="result-outcome-eye result-outcome-eye-right"></span>
+    </div>
+  `;
+}
+
 function patchImpostorRevealCountdown() {
   const stage = document.querySelector("#impostorRevealStage");
   if (!stage || stage.dataset.revealPhase !== revealSequence.phase) return false;
@@ -2181,21 +2326,91 @@ function renderImpostorReveal(results) {
   `;
 }
 
-function renderResultRevealHero(results) {
-  const theme = finalOutcomeTheme(results);
-  const statusLabel = revealStatusLabel(results);
-  const statusClass = revealStatusClass(results);
-  const subtitle = revealOutcomeSubtitle(results);
-  return `
-    <div class="result-reveal-hero ${escapeHtml(theme)}">
-      <div class="result-reveal-avatar">
-        ${impostorAvatarHtml()}
+function renderRevealCountdownTransition() {
+  const phase = revealSequence.phase;
+  const isCountdown = isCountdownRevealPhase(phase);
+  const isImpact = phase === "countdown_1" || phase === "flying_card";
+  const showFlyingCard = phase === "flying_card";
+  const isBlackout = phase === "fade_black";
+
+  phaseContent.innerHTML = `
+    <div
+      id="revealCountdownStage"
+      class="reveal-countdown-overlay ${escapeHtml(phase)} ${isImpact ? "is-impact" : ""} ${isBlackout ? "is-blackout" : ""}"
+      data-reveal-phase="${escapeHtml(phase)}"
+      aria-live="polite"
+    >
+      <div class="reveal-countdown-backdrop" aria-hidden="true"></div>
+      <div class="reveal-countdown-fade-black" aria-hidden="true"></div>
+      <div class="reveal-countdown-scene">
+        <img
+          class="reveal-countdown-base"
+          src="${escapeHtml(REVEAL_COUNTDOWN_BASE_URL)}"
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+        >
+        <div class="reveal-countdown-light" aria-hidden="true"></div>
+        <div class="reveal-countdown-eyes" aria-hidden="true">
+          <span class="reveal-countdown-eye reveal-countdown-eye-left"></span>
+          <span class="reveal-countdown-eye reveal-countdown-eye-right"></span>
+        </div>
+        ${
+          isCountdown && revealSequence.countdown
+            ? `<div class="reveal-countdown-number" aria-label="${revealSequence.countdown}">${revealSequence.countdown}</div>`
+            : ""
+        }
+        ${
+          showFlyingCard
+            ? `<img class="reveal-flying-card" src="${escapeHtml(REVEAL_FLYING_CARD_URL)}" alt="" aria-hidden="true" decoding="async">`
+            : ""
+        }
       </div>
-      <div class="result-reveal-text result-reveal-text-front">
-        <p class="impostor-status-label ${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</p>
-        <p class="impostor-pretitle impostor-pretitle-game">VARALICA JE...</p>
-        ${renderVaralicaNamesHtml(results)}
-        <p class="impostor-subtitle">${escapeHtml(subtitle)}</p>
+    </div>
+  `;
+}
+
+function renderResultRevealHero(results, displayMode = "fullscreen") {
+  const theme = finalOutcomeTheme(results);
+  const wasCaught = results.was_varalica_caught === true;
+  const sceneUrl = wasCaught ? RESULT_CAUGHT_SCENE_URL : RESULT_SURVIVED_SCENE_URL;
+  const sceneClass = wasCaught ? "final-result-scene-caught" : "final-result-scene-survived";
+  const overlayClass = wasCaught ? "result-overlay-red" : "result-overlay-green";
+  const headline = finalResultHeadline(results);
+  const isCompact = displayMode === "compact";
+
+  if (isCompact) {
+    return `
+      <div class="final-result-overlay final-result-compact ${escapeHtml(theme)} ${escapeHtml(sceneClass)} ${escapeHtml(overlayClass)}">
+        <div class="final-result-mini-scene">
+          <img
+            class="final-result-mini-scene-img"
+            src="${escapeHtml(sceneUrl)}"
+            alt=""
+            aria-hidden="true"
+            decoding="async"
+          >
+          ${renderResultOutcomeEyes(wasCaught, { compact: true })}
+        </div>
+        <p class="final-result-outcome-headline">${escapeHtml(headline)}</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="final-result-overlay final-result-fullscreen ${escapeHtml(theme)} ${escapeHtml(sceneClass)} ${escapeHtml(overlayClass)}">
+      <div class="final-result-fullscreen-scene">
+        <img
+          class="final-result-scene-img"
+          src="${escapeHtml(sceneUrl)}"
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+        >
+        ${renderResultOutcomeEyes(wasCaught)}
+        <div class="final-result-status-block">
+          <h2 class="final-result-title">${escapeHtml(headline)}</h2>
+        </div>
       </div>
     </div>
   `;
@@ -2204,10 +2419,11 @@ function renderResultRevealHero(results) {
 function renderResults() {
   const isHost = roomState.viewer_id === roomState.host_id;
   const results = roomState.results;
-  if (revealSequence.active && isCountdownRevealPhase(revealSequence.phase)) {
-    renderImpostorReveal(results);
+  if (revealSequence.active && isRevealTransitionPhase(revealSequence.phase)) {
+    renderRevealCountdownTransition();
     return;
   }
+  const finalResultDisplayMode = ensureFinalResultSceneTransition();
   const voteRows = results.vote_summary
     .map(
       (item) => `
@@ -2249,8 +2465,8 @@ function renderResults() {
     .join(", ");
 
   phaseContent.innerHTML = `
-    <div class="phase-card results-card">
-      ${renderResultRevealHero(results)}
+    <div class="phase-card results-card results-card-${escapeHtml(finalResultDisplayMode)}">
+      ${renderResultRevealHero(results, finalResultDisplayMode)}
       <h2>Statistika glasanja</h2>
       <p class="big-result">${(results.varalice || []).length > 1 ? "Varalice su bile" : "Varalica je bio/la"}: ${escapeHtml(varaliceNameText(results))}</p>
       <p class="word-result">Riječ je bila: ${escapeHtml(results.word.hr)} (${escapeHtml(results.word.sr)})</p>
@@ -2433,7 +2649,7 @@ function renderPlayers() {
     const disconnectedLabel = "";
     const connectedLabel = "";
     const isViewerHost = roomState.viewer_id === roomState.host_id;
-    const hostLabel = player.is_host ? `<span class="badge">👑 Host</span>` : "";
+    const hostLabel = player.is_host ? `<span class="badge host-badge" title="Host">👑 H</span>` : "";
     const currentLabel = player.is_current ? `<span class="badge active-turn">Na redu</span>` : "";
     const voteLabel = player.requested_vote ? `<span class="badge vote-requested">Trazi glasanje</span>` : "";
     const associationBubble = player.association

@@ -1757,10 +1757,18 @@ def enter_tie_overtime(room: Room) -> None:
     clear_all_reactions(room)
 
 
+def pick_discussion_start_index(room: Room) -> int:
+    active_ids = active_round_player_ids(room)
+    if not active_ids:
+        return 0
+    start_id = random.choice(active_ids)
+    return room.round_player_ids.index(start_id)
+
+
 def enter_discussion_values(room: Room) -> None:
     room.state = "discussion"
     room.discussion_started_at = time.time()
-    room.current_player_index = 0
+    room.current_player_index = pick_discussion_start_index(room)
     room.turn_version += 1
     room.active_associations.clear()
     room.association_banners.clear()

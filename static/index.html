@@ -4,16 +4,22 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Varalica</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260531_2" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260604_16" />
   </head>
   <body>
+    <div id="landingSplash" class="landing-splash" aria-hidden="true">
+      <img class="landing-splash-image" src="/static/assets/Landing.png?v=20260604_11" alt="" decoding="async" />
+    </div>
     <main class="app-shell">
       <section class="hero">
         <div class="hero-brand">
           <button id="homeButton" class="home-button hidden" type="button">Početna</button>
-          <div>
+          <div class="hero-title-block">
             <p class="eyebrow">Mobilna party igra</p>
-            <h1>Varalica</h1>
+            <div class="hero-title-row">
+              <img class="hero-title-logo" src="/static/assets/Logo_title.png?v=20260604_16" alt="" aria-hidden="true" decoding="async" />
+              <h1>Varalica</h1>
+            </div>
           </div>
         </div>
         <div class="top-status">
@@ -31,7 +37,7 @@
         <p class="expired-room-text">Vrati se na početnu.</p>
       </section>
 
-      <section id="setupView" class="panel">
+      <section id="setupView" class="panel setup-panel">
         <div id="inviteNotice" class="invite-notice hidden"></div>
 
         <label for="playerName">Tvoje ime</label>
@@ -152,6 +158,6 @@
     </div>
 
     <script src="/static/vendor/qrcode.min.js?v=20260531_1"></script>
-    <script src="/static/app.js?v=20260531_5"></script>
+    <script src="/static/app.js?v=20260604_16"></script>
   </body>
 </html>
