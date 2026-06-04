@@ -214,8 +214,8 @@ label {
 
 .hero-title-logo {
   width: auto;
-  height: 1.25em;
-  max-height: 1.25em;
+  height: 1.4em;
+  max-height: 1.4em;
   flex-shrink: 0;
   object-fit: contain;
   opacity: 0.92;
@@ -228,8 +228,8 @@ label {
 
 @media (max-width: 640px) {
   .hero-title-logo {
-    height: 1.2em;
-    max-height: 1.2em;
+    height: 1.34em;
+    max-height: 1.34em;
   }
 }
 
@@ -945,10 +945,7 @@ body.cinematic-reveal-active .association-overlay-dock {
 }
 
 .private-card-tap-label {
-  position: absolute;
-  left: 50%;
-  bottom: 8.5%;
-  transform: translateX(-50%);
+  margin: 10px 0 0;
   padding: 7px 14px;
   border-radius: 999px;
   border: 1px solid rgba(192, 132, 252, 0.45);
@@ -996,29 +993,29 @@ body.cinematic-reveal-active .association-overlay-dock {
 
 .private-card-text-panel {
   position: absolute;
-  left: 25.5%;
-  top: 66%;
+  left: 27%;
+  top: 62%;
   display: grid;
   align-content: center;
   justify-items: center;
-  width: 42%;
-  max-width: 42%;
-  height: 17%;
-  max-height: 17%;
-  padding: 1.2% 2.4%;
+  width: 43%;
+  max-width: 43%;
+  height: 20%;
+  max-height: 20%;
+  padding: 1.1% 2.2%;
   color: #f8fafc;
   pointer-events: none;
   overflow: hidden;
 }
 
 .private-card-open-stage.is-normal .private-card-text-panel {
-  top: 66%;
+  top: 62.3%;
 }
 
 .private-card-open-stage.is-varalica .private-card-text-panel {
-  top: 64%;
-  height: 21%;
-  max-height: 21%;
+  top: 61.8%;
+  height: 20.6%;
+  max-height: 20.6%;
 }
 
 .private-card-secret {
@@ -1036,7 +1033,7 @@ body.cinematic-reveal-active .association-overlay-dock {
 
 .private-card-secret-kicker {
   color: rgba(216, 180, 254, 0.72);
-  font-size: clamp(0.5rem, 2.05vw, 0.72rem);
+  font-size: clamp(0.48rem, 1.95vw, 0.68rem);
   font-weight: 950;
   text-transform: uppercase;
 }
@@ -1044,9 +1041,9 @@ body.cinematic-reveal-active .association-overlay-dock {
 .private-card-secret-title {
   max-width: 100%;
   color: #f5f3ff;
-  font-size: clamp(0.82rem, 4.1vw, 1.38rem);
+  font-size: clamp(0.76rem, 3.55vw, 1.22rem);
   font-weight: 950;
-  line-height: 1.05;
+  line-height: 1.02;
   overflow-wrap: anywhere;
   word-break: break-word;
   hyphens: auto;
@@ -1057,15 +1054,15 @@ body.cinematic-reveal-active .association-overlay-dock {
 .private-card-secret-hint {
   max-width: 100%;
   color: #c4b5fd;
-  font-size: clamp(0.56rem, 2.25vw, 0.76rem);
+  font-size: clamp(0.52rem, 2.05vw, 0.7rem);
   font-weight: 850;
-  line-height: 1.18;
+  line-height: 1.12;
   overflow-wrap: anywhere;
 }
 
 .private-card-secret-category {
   color: rgba(148, 163, 184, 0.92);
-  font-size: clamp(0.66rem, 2.6vw, 0.84rem);
+  font-size: clamp(0.58rem, 2.2vw, 0.76rem);
   font-weight: 800;
   text-transform: capitalize;
 }
@@ -1980,10 +1977,40 @@ body.cinematic-reveal-active .association-overlay-dock {
   filter: blur(2px);
 }
 
+.reveal-countdown-overlay::before,
+.reveal-countdown-overlay::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  width: min(38vw, 340px);
+  pointer-events: none;
+  opacity: 0.28;
+  filter: blur(0.4px);
+  mix-blend-mode: screen;
+  animation: revealCountdownSmokeEdge 4.8s ease-in-out infinite;
+}
+
+.reveal-countdown-overlay::before {
+  left: -8%;
+  background:
+    radial-gradient(ellipse at 14% 42%, rgba(126, 34, 206, 0.18), transparent 58%),
+    linear-gradient(90deg, rgba(76, 29, 149, 0.24), transparent);
+}
+
+.reveal-countdown-overlay::after {
+  right: -8%;
+  background:
+    radial-gradient(ellipse at 86% 58%, rgba(168, 85, 247, 0.16), transparent 58%),
+    linear-gradient(270deg, rgba(76, 29, 149, 0.22), transparent);
+  animation-delay: -2.4s;
+}
+
 .reveal-countdown-scene {
   position: relative;
-  z-index: 1;
-  width: min(100vw, 100vh, 760px);
+  z-index: 2;
+  width: min(88vw, 88svh, 620px);
   aspect-ratio: 1;
   max-width: 100%;
   max-height: 100%;
@@ -2005,38 +2032,13 @@ body.cinematic-reveal-active .association-overlay-dock {
   display: none;
 }
 
-.reveal-countdown-card-surface {
-  position: absolute;
-  left: 50%;
-  top: 72%;
-  z-index: 2;
-  width: 22%;
-  height: 27%;
-  transform: translate(-50%, -50%);
-  border-radius: 7%;
-  border: 2px solid rgba(216, 180, 254, 0.62);
-  background:
-    radial-gradient(circle at 50% 45%, rgba(168, 85, 247, 0.14), transparent 54%),
-    rgba(1, 2, 10, 0.82);
-  box-shadow:
-    inset 0 0 22px rgba(0, 0, 0, 0.72),
-    0 0 18px rgba(192, 132, 252, 0.42),
-    0 0 38px rgba(124, 58, 237, 0.24);
-  opacity: 0.34;
-  pointer-events: none;
-}
-
-.reveal-countdown-overlay.image-failed .reveal-countdown-card-surface {
-  opacity: 1;
-}
-
 .reveal-countdown-light {
   position: absolute;
   left: 50%;
-  top: 53%;
+  top: 50%;
   z-index: 2;
-  width: 46%;
-  height: 46%;
+  width: 58%;
+  height: 58%;
   transform: translate(-50%, -50%);
   border-radius: 999px;
   background:
@@ -2047,63 +2049,25 @@ body.cinematic-reveal-active .association-overlay-dock {
   animation: revealCountdownGlow 1s ease-in-out infinite;
 }
 
-.reveal-countdown-eyes {
-  position: absolute;
-  left: 50%;
-  top: 36.8%;
-  z-index: 3;
-  width: 24%;
-  height: 9%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  opacity: 0.9;
-  filter: drop-shadow(0 0 6px rgba(192, 132, 252, 0.5)) drop-shadow(0 0 14px rgba(124, 58, 237, 0.32));
-  animation: revealEyesPulse 1.15s ease-in-out infinite;
-}
-
-.reveal-countdown-eyes-svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-
-.reveal-countdown-eye-shape {
-  fill: url("#revealEyeGradient");
-  fill: #b45cff;
-  filter:
-    drop-shadow(0 0 5px rgba(216, 180, 254, 0.68))
-    drop-shadow(0 0 14px rgba(168, 85, 247, 0.42));
-  opacity: 0.9;
-}
-
-.reveal-countdown-eye-left {
-  transform-origin: 60px 42px;
-  transform: rotate(-3deg);
-}
-
-.reveal-countdown-eye-right {
-  transform-origin: 160px 42px;
-  transform: rotate(3deg);
-}
-
 .reveal-countdown-number {
   position: absolute;
   left: 50%;
-  top: 72%;
+  top: 50%;
   z-index: 6;
-  width: 22%;
+  width: 58%;
   transform: translate(-50%, -50%);
   margin: 0;
-  color: #f7f2ff;
-  font-size: clamp(3.6rem, 16vw, 8.2rem);
+  color: #05000b;
+  -webkit-text-stroke: clamp(1.5px, 0.42vw, 3px) #e9d5ff;
+  font-size: clamp(4.4rem, 22vw, 10.5rem);
   line-height: 1;
   font-weight: 950;
   text-align: center;
   text-shadow:
-    0 0 10px rgba(255, 255, 255, 0.58),
-    0 0 28px rgba(192, 132, 252, 0.72),
-    0 0 48px rgba(126, 34, 206, 0.48);
+    0 0 2px rgba(233, 213, 255, 0.86),
+    0 0 14px rgba(192, 132, 252, 0.82),
+    0 0 32px rgba(168, 85, 247, 0.62),
+    0 0 58px rgba(91, 33, 182, 0.48);
   opacity: 0.94;
   pointer-events: none;
   animation: revealCountdownNumberPunch 1s cubic-bezier(0.2, 0.9, 0.24, 1) both;
@@ -2116,10 +2080,6 @@ body.cinematic-reveal-active .association-overlay-dock {
 
 .reveal-countdown-overlay.countdown_1 .reveal-countdown-scene {
   animation: revealCountdownShake 0.32s ease-in-out 1;
-}
-
-.reveal-countdown-overlay.countdown_1 .reveal-countdown-eyes {
-  animation: revealEyesImpactPulse 0.62s ease-in-out 2;
 }
 
 .reveal-countdown-fade-black {
@@ -2537,22 +2497,6 @@ body.cinematic-reveal-active .association-overlay-dock {
   display: flex;
   gap: 30px;
   transform: translate(-50%, -50%);
-}
-
-.impostor-eye {
-  color: #ff2f45;
-  font-size: clamp(2.4rem, 12vw, 4.6rem);
-  line-height: 1;
-  font-weight: 950;
-  text-shadow: 0 0 12px rgba(239, 68, 68, 0.95), 0 0 30px rgba(239, 68, 68, 0.55);
-}
-
-.impostor-reveal-stage.countdown_5 .impostor-eye,
-.impostor-reveal-stage.countdown_4 .impostor-eye,
-.impostor-reveal-stage.countdown_3 .impostor-eye,
-.impostor-reveal-stage.countdown_2 .impostor-eye,
-.impostor-reveal-stage.countdown_1 .impostor-eye {
-  animation: eyeBlinkGlow 1s ease-in-out infinite;
 }
 
 .impostor-reveal-stage.countdown_5 .impostor-avatar-asset::after,
@@ -3034,69 +2978,6 @@ body.cinematic-reveal-active .association-overlay-dock {
   animation: finalResultSmokeDrift 5.8s ease-in-out infinite;
 }
 
-.result-outcome-eyes {
-  position: absolute;
-  left: 50%;
-  top: 33.5%;
-  z-index: 4;
-  width: 24%;
-  height: 8.5%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
-.result-outcome-eye {
-  position: absolute;
-  top: 28%;
-  width: 26%;
-  height: 10%;
-  border-radius: 999px 18px 999px 18px;
-  transform-origin: center;
-}
-
-.result-outcome-eye-left {
-  left: 20%;
-  clip-path: polygon(0 12%, 100% 44%, 88% 72%, 10% 54%);
-  transform: rotate(5deg);
-}
-
-.result-outcome-eye-right {
-  right: 20%;
-  clip-path: polygon(0 44%, 100% 12%, 90% 54%, 12% 72%);
-  transform: rotate(-5deg);
-}
-
-.result-outcome-eyes.is-survived .result-outcome-eye {
-  background: linear-gradient(135deg, #bbf7d0 0%, #4ade80 42%, #15803d 100%);
-  box-shadow:
-    0 0 8px rgba(74, 222, 128, 0.5),
-    0 0 18px rgba(34, 197, 94, 0.32);
-  opacity: 0.92;
-}
-
-.result-outcome-eyes.is-survived {
-  animation: resultOutcomeEyePulseGreen 1.5s ease-in-out infinite;
-}
-
-.result-outcome-eyes.is-caught .result-outcome-eye {
-  background: linear-gradient(135deg, #fecaca 0%, #f87171 48%, #991b1b 100%);
-  box-shadow:
-    0 0 6px rgba(248, 113, 113, 0.38),
-    0 0 14px rgba(127, 29, 29, 0.28);
-  opacity: 0.62;
-}
-
-.result-outcome-eyes.is-caught {
-  animation: resultOutcomeEyePulseRed 1.65s ease-in-out infinite;
-}
-
-.result-outcome-eyes.is-compact {
-  top: 34%;
-  width: 22%;
-  height: 9%;
-  opacity: 0.78;
-}
-
 .final-result-compact {
   display: grid;
   gap: 10px;
@@ -3211,12 +3092,6 @@ body.cinematic-reveal-active .association-overlay-dock {
   0% { transform: scale(1); }
   40% { transform: scale(1.06); }
   100% { transform: scale(1.02); }
-}
-
-@keyframes eyeBlinkGlow {
-  0%, 100% { opacity: 1; filter: brightness(1); }
-  42% { opacity: 0.16; filter: brightness(0.6); }
-  58% { opacity: 1; filter: brightness(1.8); }
 }
 
 @keyframes realAvatarEyePulse {
@@ -3517,6 +3392,17 @@ body.cinematic-reveal-active .association-overlay-dock {
   }
 }
 
+@keyframes revealCountdownSmokeEdge {
+  0%, 100% {
+    opacity: 0.18;
+    transform: translate3d(0, 0, 0) scaleX(0.96);
+  }
+  50% {
+    opacity: 0.34;
+    transform: translate3d(5%, 0, 0) scaleX(1.04);
+  }
+}
+
 @keyframes revealCountdownImpactGlow {
   0%, 100% {
     opacity: 0.62;
@@ -3524,30 +3410,6 @@ body.cinematic-reveal-active .association-overlay-dock {
   }
   45% {
     opacity: 0.98;
-    transform: translate(-50%, -50%) scale(1.18);
-  }
-}
-
-@keyframes revealEyesPulse {
-  0%, 100% {
-    opacity: 0.82;
-    transform: translate(-50%, -50%) scale(1);
-    filter: drop-shadow(0 0 5px rgba(192, 132, 252, 0.45)) drop-shadow(0 0 12px rgba(124, 58, 237, 0.28));
-  }
-  50% {
-    opacity: 0.94;
-    transform: translate(-50%, -50%) scale(1.05);
-    filter: drop-shadow(0 0 8px rgba(216, 180, 254, 0.62)) drop-shadow(0 0 18px rgba(168, 85, 247, 0.38));
-  }
-}
-
-@keyframes revealEyesImpactPulse {
-  0%, 100% {
-    opacity: 0.82;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  48% {
-    opacity: 1;
     transform: translate(-50%, -50%) scale(1.18);
   }
 }
@@ -3605,32 +3467,6 @@ body.cinematic-reveal-active .association-overlay-dock {
   to {
     opacity: 1;
     background: #010208;
-  }
-}
-
-@keyframes resultOutcomeEyePulseGreen {
-  0%, 100% {
-    opacity: 0.84;
-    transform: translate(-50%, -50%) scale(1);
-    filter: drop-shadow(0 0 5px rgba(74, 222, 128, 0.38)) drop-shadow(0 0 12px rgba(34, 197, 94, 0.22));
-  }
-  50% {
-    opacity: 0.98;
-    transform: translate(-50%, -50%) scale(1.06);
-    filter: drop-shadow(0 0 9px rgba(74, 222, 128, 0.55)) drop-shadow(0 0 20px rgba(34, 197, 94, 0.34));
-  }
-}
-
-@keyframes resultOutcomeEyePulseRed {
-  0%, 100% {
-    opacity: 0.58;
-    transform: translate(-50%, -50%) scale(1);
-    filter: drop-shadow(0 0 4px rgba(248, 113, 113, 0.28)) drop-shadow(0 0 10px rgba(127, 29, 29, 0.2));
-  }
-  50% {
-    opacity: 0.78;
-    transform: translate(-50%, -50%) scale(1.05);
-    filter: drop-shadow(0 0 7px rgba(248, 113, 113, 0.42)) drop-shadow(0 0 16px rgba(127, 29, 29, 0.28));
   }
 }
 

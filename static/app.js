@@ -48,11 +48,11 @@ const IMPOSTOR_REVEAL_AVATAR_URL = "/static/assets/Varalica_crveno.png";
 const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
 const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
 const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
-const ASSET_CACHE = "20260604_18";
-const PRIVATE_CARD_CLOSED_URL = `/static/assets/reveal_card.png?v=${ASSET_CACHE}`;
+const ASSET_CACHE = "20260604_20";
+const PRIVATE_CARD_CLOSED_URL = `/static/assets/wordcard.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_NORMAL_URL = `/static/assets/Prikazikartu_player_normal_eyes.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_VARALICA_URL = `/static/assets/Prikazikartu.png?v=${ASSET_CACHE}`;
-const REVEAL_COUNTDOWN_BASE_URL = `/static/assets/reveal_countdown_base.png?v=${ASSET_CACHE}`;
+const REVEAL_COUNTDOWN_BASE_URL = `/static/assets/reveal_card.png?v=${ASSET_CACHE}`;
 const REVEAL_FLYING_CARD_URL = `/static/assets/reveal_card.png?v=${ASSET_CACHE}`;
 const RESULT_CAUGHT_SCENE_URL = `/static/assets/result_caught_scene.png?v=${ASSET_CACHE}`;
 const RESULT_SURVIVED_SCENE_URL = `/static/assets/result_survived_scene_base.png?v=${ASSET_CACHE}`;
@@ -1843,8 +1843,8 @@ function renderReveal() {
         <p class="helper-text">Provjeri je na svom telefonu i ne pokazuj drugim igracima.</p>
         <button id="showWordButton" class="private-card-closed-button" type="button" aria-label="Dodirni kartu">
           <img class="private-card-closed-img" src="${escapeHtml(PRIVATE_CARD_CLOSED_URL)}" alt="" aria-hidden="true" decoding="async" />
-          <span class="private-card-tap-label">Dodirni kartu</span>
         </button>
+        <p class="private-card-tap-label">Dodirni kartu</p>
       </div>
     `;
     document.querySelector("#showWordButton").addEventListener("click", async () => {
@@ -2251,10 +2251,6 @@ function impostorAvatarHtml() {
       >
       <div class="impostor-reveal-avatar-fallback" aria-hidden="true">
         <div class="impostor-hood">
-          <div class="impostor-face">
-            <span class="impostor-eye">&times;</span>
-            <span class="impostor-eye">&times;</span>
-          </div>
           <div class="impostor-finger"></div>
         </div>
       </div>
@@ -2292,17 +2288,6 @@ function isRevealTransitionPhase(phase) {
 
 function finalResultHeadline(results) {
   return results.was_varalica_caught === true ? "Varalica je otkrivena" : "Varalica je preživjela";
-}
-
-function renderResultOutcomeEyes(wasCaught, { compact = false } = {}) {
-  const modifier = wasCaught ? "is-caught" : "is-survived";
-  const compactClass = compact ? " is-compact" : "";
-  return `
-    <div class="result-outcome-eyes ${modifier}${compactClass}" aria-hidden="true">
-      <span class="result-outcome-eye result-outcome-eye-left"></span>
-      <span class="result-outcome-eye result-outcome-eye-right"></span>
-    </div>
-  `;
 }
 
 function patchImpostorRevealCountdown() {
@@ -2391,14 +2376,7 @@ function renderRevealCountdownTransition() {
           decoding="async"
           onerror="this.closest('.reveal-countdown-overlay').classList.add('image-failed')"
         >
-        <div class="reveal-countdown-card-surface" aria-hidden="true"></div>
         <div class="reveal-countdown-light" aria-hidden="true"></div>
-        <div class="reveal-countdown-eyes" aria-hidden="true">
-          <svg class="reveal-countdown-eyes-svg" viewBox="0 0 220 80" focusable="false" aria-hidden="true">
-            <path class="reveal-countdown-eye-shape reveal-countdown-eye-left" d="M20 40 C46 10 78 14 98 42 C72 53 47 54 20 40 Z"></path>
-            <path class="reveal-countdown-eye-shape reveal-countdown-eye-right" d="M200 40 C174 10 142 14 122 42 C148 53 173 54 200 40 Z"></path>
-          </svg>
-        </div>
         ${
           isCountdown && revealSequence.countdown
             ? `<div class="reveal-countdown-number" aria-label="${revealSequence.countdown}">${revealSequence.countdown}</div>`
@@ -2434,9 +2412,7 @@ function renderResultRevealHero(results, displayMode = "fullscreen") {
             aria-hidden="true"
             decoding="async"
           >
-          ${renderResultOutcomeEyes(wasCaught, { compact: true })}
         </div>
-        <p class="final-result-outcome-headline">${escapeHtml(headline)}</p>
       </div>
     `;
   }
@@ -2451,7 +2427,6 @@ function renderResultRevealHero(results, displayMode = "fullscreen") {
           aria-hidden="true"
           decoding="async"
         >
-        ${renderResultOutcomeEyes(wasCaught)}
         <div class="final-result-status-block">
           <h2 class="final-result-title">${escapeHtml(headline)}</h2>
         </div>

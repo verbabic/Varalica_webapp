@@ -213,8 +213,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `v=20260604_18` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result/card/title assets)
-- **Last frontend version update:** 2026-06-04 (production UI render/selector hotfix)
+- **Frontend cache/version string:** `v=20260604_20` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result/card/title assets)
+- **Last frontend version update:** 2026-06-04 (Phase 1.1 asset routing and countdown card cleanup)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +232,86 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-06-04 - Phase 1.1 asset routing and countdown card cleanup
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `static/app.js`
+  - `static/styles.css`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Bumped frontend cache strings to `v=20260604_20`.
+  - Switched the closed private `Dodirni kartu` card from `reveal_card.png` to `wordcard.png`.
+  - Reserved `reveal_card.png` for countdown/reveal by routing `REVEAL_COUNTDOWN_BASE_URL` to `reveal_card.png`.
+  - Restored `Logo_title.png?v=20260604_20` beside the `Varalica` title and increased `.hero-title-logo` size slightly above the capital V height.
+  - Centered countdown numbers in the reveal card and changed them to dark/black fill with purple neon stroke/glow.
+  - Added lightweight CSS-only edge fog during countdown; no generated eyes were added.
+  - Kept opened private cards on `Prikazikartu_player_normal_eyes.png` and `Prikazikartu.png`, with the existing board text positioning.
+- **Exact functions/classes touched:**
+  - JS/constants: `ASSET_CACHE`, `PRIVATE_CARD_CLOSED_URL`, `REVEAL_COUNTDOWN_BASE_URL`.
+  - CSS: `.hero-title-logo`, `.reveal-countdown-overlay::before`, `.reveal-countdown-overlay::after`, `.reveal-countdown-scene`, `.reveal-countdown-light`, `.reveal-countdown-number`, `@keyframes revealCountdownSmokeEdge`.
+  - HTML: title logo asset URL and frontend cache strings.
+- **What was not changed:**
+  - No backend, voting/overtime logic, room code logic, QR logic, WebSocket architecture, fly-card animation logic, mini scoreboard transition, reload-result logic, `words.py`, `storage.py`, vendor files, `.env`, deployment config, or services were changed.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` - passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` - passed with existing quality/duplicate/repetition warnings; structure OK with 1014 words.
+  - `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check static\app.js` - passed.
+  - `git diff --check` - passed with LF-to-CRLF warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Confirm closed private card uses `wordcard.png`, is visually sized like the previous card, pulses softly, and has `Dodirni kartu` below.
+  - Confirm countdown uses `reveal_card.png`, has no broken image placeholder, and numbers are centered with dark fill and purple neon outline/glow.
+  - Confirm no CSS/SVG/generated eyes appear in countdown or result scenes.
+  - Confirm `Logo_title.png` is visible beside `Varalica`, slightly larger than the capital V, and not oversized.
+  - Confirm result status remains shown once in fullscreen.
+- **Known issues:**
+  - Manual browser/mobile QA was not run in this Codex turn.
+  - Several asset files were already dirty/untracked before this work and were preserved.
+- **Notes:**
+  - This phase intentionally did not address fly-card animation behavior, mini scoreboard transition, reload-result logic, voting, overtime, room codes, QR, or WebSocket flow.
+
+### 2026-06-04 - Phase 1 asset-first reveal/card cleanup
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/index.html`
+  - `static/app.js`
+  - `static/styles.css`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Bumped frontend cache strings to `v=20260604_19` for `styles.css`, `app.js`, title logo, and app asset URLs.
+  - Removed generated reveal/countdown/result eye markup from the active frontend render path.
+  - Removed legacy fallback X-eye spans from `impostorAvatarHtml()` so generated eyes are not visible if the old fallback path is reached.
+  - Removed generated countdown card surface markup so `reveal_countdown_base.png` is the countdown scene and the number is centered on the image.
+  - Kept `reveal_card.png` as the closed private card asset, with the pulse on the card image/button and `Dodirni kartu` rendered below the card.
+  - Repositioned normal and Varalica private-card text panels into the image board area and tightened mobile text sizing/wrapping.
+  - Removed generated result-scene eye overlays and the duplicate compact result headline; fullscreen result still shows one allowed status headline.
+- **Exact functions/classes touched:**
+  - JS: `ASSET_CACHE`, `renderReveal()`, `impostorAvatarHtml()`, `renderRevealCountdownTransition()`, `renderResultRevealHero()`.
+  - CSS: `.private-card-closed-button`, `.private-card-tap-label`, `.private-card-text-panel`, `.private-card-open-stage.is-normal .private-card-text-panel`, `.private-card-open-stage.is-varalica .private-card-text-panel`, `.private-card-secret-*`, `.reveal-countdown-*`, `.result-outcome-*`, `.impostor-eye`.
+- **What was not changed:**
+  - No backend, voting/overtime logic, room code logic, QR logic, WebSocket architecture, fly-card animation, scoreboard transition, reload logic, `words.py`, vendor files, deployment config, or services were changed.
+- **Tests run:**
+  - `node --check static/app.js` - blocked by Windows with `Zugriff verweigert`.
+  - `python -m py_compile main.py` - not available because `python` is not on PATH in this shell.
+  - `.venv\Scripts\python.exe -m py_compile main.py` - passed.
+  - `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check static\app.js` - passed.
+  - `git diff --check` - passed with LF-to-CRLF warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Confirm closed `Dodirni kartu` shows `reveal_card.png`, pulses visibly, and label sits below the card.
+  - Confirm normal private card text stays inside the board on `Prikazikartu_player_normal_eyes.png`.
+  - Confirm Varalica private card text stays inside the board on `Prikazikartu.png` and does not show the secret word.
+  - Confirm countdown loads `reveal_countdown_base.png`, shows no broken image icon, and has no generated eyes.
+  - Confirm fullscreen result scene shows only one status headline and no generated result eyes.
+- **Known issues:**
+  - Manual browser/mobile QA was not run in this Codex turn.
+  - Several asset files were already dirty/untracked before this work and were preserved.
+- **Notes:**
+  - This phase intentionally did not address fly-card animation, scoreboard transitions, reload behavior, voting, overtime, room codes, QR, or WebSocket flow.
 
 ### 2026-06-04 — Production UI render/selector hotfix
 
