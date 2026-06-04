@@ -213,8 +213,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `v=20260604_22` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result/card/title assets)
-- **Last frontend version update:** 2026-06-04 (Phase 2 cinematic reveal flow)
+- **Frontend cache/version string:** `v=20260604_23` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result/card/title assets)
+- **Last frontend version update:** 2026-06-04 (visual/reveal flow fixes)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +232,45 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-06-04 - Visual/reveal flow fixes
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Bumped frontend cache strings to `v=20260604_23`.
+  - Moved the opened Varalica private-card text group higher inside the board and increased hint text sizing so the hint is closer to the “Ti si Varalica” visual size.
+  - Kept countdown timing at 5-4-3-2-1 with one second per number and kept `reveal_countdown_base.png`.
+  - Restyled countdown numbers as dark/transparent interior with stronger purple neon outline/glow.
+  - Kept purple left/right countdown smoke atmosphere behind the countdown scene.
+  - Adjusted fly-card animation so the card remains opaque during travel, fades only at the end, and rotates roughly 2x faster over the same travel duration.
+  - Disabled compact scoreboard entrance animations that were restarting on WebSocket re-renders and causing visible screen flashing.
+- **Exact functions/classes touched:**
+  - JS/constants: `ASSET_CACHE`.
+  - CSS: `.private-card-open-stage.is-varalica .private-card-text-panel`, `.private-card-secret-hint`, `.reveal-countdown-number`, `.final-result-compact`, `.results-card-compact > ...`, `@keyframes revealCardFlyForward`.
+  - HTML: `styles.css`, `app.js`, and `Logo_title.png` cache strings.
+- **What was not changed:**
+  - No backend game rules, player join/observer logic, voting, overtime, room code logic, QR logic, WebSocket architecture, `words.py`, `storage.py`, vendor files, image assets, `.env`, deployment config, or services were changed.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` - passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` - passed with existing quality/duplicate warnings; structure OK with 1014 words.
+  - `node --check static\app.js` - blocked by Windows with `Zugriff verweigert`.
+  - Bundled Node syntax check for `static\app.js` - passed.
+  - `git diff --check` - passed with line-ending warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Verify opened Varalica card text sits higher and hint is readable on mobile.
+  - Verify scoreboard/result screen no longer flashes on periodic WebSocket updates.
+  - Verify fly card stays visible while rotating/flying and fades only into the black/result transition.
+  - Verify countdown remains 5-4-3-2-1 at about one second per number, with purple outline-only number styling and smoke that does not hide the number.
+- **Known issues:**
+  - Manual browser verification is still required for exact mobile visual positioning and animation feel.
+- **Notes:**
+  - Existing uncommitted asset/untracked files were preserved and not reverted.
 
 ### 2026-06-04 - Phase 2 cinematic reveal flow
 
