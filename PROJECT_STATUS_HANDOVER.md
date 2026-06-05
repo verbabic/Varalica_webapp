@@ -213,8 +213,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `v=20260605_6` (verified in `static/index.html` for `styles.css`, `app.js`, and title asset)
-- **Last frontend version update:** 2026-06-05 (obsolete asset reference cleanup)
+- **Frontend cache/version string:** `v=20260605_7` (verified in `static/index.html` for `styles.css`, `app.js`, and title asset)
+- **Last frontend version update:** 2026-06-05 (post-deploy UI polish after v=20260605_6)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +232,49 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-06-05 - Post-deploy UI polish after v=20260605_6
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Fixed spectator list labels so the actual spectator sees `Igraš od sledeće runde`, while other players see `Igra od sledeće runde`.
+  - Adjusted spectator row/name CSS to prevent player names from wrapping letter-by-letter.
+  - Added countdown base-image readiness handling so countdown number `5` is hidden until `reveal_countdown_base.png` has loaded into the overlay.
+  - Cleaned countdown number outline styling to reduce deformation, especially on `2`, while preserving the neon purple outline/dark interior direction.
+  - Slightly reduced mini scoreboard `Statistika glasanja` and `Varalica je bio/la:` sizing while keeping the muted/purple color direction.
+  - Bumped frontend cache strings to `v=20260605_7`.
+- **Exact functions/classes/selectors touched:**
+  - Frontend JS: `ASSET_CACHE`, `revealCountdownImageReady`, `startRevealCountdown()`, `markRevealCountdownImageReady()`, `resetRevealSequence()`, `renderRevealCountdownTransition()`, `renderPlayers()`.
+  - Frontend CSS: `.player-row.is-spectator .player-name`, `.player-row.is-spectator .inline-player`, `.reveal-countdown-number`, `.reveal-countdown-overlay.is-image-ready .reveal-countdown-number`, `.results-card-compact > .vote-statistics-title`, `.varalica-summary-label`.
+  - HTML: cache strings for `styles.css`, `app.js`, and `Logo_title.png`.
+- **Frontend behavior changed:**
+  - Spectator names should render horizontally like normal player names.
+  - Spectator waiting label is now viewer-aware.
+  - Countdown number is not visible before the countdown card/background image is ready.
+  - Countdown number outline uses a slightly thinner stroke and dark/transparent fill.
+  - Mini scoreboard labels are slightly smaller.
+- **What was not changed:**
+  - Backend game rules, spectator backend rules, voting logic, overtime logic, reveal result logic, room code generation, QR/vendor code, words, storage, image assets, `.env`, deployment config.
+- **Tests run:**
+  - Bundled Node syntax check: `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check static\app.js` — passed.
+  - `git diff --check` — passed with CRLF conversion warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Spectator name is horizontal.
+  - Spectator himself sees `Igraš od sledeće runde`.
+  - Other players see `Igra od sledeće runde`.
+  - Number `5` does not appear before `reveal_countdown_base.png`.
+  - Countdown card is visible before countdown number starts.
+  - Number `2` is not visually deformed.
+  - `Statistika glasanja` and `Varalica je bio/la:` are slightly smaller.
+  - Confirm no gameplay logic changed.
+- **Known issues:**
+  - Manual browser/mobile QA still required for the visual timing and narrow spectator-row layout.
 
 ### 2026-06-05 - Obsolete asset reference cleanup
 

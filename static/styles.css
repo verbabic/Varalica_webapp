@@ -1172,6 +1172,16 @@ body.cinematic-reveal-active .association-overlay-dock {
   color: rgba(203, 213, 225, 0.78);
 }
 
+.player-row.is-spectator .player-name {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.player-row.is-spectator .inline-player {
+  max-width: 100%;
+  white-space: normal;
+}
+
 .player-row.is-spectator .status-dot {
   opacity: 0.66;
 }
@@ -2143,21 +2153,29 @@ body.cinematic-reveal-active .association-overlay-dock {
   width: 28%;
   transform: translate(-50%, -50%);
   margin: 0;
-  color: rgba(4, 0, 10, 0.16);
-  -webkit-text-fill-color: rgba(4, 0, 10, 0.16);
-  -webkit-text-stroke: clamp(2.2px, 0.52vw, 3.8px) #c084fc;
+  color: transparent;
+  -webkit-text-fill-color: rgba(4, 0, 10, 0.02);
+  -webkit-text-stroke: clamp(1.7px, 0.42vw, 3px) #c084fc;
   font-size: clamp(4.2rem, 18vw, 9.4rem);
+  font-family: Impact, "Arial Black", system-ui, sans-serif;
   line-height: 1;
   font-weight: 950;
   text-align: center;
+  paint-order: stroke fill;
   text-shadow:
-    0 0 4px rgba(233, 213, 255, 0.95),
-    0 0 16px rgba(192, 132, 252, 0.98),
-    0 0 34px rgba(168, 85, 247, 0.78),
-    0 0 58px rgba(91, 33, 182, 0.5);
-  opacity: 0.94;
+    0 0 3px rgba(233, 213, 255, 0.88),
+    0 0 14px rgba(192, 132, 252, 0.96),
+    0 0 30px rgba(168, 85, 247, 0.72),
+    0 0 52px rgba(91, 33, 182, 0.42);
+  opacity: 0;
+  visibility: hidden;
   pointer-events: none;
   animation: revealCountdownNumberPunch 1s cubic-bezier(0.2, 0.9, 0.24, 1) both;
+}
+
+.reveal-countdown-overlay.is-image-ready .reveal-countdown-number {
+  opacity: 0.94;
+  visibility: visible;
 }
 
 .reveal-countdown-overlay.countdown_1 .reveal-countdown-light,
@@ -3144,6 +3162,7 @@ body.cinematic-reveal-active .association-overlay-dock {
 
 .results-card-compact > .vote-statistics-title {
   color: rgba(226, 232, 240, 0.8);
+  font-size: clamp(1rem, 4.5vw, 1.32rem);
   text-shadow: 0 0 12px rgba(148, 163, 184, 0.12);
 }
 
@@ -3157,6 +3176,7 @@ body.cinematic-reveal-active .association-overlay-dock {
 
 .varalica-summary-label {
   color: #c4b5fd;
+  font-size: 0.88em;
   text-shadow:
     0 0 12px rgba(168, 85, 247, 0.34),
     0 0 20px rgba(124, 58, 237, 0.18);

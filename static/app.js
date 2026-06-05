@@ -47,7 +47,7 @@ const PRODUCTION_ORIGIN = "https://varalica.autolovac.space";
 const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
 const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
 const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
-const ASSET_CACHE = "20260605_6";
+const ASSET_CACHE = "20260605_7";
 const PRIVATE_CARD_CLOSED_URL = `/static/assets/wordcard.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_NORMAL_URL = `/static/assets/Prikazikartu_player_normal_eyes.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_VARALICA_URL = `/static/assets/Prikazikartu.png?v=${ASSET_CACHE}`;
@@ -119,6 +119,7 @@ let roomPanelCollapsed = sessionStorage.getItem("varalica_room_panel_collapsed")
 let lastAssociationBannerStackKey = "";
 let lastPlayersListPhase = "";
 let lastRenderedRevealPhase = "";
+let revealCountdownImageReady = false;
 
 function initLandingSplash() {
   if (!landingSplash) return;
@@ -861,6 +862,7 @@ function startRevealCountdown() {
     complete: false,
     showReplay: false,
   };
+  revealCountdownImageReady = false;
   lastRenderedRevealPhase = "";
 
   const isCurrentUserVaralica = isViewerVaralica(roomState.results);
@@ -917,10 +919,16 @@ function prefersReducedMotion() {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+function markRevealCountdownImageReady(image) {
+  revealCountdownImageReady = true;
+  image?.closest(".reveal-countdown-overlay")?.classList.add("is-image-ready");
+}
+
 function resetRevealSequence() {
   revealSequenceTimers.forEach((timer) => clearTimeout(timer));
   revealSequenceTimers = [];
   lastRenderedRevealPhase = "";
+  revealCountdownImageReady = false;
   revealSequence = {
     active: false,
     phase: "complete",
@@ -2438,7 +2446,7 @@ function renderRevealCountdownTransition() {
   phaseContent.innerHTML = `
     <div
       id="revealCountdownStage"
-      class="reveal-countdown-overlay ${escapeHtml(phase)} ${isImpact ? "is-impact" : ""} ${isBlackout ? "is-blackout" : ""}"
+      class="reveal-countdown-overlay ${escapeHtml(phase)} ${revealCountdownImageReady ? "is-image-ready" : ""} ${isImpact ? "is-impact" : ""} ${isBlackout ? "is-blackout" : ""}"
       data-reveal-phase="${escapeHtml(phase)}"
       aria-live="polite"
     >
@@ -2452,6 +2460,7 @@ function renderRevealCountdownTransition() {
           aria-hidden="true"
           loading="eager"
           decoding="async"
+          onload="markRevealCountdownImageReady(this)"
           onerror="this.closest('.reveal-countdown-overlay').classList.add('image-failed')"
         >
         <div class="reveal-countdown-light" aria-hidden="true"></div>
@@ -2793,8 +2802,9 @@ function renderPlayers() {
     const isViewerHost = roomState.viewer_id === roomState.host_id;
     const hostLabel = player.is_host ? `<span class="badge host-badge" title="Host">👑</span>` : "";
     const currentLabel = "";
+    const spectatorWaitingText = player.id === roomState.viewer_id ? "Igraš od sledeće runde" : "Igra od sledeće runde";
     const spectatorLabel = player.is_spectator
-      ? `<span class="badge spectator-badge">Posmatrač</span><span class="badge spectator-waiting-badge">Igraš od sledeće runde</span>`
+      ? `<span class="badge spectator-badge">Posmatrač</span><span class="badge spectator-waiting-badge">${spectatorWaitingText}</span>`
       : "";
     const voteLabel = player.requested_vote ? `<span class="badge vote-requested">Trazi glasanje</span>` : "";
     const associationBubble = player.association
