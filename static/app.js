@@ -44,11 +44,10 @@ const SESSION_MAX_AGE_MS = 15 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 12000;
 const NEXT_PLAYER_UNLOCK_DELAY_MS = 1000;
 const PRODUCTION_ORIGIN = "https://varalica.autolovac.space";
-const IMPOSTOR_REVEAL_AVATAR_URL = "/static/assets/Varalica_crveno.png";
 const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
 const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
 const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
-const ASSET_CACHE = "20260605_5";
+const ASSET_CACHE = "20260605_6";
 const PRIVATE_CARD_CLOSED_URL = `/static/assets/wordcard.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_NORMAL_URL = `/static/assets/Prikazikartu_player_normal_eyes.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_VARALICA_URL = `/static/assets/Prikazikartu.png?v=${ASSET_CACHE}`;
@@ -2325,15 +2324,10 @@ function impostorAvatarHtml() {
         loading="eager"
         decoding="async"
       >
-      <img
-        class="impostor-reveal-avatar-img"
-        src="${escapeHtml(IMPOSTOR_REVEAL_AVATAR_URL)}"
-        alt="Varalica avatar"
-        loading="eager"
-        decoding="async"
-        onerror="this.closest('.impostor-avatar-asset').classList.add('image-failed')"
+      <div
+        class="impostor-reveal-avatar-fallback"
+        aria-hidden="true"
       >
-      <div class="impostor-reveal-avatar-fallback" aria-hidden="true">
         <div class="impostor-hood">
           <div class="impostor-finger"></div>
         </div>

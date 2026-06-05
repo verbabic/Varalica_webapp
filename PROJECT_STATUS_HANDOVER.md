@@ -213,8 +213,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `v=20260605_5` (verified in `static/index.html` for `styles.css`, `app.js`, and title asset)
-- **Last frontend version update:** 2026-06-05 (Phase 3A/3B state and reveal/result polish)
+- **Frontend cache/version string:** `v=20260605_6` (verified in `static/index.html` for `styles.css`, `app.js`, and title asset)
+- **Last frontend version update:** 2026-06-05 (obsolete asset reference cleanup)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +232,35 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-06-05 - Obsolete asset reference cleanup
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/app.js`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Removed the obsolete `IMPOSTOR_REVEAL_AVATAR_URL` constant pointing to deleted `static/assets/Varalica_crveno.png`.
+  - Removed the dependent avatar `<img>` from the old `impostorAvatarHtml()` helper, leaving its CSS fallback avatar/ring structure intact if that helper is ever used.
+  - Confirmed no `Logo.png` references remain; title continues to use `Logo_title.png`.
+  - Bumped frontend cache strings to `v=20260605_6`.
+- **Exact references removed/replaced:**
+  - Removed `/static/assets/Varalica_crveno.png` from `static/app.js`.
+  - Removed `IMPOSTOR_REVEAL_AVATAR_URL` from `static/app.js`.
+  - Kept `/static/assets/Logo_title.png?v=20260605_6` in `static/index.html`.
+- **What was not changed:**
+  - Reveal/game logic, backend, words, storage, QR/vendor code, room code generation, image files, `.env`, deployment config.
+- **Tests run:**
+  - Bundled Node syntax check: `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check static\app.js` — passed.
+  - `git diff --check` — passed with CRLF conversion warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Browser check that no 404 request is made for `Varalica_crveno.png` or `Logo.png`.
+  - Verify title logo still loads from `Logo_title.png`.
+  - Run reveal/result flow and confirm no visual regression in current active reveal scenes.
+- **Known issues:**
+  - Manual browser/network-panel verification still required.
 
 ### 2026-06-05 - Phase 3A/3B tab-close and reveal/result polish
 
