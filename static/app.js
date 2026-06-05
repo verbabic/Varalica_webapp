@@ -48,12 +48,12 @@ const IMPOSTOR_REVEAL_AVATAR_URL = "/static/assets/Varalica_crveno.png";
 const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
 const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
 const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
-const ASSET_CACHE = "20260605_4";
+const ASSET_CACHE = "20260605_5";
 const PRIVATE_CARD_CLOSED_URL = `/static/assets/wordcard.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_NORMAL_URL = `/static/assets/Prikazikartu_player_normal_eyes.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_VARALICA_URL = `/static/assets/Prikazikartu.png?v=${ASSET_CACHE}`;
 const REVEAL_COUNTDOWN_BASE_URL = `/static/assets/reveal_countdown_base.png?v=${ASSET_CACHE}`;
-const REVEAL_FLYING_CARD_URL = `/static/assets/reveal_card.png?v=${ASSET_CACHE}`;
+const REVEAL_FLYING_CARD_URL = `/static/assets/wordcard.png?v=${ASSET_CACHE}`;
 const RESULT_CAUGHT_SCENE_URL = `/static/assets/result_caught_scene.png?v=${ASSET_CACHE}`;
 const RESULT_SURVIVED_SCENE_URL = `/static/assets/result_survived_scene_base.png?v=${ASSET_CACHE}`;
 const REVEAL_COUNTDOWN_STEP_MS = 1000;
@@ -2583,12 +2583,17 @@ function renderResults() {
     .map((player) => escapeHtml(playerNameText(player)))
     .join(", ");
 
+  const varalicaSummaryLabel = (results.varalice || []).length > 1 ? "Varalice su bile" : "Varalica je bio/la";
+
   phaseContent.innerHTML = `
     <div class="phase-card results-card results-card-${escapeHtml(finalResultDisplayMode)}">
       ${renderResultRevealHero(results, finalResultDisplayMode)}
       ${roomState.viewer_is_spectator ? spectatorNoticeHtml() : ""}
-      <h2>Statistika glasanja</h2>
-      <p class="big-result">${(results.varalice || []).length > 1 ? "Varalice su bile" : "Varalica je bio/la"}: ${escapeHtml(varaliceNameText(results))}</p>
+      <h2 class="vote-statistics-title">Statistika glasanja</h2>
+      <p class="big-result varalica-summary">
+        <span class="varalica-summary-label">${varalicaSummaryLabel}:</span>
+        <span class="varalica-summary-name">${escapeHtml(varaliceNameText(results))}</span>
+      </p>
       <p class="word-result">Riječ je bila: ${escapeHtml(results.word.hr)} (${escapeHtml(results.word.sr)})</p>
       <p class="outcome-text">${escapeHtml(results.outcome)}</p>
       <p class="helper-text">
@@ -2792,7 +2797,7 @@ function renderPlayers() {
     const disconnectedLabel = "";
     const connectedLabel = "";
     const isViewerHost = roomState.viewer_id === roomState.host_id;
-    const hostLabel = player.is_host ? `<span class="badge host-badge" title="Host">👑 H</span>` : "";
+    const hostLabel = player.is_host ? `<span class="badge host-badge" title="Host">👑</span>` : "";
     const currentLabel = "";
     const spectatorLabel = player.is_spectator
       ? `<span class="badge spectator-badge">Posmatrač</span><span class="badge spectator-waiting-badge">Igraš od sledeće runde</span>`

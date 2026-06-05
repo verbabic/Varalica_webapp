@@ -43,7 +43,7 @@ PLAYER_LIST_REACTION_SECONDS = 3
 MAX_REACTIONS_PER_TARGET = 8
 ASSOCIATION_BANNER_LIFETIME_SECONDS = 5
 MAX_ASSOCIATION_BANNERS = 3
-TAB_CLOSE_REMOVE_SECONDS = 60
+TAB_CLOSE_REMOVE_SECONDS = 30
 ACTIVE_GRACE_SECONDS = 30
 AWAY_AFTER_SECONDS = 30
 IDLE_AFTER_SECONDS = 180
@@ -825,6 +825,7 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: st
             now = time.time()
             room.players[player_id].disconnect_started_at = now
             room.players[player_id].disconnected_at = now
+            room.players[player_id].likely_tab_closed_at = now
             room.players[player_id].connection_state = "away"
             asyncio.create_task(disconnected_player_status_loop(room.code, player_id))
         normalize_current_player(room)
@@ -1342,7 +1343,7 @@ def player_connection_status(player: Player) -> str:
 
 
 def should_remove_player(player: Player, now: float) -> bool:
-    if player.likely_tab_closed_at is not None and now - player.likely_tab_closed_at > TAB_CLOSE_REMOVE_SECONDS:
+    if player.likely_tab_closed_at is not None and now - player.likely_tab_closed_at >= TAB_CLOSE_REMOVE_SECONDS:
         return True
     return now - player.last_seen_at > RECONNECT_GRACE_SECONDS
 

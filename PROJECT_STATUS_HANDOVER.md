@@ -213,8 +213,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `v=20260605_4` (verified in `static/index.html` for `styles.css`, `app.js`, and title asset)
-- **Last frontend version update:** 2026-06-05 (Phase 2 spectator UI polish)
+- **Frontend cache/version string:** `v=20260605_5` (verified in `static/index.html` for `styles.css`, `app.js`, and title asset)
+- **Last frontend version update:** 2026-06-05 (Phase 3A/3B state and reveal/result polish)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +232,52 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-06-05 - Phase 3A/3B tab-close and reveal/result polish
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `main.py`
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Reduced tab-close/WebSocket disconnect removal grace to 30 seconds while preserving reconnect cleanup.
+  - Removed the `H` from the host badge so host display is crown-only.
+  - Switched the post-countdown flying card asset to `wordcard.png` and raised its reveal z-index so it stays above the countdown base layer.
+  - Kept fullscreen result scene assets as `result_survived_scene_base.png` and `result_caught_scene.png`; fullscreen result duration remains 3 seconds with single status text and no nickname in fullscreen.
+  - Polished mini scoreboard result text: muted `Statistika glasanja`, purple `Varalica je bio/la:` label, and stronger Varalica nickname emphasis.
+  - Bumped frontend cache strings to `v=20260605_5`.
+- **Exact functions/classes touched:**
+  - Backend: `TAB_CLOSE_REMOVE_SECONDS`, `websocket_endpoint()`, `should_remove_player()`.
+  - Frontend JS: `ASSET_CACHE`, `REVEAL_FLYING_CARD_URL`, `renderResults()`, `renderPlayers()`.
+  - Frontend CSS: `.reveal-flying-card`, `.reveal-countdown-overlay.flying_card .reveal-flying-card`, `.final-result-varalica-name`, `.results-card-compact > .vote-statistics-title`, `.varalica-summary*`.
+  - HTML: cache strings for `styles.css`, `app.js`, and `Logo_title.png`.
+- **Backend behavior changed:**
+  - WebSocket disconnect now starts the same 30-second likely-tab-closed removal clock used by explicit tab-close signals.
+  - Players can still reconnect within the grace period because reconnect paths clear disconnect/tab-close flags.
+- **Frontend behavior changed:**
+  - Host badge renders only `👑`.
+  - Flying reveal card uses `static/assets/wordcard.png` and is layered above the countdown scene.
+  - Mini scoreboard result labels are visually clearer without changing result data.
+- **What was not changed:**
+  - Voting winner logic, overtime rules, majority rules, room code generation, QR logic, word database, storage schema, image assets, `.env`, deployment config.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` — passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` — passed (`STRUCTURE OK: 1014 words`; existing quality/duplicate warnings remain).
+  - `node --check static\app.js` — blocked by Windows `Zugriff verweigert`.
+  - Bundled Node syntax check: `C:\Users\Ljubomir Verbabic\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe --check static\app.js` — passed.
+  - `git diff --check` — passed with CRLF conversion warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Close a tab during an active room and confirm the player is removed after 30 seconds if they do not reconnect.
+  - Reconnect the same player within 30 seconds and confirm they are not removed or duplicated.
+  - Confirm host badge is crown-only.
+  - Run reveal flow and confirm `wordcard.png` flies above `reveal_countdown_base.png` without flicker/duplicate card.
+  - Confirm fullscreen result uses the expected caught/survived scene asset, single status text, no nickname, and then mini scoreboard shows the polished text.
+- **Known issues:**
+  - Manual multi-tab/browser QA still required for timing-sensitive disconnect and reveal animation behavior.
 
 ### 2026-06-05 - Phase 2 spectator UI polish
 

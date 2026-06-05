@@ -2197,16 +2197,21 @@ body.cinematic-reveal-active .association-overlay-dock {
   position: absolute;
   left: 50%;
   top: 68%;
-  z-index: 8;
+  z-index: 14;
   width: 33%;
   height: auto;
   transform: translate(-50%, -50%);
+  opacity: 1;
   pointer-events: none;
   user-select: none;
   filter:
     drop-shadow(0 26px 42px rgba(0, 0, 0, 0.72))
     drop-shadow(0 0 24px rgba(192, 132, 252, 0.48));
   animation: revealCardFlyForward 2.4s cubic-bezier(0.14, 0.82, 0.18, 1) both;
+}
+
+.reveal-countdown-overlay.flying_card .reveal-flying-card {
+  opacity: 1;
 }
 
 .impostor-reveal-stage {
@@ -3126,8 +3131,8 @@ body.cinematic-reveal-active .association-overlay-dock {
 .final-result-varalica-name {
   margin: 0;
   max-width: 100%;
-  color: #f5f3ff;
-  font-size: clamp(1.05rem, 4.5vw, 1.55rem);
+  color: #ede9fe;
+  font-size: clamp(1.14rem, 4.9vw, 1.72rem);
   font-weight: 950;
   line-height: 1.1;
   text-align: center;
@@ -3135,6 +3140,35 @@ body.cinematic-reveal-active .association-overlay-dock {
   text-shadow:
     0 0 12px rgba(168, 85, 247, 0.36),
     0 0 24px rgba(124, 58, 237, 0.22);
+}
+
+.results-card-compact > .vote-statistics-title {
+  color: rgba(226, 232, 240, 0.8);
+  text-shadow: 0 0 12px rgba(148, 163, 184, 0.12);
+}
+
+.varalica-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.2em 0.34em;
+}
+
+.varalica-summary-label {
+  color: #c4b5fd;
+  text-shadow:
+    0 0 12px rgba(168, 85, 247, 0.34),
+    0 0 20px rgba(124, 58, 237, 0.18);
+}
+
+.varalica-summary-name {
+  color: #f5f3ff;
+  font-size: 1.08em;
+  font-weight: 950;
+  text-shadow:
+    0 0 14px rgba(168, 85, 247, 0.42),
+    0 0 28px rgba(124, 58, 237, 0.24);
 }
 
 .final-result-outcome-headline {
