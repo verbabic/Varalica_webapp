@@ -48,7 +48,7 @@ const IMPOSTOR_REVEAL_AVATAR_URL = "/static/assets/Varalica_crveno.png";
 const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
 const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
 const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
-const ASSET_CACHE = "20260605_3";
+const ASSET_CACHE = "20260605_4";
 const PRIVATE_CARD_CLOSED_URL = `/static/assets/wordcard.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_NORMAL_URL = `/static/assets/Prikazikartu_player_normal_eyes.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_VARALICA_URL = `/static/assets/Prikazikartu.png?v=${ASSET_CACHE}`;
@@ -1593,7 +1593,11 @@ function render() {
   setCinematicRevealActive(isCinematicRevealActive());
   roomCodeDisplay.textContent = roomState.room_code;
   roundDisplay.textContent = `Runda ${roomState.round_number || 1}`;
-  playerCountBadge.textContent = `${roomState.player_count}/${roomState.max_players}`;
+  const spectatorCount = roomState.players.filter((player) => player.is_spectator).length;
+  const activePlayerCount = Math.max(0, Number(roomState.player_count || 0) - spectatorCount);
+  playerCountBadge.textContent = spectatorCount > 0
+    ? `Igrači: ${activePlayerCount}/${roomState.max_players} · Posmatrači: ${spectatorCount}`
+    : `Igrači: ${activePlayerCount}/${roomState.max_players}`;
   resetRoomButton.classList.add("hidden");
   renderModeToggle();
   applyRoomPanelCollapse();

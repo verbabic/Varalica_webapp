@@ -213,8 +213,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `v=20260605_3` (verified in `static/index.html` for `styles.css`, `app.js`, and title asset)
-- **Last frontend version update:** 2026-06-05 (Phase 1 stability/game-state fixes)
+- **Frontend cache/version string:** `v=20260605_4` (verified in `static/index.html` for `styles.css`, `app.js`, and title asset)
+- **Last frontend version update:** 2026-06-05 (Phase 2 spectator UI polish)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +232,40 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-06-05 - Phase 2 spectator UI polish
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/app.js`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Kept existing spectator ordering/styling behavior: spectators render after active/playable players, keep muted row styling, cannot receive current-player highlight, and remain host-kickable through the existing kick button/confirmation flow.
+  - Kept existing spectator row labels `Posmatrač` and `Igraš od sledeće runde`.
+  - Added split player count text in the player panel badge: `Igrači: X/8` and, when present, `Posmatrači: Y`.
+  - Bumped frontend cache strings to `v=20260605_4`.
+- **Exact functions/classes touched:**
+  - Frontend JS: `ASSET_CACHE`, `render()`.
+  - HTML: cache strings for `styles.css`, `app.js`, and `Logo_title.png`.
+- **Frontend behavior changed:**
+  - Player count badge now separates active/non-spectator player count from spectator count without backend changes.
+- **Backend rules changed:** None.
+- **What was not changed:**
+  - No rejoin logic, minimum player logic, host mode lock, spectator backend rules, reveal animations, countdown, fly-card, voting rules, QR logic, room code generation, word database, assets, `.env`, deployment config, or services were changed.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` - passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` - passed with existing quality/duplicate warnings; structure OK with 1014 words.
+  - `node --check static/app.js` - blocked by Windows with `Zugriff verweigert`.
+  - Bundled Node syntax check for `static\app.js` - passed.
+  - `git diff --check` - passed with line-ending warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Verify spectators appear after playable players, faded/muted, with both labels.
+  - Verify spectators remain kickable by host and kick confirmation still appears.
+  - Verify player panel count shows `Igrači: X/8` and `Posmatrači: Y` when spectators exist.
+- **Known issues:**
+  - Manual multi-tab QA is still required for spectator late-join and next-round activation behavior.
 
 ### 2026-06-05 - Phase 1 stability/game-state fixes
 
