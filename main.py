@@ -93,6 +93,7 @@ class NameRequest(BaseModel):
     name: str
     avatar: str | None = None
     play_mode: str | None = None
+    player_id: str | None = None
 
 
 class PlayerAction(BaseModel):
@@ -156,6 +157,7 @@ class Room:
     state: str = "lobby"
     players: dict[str, Player] = field(default_factory=dict)
     host_id: str | None = None
+    play_mode: str = "live"
     varalica_id: str | None = None
     varalica_ids: list[str] = field(default_factory=list)
     selected_varalica_count: int = 1
@@ -219,23 +221,25 @@ async def room_status(room_code: str) -> dict:
 async def create_room(request: NameRequest) -> dict:
     name = clean_name(request.name)
     room_code = make_room_code()
+    room_play_mode = normalize_play_mode(request.play_mode)
     room = Room(
         code=room_code,
         used_word_indexes=load_used_word_indexes(room_code),
+        play_mode=room_play_mode,
     )
     player = Player(
         id=str(uuid.uuid4()),
         name=name,
         avatar=choose_avatar(room, request.avatar),
         is_host=True,
-        play_mode=normalize_play_mode(request.play_mode),
+        play_mode=room_play_mode,
     )
     room.host_id = player.id
     room.players[player.id] = player
     ensure_scoreboard_player(room, player.id)
     rooms[room_code] = room
     persist_room(room)
-    return {"room_code": room_code, "player_id": player.id, "avatar": player.avatar}
+    return {"room_code": room_code, "player_id": player.id, "avatar": player.avatar, "room_play_mode": room.play_mode}
 
 
 @app.post("/api/rooms/{room_code}/join")
@@ -243,17 +247,65 @@ async def join_room(room_code: str, request: NameRequest) -> dict:
     room = get_room(room_code)
     if not room.players and room.empty_since is not None:
         raise HTTPException(status_code=404, detail="Soba je istekla.")
+    cleanup_expired_disconnected_players(room)
+
+    cleaned_name = clean_name(request.name)
+    requested_player_id = (request.player_id or "").strip()
+    existing_player = room.players.get(requested_player_id) if requested_player_id else None
+    if existing_player is None:
+        requested_key = name_key(cleaned_name)
+        matching_players = [
+            player
+            for player in room.players.values()
+            if name_key(player.name) == requested_key
+        ]
+        active_name_holder = next(
+            (
+                player
+                for player in matching_players
+                if player.connected and player_connection_status(player) == "active"
+            ),
+            None,
+        )
+        if active_name_holder is not None:
+            raise HTTPException(status_code=400, detail="Igrac sa tim imenom je vec u sobi.")
+        existing_player = matching_players[0] if matching_players else None
+
+    if existing_player is not None:
+        existing_player.name = cleaned_name
+        existing_player.connected = True
+        existing_player.last_seen_at = time.time()
+        existing_player.connection_state = "active"
+        existing_player.disconnect_started_at = None
+        existing_player.disconnected_at = None
+        existing_player.likely_tab_closed_at = None
+        existing_player.play_mode = room.play_mode
+        if request.avatar in ALLOWED_AVATARS:
+            existing_player.avatar = request.avatar
+        ensure_scoreboard_player(room, existing_player.id)
+        cancel_empty_room_cleanup(room)
+        set_room_event(room, "reconnect", existing_player)
+        persist_room(room)
+        await broadcast_room(room)
+        spectator = room.state != "lobby" and existing_player.id not in room.round_player_ids
+        return {
+            "room_code": room.code,
+            "player_id": existing_player.id,
+            "avatar": existing_player.avatar,
+            "room_play_mode": room.play_mode,
+            "spectator": spectator,
+            "message": "Ušao si kao posmatrač. Igraš od sledeće runde." if spectator else "",
+        }
+
     if len(room.players) >= MAX_PLAYERS:
-        raise HTTPException(status_code=400, detail="Soba je puna. Maksimalno 8 igrača.")
-    if room.state != "lobby":
-        raise HTTPException(status_code=400, detail="Runda je vec pocela.")
+        raise HTTPException(status_code=400, detail="Soba je puna. Maksimalno 8 igraca.")
 
     player = Player(
         id=str(uuid.uuid4()),
-        name=clean_name(request.name),
+        name=cleaned_name,
         avatar=choose_avatar(room, request.avatar),
         is_host=not bool(room.players),
-        play_mode=normalize_play_mode(request.play_mode),
+        play_mode=room.play_mode,
     )
     if player.is_host:
         room.host_id = player.id
@@ -262,7 +314,15 @@ async def join_room(room_code: str, request: NameRequest) -> dict:
     set_room_event(room, "join", player)
     persist_room(room)
     await broadcast_room(room)
-    return {"room_code": room.code, "player_id": player.id, "avatar": player.avatar}
+    spectator = room.state != "lobby"
+    return {
+        "room_code": room.code,
+        "player_id": player.id,
+        "avatar": player.avatar,
+        "room_play_mode": room.play_mode,
+        "spectator": spectator,
+        "message": "Ušao si kao posmatrač. Igraš od sledeće runde." if spectator else "",
+    }
 
 
 @app.post("/api/rooms/{room_code}/start")
@@ -272,8 +332,7 @@ async def start_round(room_code: str, action: StartRoundAction) -> dict:
     if room.state != "lobby":
         raise HTTPException(status_code=400, detail="Runda je vec pokrenuta.")
 
-    cleanup_expired_disconnected_players(room)
-    active_players = [player for player in room.players.values() if is_player_active_for_round(player)]
+    active_players = active_playable_players_for_next_round(room)
     if len(active_players) < MIN_PLAYERS:
         raise HTTPException(status_code=400, detail="Potrebna su najmanje 4 igraca.")
     if len(active_players) > MAX_PLAYERS:
@@ -428,12 +487,14 @@ async def reset_room(room_code: str, action: PlayerAction) -> dict:
 @app.post("/api/rooms/{room_code}/play-mode")
 async def update_play_mode(room_code: str, action: PlayModeAction) -> dict:
     room = get_room(room_code)
-    if room.state != "lobby":
-        raise HTTPException(status_code=400, detail="Nacin igre se moze promijeniti samo prije pocetka runde.")
     player = room.players.get(action.player_id)
     if player is None:
         raise HTTPException(status_code=404, detail="Igrac nije u sobi.")
-    player.play_mode = normalize_play_mode(action.play_mode)
+    requested_mode = normalize_play_mode(action.play_mode)
+    if requested_mode != room.play_mode:
+        locked_room_label = "Chat" if room.play_mode == "chat" else "Live"
+        raise HTTPException(status_code=400, detail=f"Host je napravio {locked_room_label} sobu.")
+    player.play_mode = room.play_mode
     persist_room(room)
     await broadcast_room(room)
     return {"ok": True}
@@ -667,10 +728,9 @@ async def new_round(room_code: str, action: PlayerAction) -> dict:
     if room.state != "results":
         raise HTTPException(status_code=400, detail="Nova runda je dostupna tek nakon rezultata.")
 
-    cleanup_expired_disconnected_players(room)
-    active_players = [player for player in room.players.values() if is_player_active_for_round(player)]
+    active_players = active_playable_players_for_next_round(room)
     if len(active_players) < MIN_PLAYERS:
-        raise HTTPException(status_code=400, detail="Potrebna su najmanje 4 aktivna igrača za novu rundu.")
+        raise HTTPException(status_code=400, detail="Potrebna su najmanje 4 aktivna igraca za novu rundu.")
 
     room.round_number += 1
     prepare_reveal_round(room, active_players)
@@ -797,6 +857,10 @@ def normalize_play_mode(value: str | None) -> str:
     return "chat" if value == "chat" else "live"
 
 
+def name_key(name: str) -> str:
+    return " ".join(name.strip().casefold().split())
+
+
 def clean_association_text(text: str) -> str:
     cleaned = " ".join(text.strip().split())
     if not cleaned:
@@ -841,6 +905,7 @@ def room_to_snapshot(room: Room) -> dict:
         "code": room.code,
         "state": room.state,
         "host_id": room.host_id,
+        "play_mode": room.play_mode,
         "varalica_id": room.varalica_id,
         "varalica_ids": room.varalica_ids,
         "selected_varalica_count": room.selected_varalica_count,
@@ -893,12 +958,24 @@ def room_to_snapshot(room: Room) -> dict:
     }
 
 
+def snapshot_play_mode(snapshot: dict) -> str:
+    players = snapshot.get("players", [])
+    host_id = snapshot.get("host_id")
+    for player_data in players:
+        if host_id and player_data.get("id") == host_id:
+            return normalize_play_mode(player_data.get("play_mode"))
+    if players:
+        return normalize_play_mode(players[0].get("play_mode"))
+    return "live"
+
+
 def room_from_snapshot(snapshot: dict) -> Room:
     room_code = str(snapshot["code"]).upper()
     room = Room(
         code=room_code,
         state=snapshot.get("state", "lobby"),
         host_id=snapshot.get("host_id"),
+        play_mode=normalize_play_mode(snapshot.get("play_mode") or snapshot_play_mode(snapshot)),
         varalica_id=snapshot.get("varalica_id"),
         varalica_ids=list(snapshot.get("varalica_ids") or ([snapshot.get("varalica_id")] if snapshot.get("varalica_id") else [])),
         selected_varalica_count=int(snapshot.get("selected_varalica_count", 1)),
@@ -962,7 +1039,7 @@ def room_from_snapshot(snapshot: dict) -> Room:
             has_voted=bool(player_data.get("has_voted", False)),
             disconnected_at=player_data.get("disconnected_at"),
             likely_tab_closed_at=player_data.get("likely_tab_closed_at"),
-            play_mode=normalize_play_mode(player_data.get("play_mode")),
+            play_mode=room.play_mode,
             joined_at=float(player_data.get("joined_at", time.time())),
         )
         room.players[player.id] = player
@@ -1234,6 +1311,19 @@ def reset_room_to_lobby(room: Room) -> None:
 
 def is_player_active_for_round(player: Player) -> bool:
     return not should_remove_player(player, time.time())
+
+
+def is_player_active_playable_now(player: Player) -> bool:
+    return player.connected and player_connection_status(player) == "active"
+
+
+def active_playable_players_for_next_round(room: Room) -> list[Player]:
+    cleanup_expired_disconnected_players(room)
+    return [
+        player
+        for player in room.players.values()
+        if player.id not in room.kicked_player_ids and is_player_active_playable_now(player)
+    ]
 
 
 def player_connection_status(player: Player) -> str:
@@ -1951,11 +2041,14 @@ def public_state(room: Room, viewer_id: str) -> dict:
     cleanup_association_banners(room)
     cleanup_reactions(room)
     all_confirmed = room.state == "reveal" and all_active_players_confirmed(room)
+    viewer_is_spectator = room.state != "lobby" and viewer_id in room.players and viewer_id not in room.round_player_ids
+    spectator_message = "Ušao si kao posmatrač. Igraš od sledeće runde." if viewer_is_spectator else ""
     return {
         "room_code": room.code,
         "state": room.state,
         "viewer_id": viewer_id,
         "host_id": room.host_id,
+        "play_mode": room.play_mode,
         "min_players": MIN_PLAYERS,
         "max_players": MAX_PLAYERS,
         "idle_after_seconds": IDLE_AFTER_SECONDS,
@@ -1975,8 +2068,11 @@ def public_state(room: Room, viewer_id: str) -> dict:
         "scoreboard": scoreboard_state(room),
         "last_event": room.last_event,
         "player_count": len(room.players),
+        "active_playable_player_count": len(active_playable_players_for_next_round(room)),
         "not_enough_players_message": "Nema dovoljno igraca za nastavak igre." if 0 < len(active_round_player_ids(room)) < MIN_PLAYERS and room.state != "lobby" else "",
         "all_confirmed": all_confirmed,
+        "viewer_is_spectator": viewer_is_spectator,
+        "spectator_message": spectator_message,
         "change_word_available": change_word_allowed(room),
         "change_word_seconds_left": change_word_seconds_left(room),
         "discussion": discussion_state(room),
@@ -2001,6 +2097,7 @@ def public_state(room: Room, viewer_id: str) -> dict:
                 "requested_vote": player.id in room.vote_request_player_ids,
                 "has_voted": player.id in room.final_votes if room.state in {"final_voting", "overtime_voting", "voting_complete", "results"} else False,
                 "is_active_round_player": player.id in active_round_player_ids(room),
+                "is_spectator": room.state != "lobby" and player.id not in room.round_player_ids,
                 "temporarily_disconnected": player_connection_status(player) in {"away", "idle"},
                 "association": association_for_player(room, player.id),
                 "reactions": reactions_for_player(room, player.id),

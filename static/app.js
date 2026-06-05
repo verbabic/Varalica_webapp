@@ -48,7 +48,7 @@ const IMPOSTOR_REVEAL_AVATAR_URL = "/static/assets/Varalica_crveno.png";
 const IMPOSTOR_REVEAL_RING_URL = "/static/assets/varalica_neon_ring.svg";
 const IMPOSTOR_REVEAL_SMOKE_URL = "/static/assets/varalica_smoke_overlay.svg";
 const IMPOSTOR_REVEAL_SCANLINES_URL = "/static/assets/varalica_glitch_scanlines.svg";
-const ASSET_CACHE = "20260604_24";
+const ASSET_CACHE = "20260605_3";
 const PRIVATE_CARD_CLOSED_URL = `/static/assets/wordcard.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_NORMAL_URL = `/static/assets/Prikazikartu_player_normal_eyes.png?v=${ASSET_CACHE}`;
 const PRIVATE_CARD_OPEN_VARALICA_URL = `/static/assets/Prikazikartu.png?v=${ASSET_CACHE}`;
@@ -235,35 +235,42 @@ function updateJoinButtons() {
 }
 
 function setPlayMode(mode) {
-  if (roomState && roomState.state !== "lobby") return;
   const nextMode = mode === "chat" ? "chat" : "live";
+  const roomMode = roomState?.play_mode === "chat" ? "chat" : roomState?.play_mode === "live" ? "live" : "";
+  if (roomMode) {
+    selectedPlayMode = roomMode;
+    localStorage.setItem("varalica_play_mode", selectedPlayMode);
+    renderModeToggle();
+    if (nextMode !== roomMode) {
+      showToast(`Host je napravio ${roomMode === "chat" ? "Chat" : "Live"} sobu.`, "info");
+    }
+    return;
+  }
+
   selectedPlayMode = nextMode;
   localStorage.setItem("varalica_play_mode", selectedPlayMode);
   renderModeToggle();
-  if (localRoomCode && localPlayerId && roomState?.state === "lobby") {
-    apiRequest(`/api/rooms/${localRoomCode}/play-mode`, {
-      player_id: localPlayerId,
-      play_mode: selectedPlayMode,
-    });
-  }
 }
 
 function syncPlayModeFromRoom() {
   if (!roomState) return;
   const me = roomState.players.find((player) => player.id === roomState.viewer_id);
-  if (me?.play_mode) {
-    selectedPlayMode = me.play_mode;
+  const roomMode = roomState.play_mode === "chat" ? "chat" : roomState.play_mode === "live" ? "live" : "";
+  if (roomMode || me?.play_mode) {
+    selectedPlayMode = roomMode || me.play_mode;
     localStorage.setItem("varalica_play_mode", selectedPlayMode);
   }
   renderModeToggle();
 }
 
 function renderModeToggle() {
-  const locked = Boolean(roomState && roomState.state !== "lobby");
+  const roomMode = roomState?.play_mode === "chat" ? "chat" : roomState?.play_mode === "live" ? "live" : "";
   liveModeButton.classList.toggle("active", selectedPlayMode === "live");
   chatModeButton.classList.toggle("active", selectedPlayMode === "chat");
-  liveModeButton.disabled = locked;
-  chatModeButton.disabled = locked;
+  liveModeButton.classList.toggle("mode-locked-unavailable", Boolean(roomMode && roomMode !== "live"));
+  chatModeButton.classList.toggle("mode-locked-unavailable", Boolean(roomMode && roomMode !== "chat"));
+  liveModeButton.disabled = false;
+  chatModeButton.disabled = false;
 }
 
 async function createRoom() {
@@ -277,6 +284,11 @@ async function createRoom() {
   sessionStorage.setItem("varalica_username", name);
   const result = await apiRequest("/api/rooms", { name, avatar: selectedAvatar || null, play_mode: selectedPlayMode });
   if (!result) return;
+  if (result.room_play_mode) {
+    selectedPlayMode = result.room_play_mode;
+    localStorage.setItem("varalica_play_mode", selectedPlayMode);
+    renderModeToggle();
+  }
   enterRoom(result.room_code, result.player_id, result.avatar);
 }
 
@@ -298,7 +310,12 @@ async function joinRoom() {
     const response = await fetch(`/api/rooms/${code}/join`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, avatar: selectedAvatar || null, play_mode: selectedPlayMode }),
+      body: JSON.stringify({
+        name,
+        avatar: selectedAvatar || null,
+        play_mode: selectedPlayMode,
+        player_id: localRoomCode === code ? localPlayerId || null : null,
+      }),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -309,7 +326,15 @@ async function joinRoom() {
       showError(data.detail || "Doslo je do greske.");
       return;
     }
+    if (data.room_play_mode) {
+      selectedPlayMode = data.room_play_mode;
+      localStorage.setItem("varalica_play_mode", selectedPlayMode);
+      renderModeToggle();
+    }
     enterRoom(data.room_code, data.player_id, data.avatar);
+    if (data.spectator && data.message) {
+      showToast(data.message, "info");
+    }
   } catch {
     showError("Nije moguce spojiti se na server.");
   }
@@ -508,7 +533,8 @@ function connectSocket() {
     stopHeartbeat();
     hadSocketDisconnect = true;
     if (event.code === 1008) {
-      handleExpiredRoom();
+      if (!shouldReconnectSocket) return;
+      handleInvalidSessionClose();
       return;
     }
     if (shouldReconnectSocket && localRoomCode && localPlayerId) {
@@ -518,6 +544,22 @@ function connectSocket() {
       setConnectionMode("disconnected");
     }
   });
+}
+
+async function handleInvalidSessionClose() {
+  const code = localRoomCode || inviteRoomCode || roomCodeInput.value.trim().toUpperCase();
+  if (code && await validateRoomExists(code)) {
+    shouldReconnectSocket = false;
+    clearStoredSession();
+    localRoomCode = "";
+    localPlayerId = "";
+    roomState = null;
+    showValidInviteUI(code);
+    showError("Sesija je istekla. Unesi ime i pridruži se ponovo.");
+    setConnectionMode("disconnected");
+    return;
+  }
+  handleExpiredRoom();
 }
 
 function startHeartbeat() {
@@ -1666,7 +1708,8 @@ function renderHostPanel() {
 
 function renderLobby() {
   const isHost = roomState.viewer_id === roomState.host_id;
-  const canStart = isHost && roomState.player_count >= roomState.min_players;
+  const playableCount = Number(roomState.active_playable_player_count || roomState.player_count || 0);
+  const canStart = isHost && playableCount >= roomState.min_players;
   const categories = roomState.categories || ["Sve kategorije"];
   const durationOptions = roomState.allowed_discussion_seconds || [120, 180, 300];
   const allowedVaralicaCounts = roomState.allowed_varalica_counts || [1];
@@ -1822,7 +1865,11 @@ function renderReveal() {
     phaseContent.innerHTML = `
       <div class="phase-card">
         <h2>Otkrivanje</h2>
-        <p class="helper-text">Cekamo podatke za ovu rundu.</p>
+        ${
+          roomState.viewer_is_spectator
+            ? spectatorNoticeHtml()
+            : `<p class="helper-text">Cekamo podatke za ovu rundu.</p>`
+        }
       </div>
     `;
     return;
@@ -1913,6 +1960,7 @@ function renderDiscussion() {
 
   phaseContent.innerHTML = `
     <div class="phase-card discussion-card">
+      ${roomState.viewer_is_spectator ? spectatorNoticeHtml() : ""}
       <div class="discussion-monitor-layout">
         ${renderReactionColumn("left", REACTION_EMOJIS_LEFT)}
         <div class="discussion-monitor-body">
@@ -1958,6 +2006,7 @@ function renderOvertime() {
   phaseContent.innerHTML = `
     <div class="phase-card overtime-card">
       <p class="overtime-compact-title">PRODUŽETAK — Glasanje je nerešeno</p>
+      ${roomState.viewer_is_spectator ? spectatorNoticeHtml() : ""}
       <div class="discussion-monitor-layout">
         ${renderReactionColumn("left", REACTION_EMOJIS_LEFT)}
         <div class="discussion-monitor-body">
@@ -2046,14 +2095,40 @@ function renderVotingChecklist(players) {
   `;
 }
 
+function spectatorNoticeHtml() {
+  const message = roomState?.spectator_message || "Ušao si kao posmatrač. Igraš od sledeće runde.";
+  return `
+    <div class="spectator-notice">
+      <strong>Posmatrač</strong>
+      <span>${escapeHtml(message)}</span>
+    </div>
+  `;
+}
+
 function renderFinalVoting() {
   const me = roomState.players.find((player) => player.id === roomState.viewer_id);
+  const isSpectator = Boolean(roomState.viewer_is_spectator || (me && !me.is_active_round_player));
   const hasVoted = Boolean(me?.has_voted);
   const activePlayers = roomState.players.filter((player) => player.is_active_round_player && player.id !== roomState.viewer_id);
   const activeRoundPlayers = roomState.players.filter((player) => player.is_active_round_player);
   const votedCount = activeRoundPlayers.filter((player) => player.has_voted).length;
   const isOvertimeVote = roomState.state === "overtime_voting";
   const requiredTargets = roomState.required_vote_targets || 1;
+
+  if (isSpectator) {
+    phaseContent.innerHTML = `
+      <div class="phase-card voting-phase-card">
+        <h2>${isOvertimeVote ? "Glasanje nakon produzetka" : "Finalno glasanje"}</h2>
+        ${spectatorNoticeHtml()}
+        <div class="vote-progress-private">
+          <strong>${votedCount}/${activeRoundPlayers.length}</strong>
+          <span>igrača glasalo</span>
+        </div>
+        ${renderVotingChecklist(activeRoundPlayers)}
+      </div>
+    `;
+    return;
+  }
 
   phaseContent.innerHTML = `
     <div class="phase-card voting-phase-card">
@@ -2507,6 +2582,7 @@ function renderResults() {
   phaseContent.innerHTML = `
     <div class="phase-card results-card results-card-${escapeHtml(finalResultDisplayMode)}">
       ${renderResultRevealHero(results, finalResultDisplayMode)}
+      ${roomState.viewer_is_spectator ? spectatorNoticeHtml() : ""}
       <h2>Statistika glasanja</h2>
       <p class="big-result">${(results.varalice || []).length > 1 ? "Varalice su bile" : "Varalica je bio/la"}: ${escapeHtml(varaliceNameText(results))}</p>
       <p class="word-result">Riječ je bila: ${escapeHtml(results.word.hr)} (${escapeHtml(results.word.sr)})</p>
@@ -2543,6 +2619,17 @@ function playerReactionKey(reaction) {
   if (!reaction) return "";
   if (reaction.identity) return String(reaction.identity);
   return `${reaction.emoji}:${reaction.created_at}`;
+}
+
+function orderedRoomPlayers() {
+  return [...(roomState?.players || [])].sort((left, right) => {
+    const leftSpectator = Boolean(left.is_spectator);
+    const rightSpectator = Boolean(right.is_spectator);
+    if (leftSpectator !== rightSpectator) {
+      return leftSpectator ? 1 : -1;
+    }
+    return 0;
+  });
 }
 
 function renderPlayerReactionCluster(reactions) {
@@ -2615,12 +2702,16 @@ function syncPlayerReactionBubbles(inlinePlayer, reactions) {
 function patchRevealPlayersInPlace() {
   if (roomState.state !== "reveal") return false;
   const rows = [...playersList.querySelectorAll(".player-row")];
-  if (rows.length === 0 || rows.length !== roomState.players.length) return false;
+  const players = orderedRoomPlayers();
+  if (rows.length === 0 || rows.length !== players.length) return false;
+  if (rows.some((row, index) => row.dataset.playerId !== players[index].id)) return false;
 
-  roomState.players.forEach((player, index) => {
+  players.forEach((player, index) => {
     const row = rows[index];
     if (!row) return;
     row.dataset.playerId = player.id;
+    row.classList.toggle("is-spectator", Boolean(player.is_spectator));
+    row.classList.toggle("is-current", Boolean(player.is_current && !player.is_spectator));
     syncRevealStatusBadge(row, player);
   });
   return true;
@@ -2629,11 +2720,14 @@ function patchRevealPlayersInPlace() {
 function patchDiscussionPlayersInPlace() {
   if (roomState.state !== "discussion" && roomState.state !== "overtime") return false;
   const rows = [...playersList.querySelectorAll(".player-row")];
-  if (rows.length === 0 || rows.length !== roomState.players.length) return false;
+  const players = orderedRoomPlayers();
+  if (rows.length === 0 || rows.length !== players.length) return false;
+  if (rows.some((row, index) => row.dataset.playerId !== players[index].id)) return false;
 
-  roomState.players.forEach((player, index) => {
+  players.forEach((player, index) => {
     const row = rows[index];
-    row.classList.toggle("is-current", Boolean(player.is_current));
+    row.classList.toggle("is-spectator", Boolean(player.is_spectator));
+    row.classList.toggle("is-current", Boolean(player.is_current && !player.is_spectator));
     clearRevealStatusBadges(row);
     syncPlayerReactionBubbles(
       row.querySelector(".inline-player"),
@@ -2670,11 +2764,16 @@ function renderPlayers() {
   lastPlayersListPhase = phase;
 
   playersList.innerHTML = "";
-  for (const player of roomState.players) {
+  const orderedPlayers = orderedRoomPlayers();
+
+  for (const player of orderedPlayers) {
     const row = document.createElement("div");
     row.className = "player-row";
     row.dataset.playerId = player.id;
-    if (player.is_current) {
+    if (player.is_spectator) {
+      row.classList.add("is-spectator");
+    }
+    if (player.is_current && !player.is_spectator) {
       row.classList.add("is-current");
     }
 
@@ -2691,6 +2790,9 @@ function renderPlayers() {
     const isViewerHost = roomState.viewer_id === roomState.host_id;
     const hostLabel = player.is_host ? `<span class="badge host-badge" title="Host">👑 H</span>` : "";
     const currentLabel = "";
+    const spectatorLabel = player.is_spectator
+      ? `<span class="badge spectator-badge">Posmatrač</span><span class="badge spectator-waiting-badge">Igraš od sledeće runde</span>`
+      : "";
     const voteLabel = player.requested_vote ? `<span class="badge vote-requested">Trazi glasanje</span>` : "";
     const associationBubble = player.association
       ? `<div class="association-bubble">${escapeHtml(player.association.text)}</div>`
@@ -2709,6 +2811,7 @@ function renderPlayers() {
       </div>
       <div class="player-meta">
         ${hostLabel}
+        ${spectatorLabel}
         ${currentLabel}
         ${voteLabel}
         ${disconnectedLabel}

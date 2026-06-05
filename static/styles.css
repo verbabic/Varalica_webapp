@@ -304,9 +304,20 @@ label {
 }
 
 .mode-segment.active {
-  color: var(--text);
-  background: var(--primary-soft);
-  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.28);
+  color: #ffffff;
+  background:
+    linear-gradient(135deg, rgba(124, 58, 237, 0.92), rgba(99, 102, 241, 0.72)),
+    var(--primary-soft);
+  box-shadow:
+    inset 0 0 0 1px rgba(216, 180, 254, 0.46),
+    0 0 18px rgba(124, 58, 237, 0.34);
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.28);
+}
+
+.mode-segment.mode-locked-unavailable {
+  color: rgba(148, 163, 184, 0.62);
+  background: transparent;
+  box-shadow: none;
 }
 
 .mode-segment:disabled {
@@ -1148,6 +1159,23 @@ body.cinematic-reveal-active .association-overlay-dock {
   background: rgba(53, 208, 127, 0.14);
 }
 
+.player-row.is-spectator {
+  opacity: 0.58;
+  border-color: rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.46);
+  box-shadow: none;
+  filter: saturate(0.75);
+}
+
+.player-row.is-spectator .player-name,
+.player-row.is-spectator .inline-player {
+  color: rgba(203, 213, 225, 0.78);
+}
+
+.player-row.is-spectator .status-dot {
+  opacity: 0.66;
+}
+
 .player-name {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -1555,6 +1583,40 @@ body.cinematic-reveal-active .association-overlay-dock {
     0 0 22px rgba(37, 99, 235, 0.34);
 }
 
+.spectator-notice {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(96, 165, 250, 0.32);
+  border-radius: 10px;
+  color: #bfdbfe;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.spectator-notice strong {
+  color: #93c5fd;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.spectator-notice span {
+  color: rgba(219, 234, 254, 0.9);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.badge.spectator-badge {
+  border-color: rgba(96, 165, 250, 0.42);
+  color: #bfdbfe;
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.badge.spectator-waiting-badge {
+  border-color: rgba(148, 163, 184, 0.24);
+  color: rgba(203, 213, 225, 0.78);
+  background: rgba(15, 23, 42, 0.32);
+}
+
 .discussion-host-vote-button {
   width: 100%;
   min-height: 30px;
@@ -1657,10 +1719,13 @@ body.cinematic-reveal-active .association-overlay-dock {
 }
 
 .current-player-card {
+  display: grid;
+  place-items: center;
   border-radius: 8px;
   padding: 10px 12px;
   background: var(--green-soft);
   border: 1px solid rgba(53, 208, 127, 0.45);
+  text-align: center;
 }
 
 .compact-current-player {
@@ -1682,7 +1747,7 @@ body.cinematic-reveal-active .association-overlay-dock {
 }
 
 .compact-current-player .current-player-name {
-  font-size: clamp(0.88rem, 4.2vw, 1.15rem);
+  font-size: clamp(1rem, 4.6vw, 1.28rem);
 }
 
 .reaction-row {
@@ -3687,7 +3752,7 @@ body.cinematic-reveal-active .association-overlay-dock {
   }
 
   .compact-current-player .current-player-name {
-    font-size: clamp(0.82rem, 3.8vw, 1rem);
+    font-size: clamp(0.95rem, 4.4vw, 1.16rem);
   }
 
   .compact-current-player {

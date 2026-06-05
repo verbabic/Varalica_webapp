@@ -213,8 +213,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `v=20260604_24` (verified in `static/index.html` for `styles.css`, `app.js`, reveal/result/card/title assets)
-- **Last frontend version update:** 2026-06-04 (Phase 2A gameplay/UI fixes)
+- **Frontend cache/version string:** `v=20260605_3` (verified in `static/index.html` for `styles.css`, `app.js`, and title asset)
+- **Last frontend version update:** 2026-06-05 (Phase 1 stability/game-state fixes)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +232,157 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-06-05 - Phase 1 stability/game-state fixes
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `main.py`
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Added backend-authoritative room-level `play_mode` lock set from the host's create-room selection.
+  - Forced existing/rejoining/new players to use the room's locked mode, persisted it in room snapshots, and exposed it in public room state.
+  - Updated the play-mode endpoint to reject attempts to switch away from the room mode with `Host je napravio Live sobu.` or `Host je napravio Chat sobu.`.
+  - Updated the frontend Live/Chat toggle to follow `roomState.play_mode`, show the host-lock toast when the unavailable mode is clicked, and keep local mode in sync after create/join/reconnect.
+  - Added the second spectator row badge `Igraš od sledeće runde` while preserving spectator ordering/faded styling from the previous Phase 2B work.
+  - Bumped frontend cache strings to `v=20260605_3`.
+- **Exact functions/classes touched:**
+  - Backend: `Room`, `create_room()`, `join_room()`, `update_play_mode()`, `room_to_snapshot()`, `snapshot_play_mode()`, `room_from_snapshot()`, `public_state()`.
+  - Frontend JS: `ASSET_CACHE`, `setPlayMode()`, `syncPlayModeFromRoom()`, `renderModeToggle()`, `createRoom()`, `joinRoom()`, `renderPlayers()`.
+  - CSS: `.mode-segment.mode-locked-unavailable`, `.badge.spectator-waiting-badge`.
+  - HTML: cache strings for `styles.css`, `app.js`, and `Logo_title.png`.
+- **Backend rules changed:**
+  - Room mode is now locked to the host-created Live/Chat mode and is authoritative for all players.
+  - Rejoining/new players are normalized to the room's locked mode instead of carrying stale local mode.
+  - Direct `/play-mode` calls can only confirm the room mode; switching to the other mode is rejected.
+- **Frontend behavior changed:**
+  - Clicking the unavailable Live/Chat segment in a room shows the host-created room message and does not change mode.
+  - Spectator rows now display both `Posmatrač` and `Igraš od sledeće runde`.
+- **What was not changed:**
+  - No voting/overtime result rules, reveal animations, fly-card/countdown visuals, QR logic, room code generation, word database, `storage.py` schema, image assets, vendor files, `.env`, deployment config, or services were changed.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` - passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` - passed with existing quality/duplicate warnings; structure OK with 1014 words.
+  - `node --check static/app.js` - blocked by Windows with `Zugriff verweigert`.
+  - Bundled Node syntax check for `static\app.js` - passed.
+  - `git diff --check` - passed with line-ending warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Verify same stored `player_id` + nickname reconnects and stale same-name sessions can be reclaimed without duplicate active nicknames.
+  - Verify late join during reveal/discussion/voting/results becomes spectator, appears last/faded, cannot vote, is not target/current, and enters play only next round/reset.
+  - Verify Nova runda is blocked when fewer than 4 active playable players remain.
+  - Verify Live room blocks Chat selection with `Host je napravio Live sobu.` and Chat room blocks Live selection with `Host je napravio Chat sobu.`.
+  - Verify 4-player normal round still works end-to-end.
+- **Known issues:**
+  - Manual multi-tab/mobile QA is required for reconnect grace and spectator activation edge cases.
+- **Notes:**
+  - Work stopped after Phase 1 as requested; Phase 2 and Phase 3 were not started.
+
+### 2026-06-05 - Live/Chat mode and current-player monitor UI polish
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/styles.css`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Centered the discussion/current-player monitor content and slightly increased the compact current-player name size.
+  - Strengthened the selected Live/Chat mode segment with a clearer purple active state, glow, and contrast while leaving mode-switching logic unchanged.
+  - Bumped frontend cache strings to `v=20260605_2`.
+- **What was not changed:**
+  - No backend logic, game rules, spectator/rejoin logic, reveal animations, voting, QR logic, words, assets, `.env`, deployment config, or services were changed.
+- **Tests run:**
+  - `git diff --check` - passed with line-ending warnings only.
+  - `node --check static/app.js` - not run; `static/app.js` was not changed for this polish task.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Verify Live mode current-player monitor is centered and still compact on mobile.
+  - Verify current player name is larger but does not overflow narrow screens.
+  - Verify selected Live/Chat mode is clearly stronger than the unselected segment.
+- **Known issues:**
+  - Manual browser/mobile visual QA is required.
+- **Notes:**
+  - Existing uncommitted Phase 2B files and unrelated asset/untracked files were preserved.
+
+### 2026-06-05 - Phase 2B spectator list follow-up
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Sorted spectator/waiting players to the bottom of the room player list while preserving the order of playable players above them.
+  - Added an `is-spectator` player-row class and prevented spectator rows from receiving current-player highlight styling even if stale state is present.
+  - Added muted/faded spectator row styling and kept the compact `Posmatrač` status badge.
+  - Bumped frontend cache strings to `v=20260605_1`.
+- **Exact functions/classes touched:**
+  - Frontend JS: `ASSET_CACHE`, `orderedRoomPlayers()`, `patchRevealPlayersInPlace()`, `patchDiscussionPlayersInPlace()`, `renderPlayers()`.
+  - CSS: `.player-row.is-spectator`, `.player-row.is-spectator .player-name`, `.player-row.is-spectator .inline-player`, `.player-row.is-spectator .status-dot`.
+  - HTML: cache strings for `styles.css`, `app.js`, and `Logo_title.png`.
+- **What was not changed:**
+  - No backend game rules, spectator/rejoin membership logic, voting/overtime logic, reveal animations, assets, QR logic, room code generation, word database, storage schema, vendor files, `.env`, deployment config, or services were changed.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` - passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` - passed with existing quality/duplicate warnings; structure OK with 1014 words.
+  - `node --check static/app.js` - blocked by Windows with `Zugriff verweigert`.
+  - Bundled Node syntax check for `static\app.js` - passed.
+  - `git diff --check` - passed with line-ending warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Verify a late-joining spectator appears at the bottom of the player list with muted styling and a `Posmatrač` badge.
+  - Verify spectators are not highlighted as current players and do not appear in current-round voting targets.
+  - Verify spectators become normal playable players on the next new round/reset as intended.
+- **Known issues:**
+  - Manual multi-tab QA is still required for late join/reconnect edge cases.
+- **Notes:**
+  - Existing uncommitted backend/frontend Phase 2B work and unrelated asset/untracked files were preserved.
+
+### 2026-06-04 - Phase 2B game/state bugfixes
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `main.py`
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Allowed late joins during active rounds while keeping those players out of `round_player_ids`, making them spectators/waiting until the next round.
+  - Added backend/public spectator state (`viewer_is_spectator`, `spectator_message`, per-player `is_spectator`) and frontend spectator notices/badges.
+  - Kept spectators out of private-card state, confirm/card-seen counts, voting options, vote submit UI, turn order, majority/overtime counts, and current-round player checklist by relying on existing `round_player_ids`/`active_round_player_ids` gates.
+  - Changed start/new-round playable counts to require currently active connected players (`active_playable_players_for_next_round()`), so away/inactive players do not satisfy the 4-player minimum.
+  - Added optional `player_id` to join payloads and backend reconnect/reclaim logic so existing stored identities or inactive same-name players are reused instead of creating duplicate active nicknames.
+  - Added frontend invalid-session fallback: if the stored WebSocket player id is gone but the room still exists, the app clears stale session and shows the join form instead of treating the room as expired.
+  - Bumped frontend cache strings to `v=20260604_25`.
+- **Exact functions/classes touched:**
+  - Backend: `NameRequest`, `join_room()`, `start_round()`, `new_round()`, `name_key()`, `is_player_active_playable_now()`, `active_playable_players_for_next_round()`, `public_state()`.
+  - Frontend JS: `ASSET_CACHE`, `joinRoom()`, `connectSocket()`, `handleInvalidSessionClose()`, `renderLobby()`, `renderReveal()`, `renderDiscussion()`, `renderOvertime()`, `spectatorNoticeHtml()`, `renderFinalVoting()`, `renderResults()`, `renderPlayers()`.
+  - CSS: `.spectator-notice`, `.badge.spectator-badge`.
+  - HTML: cache strings for `styles.css`, `app.js`, and `Logo_title.png`.
+- **What was not changed:**
+  - No visual reveal animation, countdown styling, fly-card animation, fullscreen result styling, voting result rules, overtime rules, QR logic, room code generation, word database, `storage.py` schema, vendor files, image assets, `.env`, deployment config, or services were changed.
+- **Tests run:**
+  - `.venv\Scripts\python.exe -m py_compile main.py words.py validate_words.py` - passed.
+  - `.venv\Scripts\python.exe -X utf8 validate_words.py` - passed with existing quality/duplicate warnings; structure OK with 1014 words.
+  - `node --check static\app.js` - blocked by Windows with `Zugriff verweigert`.
+  - Bundled Node syntax check for `static\app.js` - passed.
+  - `git diff --check` - passed with line-ending warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Verify Nova runda is blocked with a clear backend/frontend error when fewer than 4 active connected playable players are present.
+  - Verify late join during reveal/discussion/voting/results enters as spectator, sees spectator notice, gets no private card, cannot vote, is not a target, and does not affect counts.
+  - Verify late spectator becomes playable on the next Nova runda if actively connected.
+  - Verify same stored `player_id` reconnect works and same inactive nickname can be reclaimed without duplicate active nicknames.
+  - Verify normal 4-player round still works end-to-end.
+- **Known issues:**
+  - Manual multi-tab QA is required for edge cases around tab-close grace, active/away timing, and nickname reclaim.
+- **Notes:**
+  - Existing uncommitted asset/untracked files were preserved and not reverted.
 
 ### 2026-06-04 - Phase 2A gameplay/UI fixes
 
