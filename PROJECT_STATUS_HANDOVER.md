@@ -233,6 +233,84 @@ _Add new rows here when bugs are found._
 
 ## 11. Changelog
 
+### 2026-06-07 - Add AI usage audit documentation
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `AI_USAGE_AUDIT.md`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Added `AI_USAGE_AUDIT.md` documenting how to reduce ChatGPT Plus, Codex, Cursor Pro, and local/light agent usage by keeping context small and routing tasks to the right tool.
+  - Included limit-wasting patterns, context-saving files, tool routing rules, recommended difficulty levels, per-task workflow, read-scope rules, prompt templates, bad prompts to avoid, project-specific limit savers, dirty-tree handling, recommended next actions, and final routing recommendations.
+  - Used confirmed facts from `PROJECT_STATUS_HANDOVER.md`, `AGENTS.md`, `CURSOR_RULES.md`, `ARCHITECTURE.md`, `TASK_QUEUE.md`, and `BUGS_KNOWN.md`; uncertain items remain marked as `needs manual verification` where applicable.
+- **What was not changed:**
+  - No application code, backend logic, frontend assets, images, word database, QR vendor file, runtime database, `.env`, deployment config, or existing dirty/untracked files were modified.
+  - Pre-existing dirty files were preserved and not modified: `static/assets/Logo_title.png`, `ARCHITECTURE.md`, `TASK_QUEUE.md`, `BUGS_KNOWN.md`, `Fotos/`, `scripts/prepare_avatar_transparency.py`, `static/assets/eyes_normal.png`, and `varalica_curated_words_sample_200_old.py`.
+- **Tests run:** Not run; documentation-only change.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Review `AI_USAGE_AUDIT.md` and adjust tool-routing recommendations after real usage-limit patterns are observed.
+- **Known issues:**
+  - Recommendations are based on current documentation and should be refined as the user's actual ChatGPT/Codex/Cursor/local-agent workflow changes.
+
+### 2026-06-07 - Add known bugs documentation
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `BUGS_KNOWN.md`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Added `BUGS_KNOWN.md` as a bug-focused companion document for confirmed issues, suspected/manual-verification items, regression risk areas, validation/test gaps, historical notes, and reusable bug/fix templates.
+  - Used confirmed facts from `PROJECT_STATUS_HANDOVER.md`, `TASK_QUEUE.md`, and `ARCHITECTURE.md`; uncertain items remain marked as `needs manual verification`.
+- **What was not changed:**
+  - No application code, backend logic, frontend assets, images, word database, QR vendor file, runtime database, `.env`, deployment config, or existing dirty/untracked files were modified.
+  - Pre-existing dirty files were preserved and not modified: `static/assets/Logo_title.png`, `ARCHITECTURE.md`, `TASK_QUEUE.md`, `Fotos/`, `scripts/prepare_avatar_transparency.py`, `static/assets/eyes_normal.png`, and `varalica_curated_words_sample_200_old.py`.
+- **Tests run:** Not run; documentation-only change.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Review `BUGS_KNOWN.md` after the next manual QA session and update with confirmed bugs or resolved items.
+- **Known issues:**
+  - Bug list is based on existing documentation and should be refined after manual production/server verification.
+
+### 2026-06-07 - Add task queue documentation
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `TASK_QUEUE.md`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Added `TASK_QUEUE.md` as a working priority queue for future Cursor/Codex/local-agent sessions.
+  - Documented task rules, P1/P2/P3 task tables, known dirty working tree items, what not to do now, recommended next session types, and the current best next step.
+  - Used confirmed facts from `PROJECT_STATUS_HANDOVER.md`, `AGENTS.md`, `CURSOR_RULES.md`, and `ARCHITECTURE.md`; uncertain items remain marked as `needs manual verification` where applicable.
+- **What was not changed:**
+  - No application code, backend logic, frontend assets, images, word database, QR vendor file, runtime database, `.env`, deployment config, or existing dirty/untracked files were modified.
+  - Pre-existing dirty files were preserved and not modified: `static/assets/Logo_title.png`, `ARCHITECTURE.md`, `Fotos/`, `scripts/prepare_avatar_transparency.py`, `static/assets/eyes_normal.png`, and `varalica_curated_words_sample_200_old.py`.
+- **Tests run:** Not run; documentation-only change.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Review `TASK_QUEUE.md` priorities and adjust task order after the next QA/testing session.
+- **Known issues:**
+  - Task priorities are based on current handover/architecture documentation and should be refined after manual production/server verification.
+
+### 2026-06-07 - Add architecture documentation
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `ARCHITECTURE.md`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Added `ARCHITECTURE.md` documenting confirmed project summary, tech stack, runtime flow, main files, backend/frontend architecture, game flow, persistence, deployment facts, agent reading rules, high-risk areas, verification commands, and unknowns needing manual verification.
+  - Used confirmed facts from existing repository files and marked uncertain production/details as `needs manual verification`.
+- **What was not changed:**
+  - No application code, backend logic, frontend assets, images, word database, QR vendor file, runtime database, `.env`, deployment config, or existing dirty/untracked files were modified.
+  - Pre-existing dirty files were preserved and not modified: `static/assets/Logo_title.png`, `Fotos/`, `scripts/prepare_avatar_transparency.py`, `static/assets/eyes_normal.png`, and `varalica_curated_words_sample_200_old.py`.
+- **Tests run:** Not run; documentation-only change.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Review `ARCHITECTURE.md` for wording and any project facts that should be refined after production/server verification.
+- **Known issues:**
+  - Some deployment, SSL, backup, Render, README freshness, formal test-suite, and stale-room cleanup details remain marked as `needs manual verification`.
+
 ### 2026-06-05 - Post-deploy UI polish after v=20260605_6
 
 - **Tool used:** Codex
