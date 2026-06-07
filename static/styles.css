@@ -214,8 +214,8 @@ label {
 
 .hero-title-logo {
   width: auto;
-  height: 1.68em;
-  max-height: 1.68em;
+  height: 6.72em;
+  max-height: 6.72em;
   flex-shrink: 0;
   object-fit: contain;
   opacity: 0.92;
@@ -228,8 +228,8 @@ label {
 
 @media (max-width: 640px) {
   .hero-title-logo {
-    height: 1.6em;
-    max-height: 1.6em;
+    height: 6.4em;
+    max-height: 6.4em;
   }
 }
 
