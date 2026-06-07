@@ -214,22 +214,23 @@ label {
 
 .hero-title-logo {
   width: auto;
-  height: 6.72em;
-  max-height: 6.72em;
+  height: clamp(2rem, 7vw, 3.05rem);
+  max-height: clamp(2rem, 7vw, 3.05rem);
   flex-shrink: 0;
   object-fit: contain;
-  opacity: 0.92;
+  opacity: 0.86;
   filter:
-    saturate(1.35)
-    brightness(1.15)
-    drop-shadow(0 0 6px rgba(168, 85, 247, 0.55))
-    drop-shadow(0 0 14px rgba(124, 58, 237, 0.28));
+    hue-rotate(-18deg)
+    saturate(1.08)
+    brightness(0.84)
+    drop-shadow(0 0 5px rgba(59, 130, 246, 0.28))
+    drop-shadow(0 0 12px rgba(30, 64, 175, 0.18));
 }
 
 @media (max-width: 640px) {
   .hero-title-logo {
-    height: 6.4em;
-    max-height: 6.4em;
+    height: clamp(1.9rem, 10vw, 2.35rem);
+    max-height: clamp(1.9rem, 10vw, 2.35rem);
   }
 }
 

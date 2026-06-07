@@ -213,8 +213,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `v=20260605_7` (verified in `static/index.html` for `styles.css`, `app.js`, and title asset)
-- **Last frontend version update:** 2026-06-05 (post-deploy UI polish after v=20260605_6)
+- **Frontend cache/version string:** `styles.css?v=20260607_2`; `app.js?v=20260605_7`; `Logo_title.png?v=20260605_7` (verified in `static/index.html`)
+- **Last frontend version update:** 2026-06-07 (hero title logo size/glow CSS polish)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +232,31 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-06-07 - Hero title logo size and glow polish
+
+- **Tool used:** Codex
+- **Changed files:**
+  - `static/styles.css`
+  - `static/index.html`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Reduced `.hero-title-logo` from the oversized `6.72em` / `6.4em` sizing to a smaller responsive height closer to the capital `V` in `Varalica`.
+  - Adjusted `.hero-title-logo` CSS filter/drop-shadow from bright purple/lilac toward a darker blue-violet blend.
+  - Bumped the stylesheet cache string to `styles.css?v=20260607_2`.
+- **What was not changed:**
+  - No application/game logic, backend, voting, room codes, WebSocket logic, QR logic, word database, image assets, `.env`, deployment config, or existing dirty/untracked files were modified.
+  - `static/assets/Logo_title.png` was inspected but not edited.
+- **Tests/checks run:**
+  - Inspected `.hero-title-logo` CSS and `static/index.html` cache reference.
+  - Viewed `static/assets/Logo_title.png` and confirmed the lower white/lilac smoke/fog is baked into the PNG asset.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Hard refresh home screen and confirm the logo visually aligns with the `Varalica` title.
+  - Confirm the blue-toned CSS blend looks better on desktop/mobile.
+  - If the lower smoke still looks too white/lilac, replace or re-export `Logo_title.png` with a darker/transparent/tighter-cropped source asset.
+- **Known issues:**
+  - The lower smoke/glow issue is partly baked into `Logo_title.png`, so CSS can only reduce/tint it, not fully remove or perfectly blend it.
 
 ### 2026-06-07 - Add AI usage audit documentation
 
