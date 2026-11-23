@@ -189,23 +189,30 @@ label {
 .hero {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "logo controls"
+    "home utilities";
   align-items: start;
-  justify-content: space-between;
-  gap: 14px;
+  column-gap: 14px;
+  row-gap: 8px;
   padding: 10px 0 18px;
 }
 
-.hero-brand {
-  display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
+.hero-brand,
+.top-status {
+  display: contents;
 }
 
 .hero-title-block {
   display: grid;
+  grid-area: logo;
   gap: 2px;
+}
+
+.home-button {
+  grid-area: home;
+  justify-self: start;
+  align-self: start;
 }
 
 .hero-title-row {
@@ -317,35 +324,29 @@ label {
   letter-spacing: 0.04em;
 }
 
-.top-status {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-areas:
-    "language modes"
-    "utilities utilities";
-  justify-content: end;
-  justify-items: end;
+.header-mode-row {
+  grid-area: controls;
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
+  align-self: start;
+  justify-self: end;
   gap: 8px;
   min-width: 0;
   max-width: 100%;
-  margin-top: 0;
-}
-
-.language-menu {
-  grid-area: language;
 }
 
 .mode-toggle {
-  grid-area: modes;
   width: min(100%, 16rem);
   max-width: 100%;
   min-width: 0;
-  justify-self: end;
+  flex: 0 1 auto;
 }
 
 .header-utility-actions {
   grid-area: utilities;
+  align-self: start;
+  justify-self: end;
   display: inline-flex;
   flex: 0 1 auto;
   flex-wrap: wrap;
@@ -385,9 +386,16 @@ label {
 }
 
 @media (max-width: 430px) {
+  .header-mode-row {
+    justify-self: stretch;
+    width: 100%;
+  }
+
   .mode-toggle {
     flex-direction: column;
-    width: 100%;
+    flex: 1 1 auto;
+    width: auto;
+    max-width: none;
   }
 
   .mode-segment {

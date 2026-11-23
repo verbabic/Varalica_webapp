@@ -215,8 +215,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `styles.css?v=20261123_16`, `i18n.js?v=20261123_5`, `app.js?v=20261123_3`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
-- **Last frontend version update:** 2026-11-23 (enlarged centered language-specific Players header logo)
+- **Frontend cache/version string:** `styles.css?v=20261123_18`, `i18n.js?v=20261123_5`, `app.js?v=20261123_3`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
+- **Last frontend version update:** 2026-11-23 (header button alignment and globe after Chat; not deployed)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -233,6 +233,31 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-11-23 13:10 UTC+1 — Header alignment and globe after Chat
+
+- **Tool used:** Cursor
+- **Changed files:** `static/index.html`, `static/styles.css`, `tests/check_gameplay_ui_browser.mjs`, `PROJECT_STATUS_HANDOVER.md`.
+- **Summary:** Home, Rules, and Contact now share one header row. Their existing 106×34 sizes and horizontal positions stayed the same; only vertical position changed where needed. The single globe selector now follows Chat directly on every measured width. Stylesheet cache token is `styles.css?v=20261123_18`.
+- **Measured boxes (CSS px, before → after):** At 320, Home moved from y 79.16 to 126; Rules stayed at x 196, y 126; Contact stayed at x 196, y 168. At 375, Home moved from y 83.61 to 126; Rules stayed at x 251, y 126; Contact stayed at x 251, y 168. At 390 and 430, Home moved to y 126 while Rules and Contact kept their x positions and y 126. At 768 and above, Home kept y 126.14 and its x position; Rules and Contact kept their x positions and moved from y 82 to 126.14. All three remained 106×34.
+- **Narrow conflict:** At 320 and 375, Rules and Contact already occupy the same x because both 106px buttons cannot fit side by side in the right column. Contact was left on the next line rather than moved horizontally.
+- **Globe:** It is immediately to the right of Chat at 320, 375, 390, 430, 768, 1024, 1280, and 1920. Live/Chat kept their previous rendered widths. On narrow screens the mode control shifts left by the space the globe previously occupied, so the globe fits after Chat without page overflow.
+- **Tests run:** JavaScript syntax checks PASS. Headless browser regression PASS at all eight widths, including four-language switching and no horizontal overflow.
+- **What was not changed:** Button styling, language-switching behavior, logo assets, gameplay, localization data, catalog, and database.
+- **Deploy status:** NOT DEPLOYED. No commit or push.
+- **Manual checks needed:** None for the automated placement check.
+- **Known issues:** Contact cannot share the Home/Rules vertical line at 320 and 375 without changing its horizontal position.
+
+### 2026-11-23 13:00 UTC+1 — Desktop language selector moved right
+
+- **Tool used:** Cursor
+- **Changed files:** `static/styles.css`, `static/index.html`, `tests/check_gameplay_ui_browser.mjs`, `PROJECT_STATUS_HANDOVER.md`.
+- **Summary:** From the existing 760px desktop breakpoint, the header grid places Live/Chat first and the globe language selector in the right column, aligned with the right edge of Rules and Contact. Below 760px the original language-then-modes grid is unchanged. Logo, Home, Live, Chat, Rules, Contact, and language behavior were not changed. Stylesheet cache token is `styles.css?v=20261123_17`.
+- **Tests run:** `node --check` PASS for `static/app.js`, `static/i18n.js`, and `tests/check_gameplay_ui_browser.mjs`. Headless browser regression PASS at 320, 375, 390, 768, 1024, 1280, and 1920 CSS px, including language switching, desktop right placement, mobile left placement, and no horizontal overflow.
+- **What was not changed:** Language menu markup, language-switching behavior, logo assets and sizing, gameplay, and backend.
+- **Deploy status:** NOT DEPLOYED. No commit or push.
+- **Manual checks needed:** None for the automated placement check.
+- **Known issues:** None observed in the headless check.
 
 ### 2026-11-23 12:54 UTC+1 — Enlarged Players-header logo deployed
 

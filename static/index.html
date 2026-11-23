@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Varalica</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20261123_16" />
+    <link rel="stylesheet" href="/static/styles.css?v=20261123_18" />
   </head>
   <body>
     <div id="landingSplash" class="landing-splash" aria-hidden="true">
@@ -21,18 +21,20 @@
           <button id="homeButton" class="home-button" type="button" data-i18n="home.button">Početna</button>
         </div>
         <div class="top-status">
-          <div id="languageMenuWrap" class="language-menu">
-            <button id="languageMenuButton" class="language-menu-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="languageMenu"><span class="language-emoji" aria-hidden="true">🌐</span></button>
-            <div id="languageMenu" class="language-dropdown hidden" role="listbox">
-              <button type="button" class="language-choice" data-lang="sr" role="option"><img src="/static/assets/flags/flag-rs.svg?v=20261123_9" alt="" width="22" height="22" /><span>SR</span></button>
-              <button type="button" class="language-choice" data-lang="hr" role="option"><img src="/static/assets/flags/flag-hr.svg?v=20261123_7" alt="" width="22" height="22" /><span>HR</span></button>
-              <button type="button" class="language-choice" data-lang="de" role="option"><img src="/static/assets/flags/flag-de.svg?v=20261123_9" alt="" width="22" height="22" /><span>DE</span></button>
-              <button type="button" class="language-choice" data-lang="tr" role="option"><img src="/static/assets/flags/flag-tr.svg?v=20261123_2" alt="" width="22" height="22" /><span>TR</span></button>
+          <div class="header-mode-row">
+            <div class="mode-toggle" role="group" data-i18n-aria="mode.group_label" aria-label="Nacin igre">
+              <button id="liveModeButton" class="mode-segment active" type="button" data-mode="live" data-i18n="mode.live">Live</button>
+              <button id="chatModeButton" class="mode-segment" type="button" data-mode="chat" data-i18n="mode.chat">Chat</button>
             </div>
-          </div>
-          <div class="mode-toggle" role="group" data-i18n-aria="mode.group_label" aria-label="Nacin igre">
-            <button id="liveModeButton" class="mode-segment active" type="button" data-mode="live" data-i18n="mode.live">Live</button>
-            <button id="chatModeButton" class="mode-segment" type="button" data-mode="chat" data-i18n="mode.chat">Chat</button>
+            <div id="languageMenuWrap" class="language-menu">
+              <button id="languageMenuButton" class="language-menu-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="languageMenu"><span class="language-emoji" aria-hidden="true">🌐</span></button>
+              <div id="languageMenu" class="language-dropdown hidden" role="listbox">
+                <button type="button" class="language-choice" data-lang="sr" role="option"><img src="/static/assets/flags/flag-rs.svg?v=20261123_9" alt="" width="22" height="22" /><span>SR</span></button>
+                <button type="button" class="language-choice" data-lang="hr" role="option"><img src="/static/assets/flags/flag-hr.svg?v=20261123_7" alt="" width="22" height="22" /><span>HR</span></button>
+                <button type="button" class="language-choice" data-lang="de" role="option"><img src="/static/assets/flags/flag-de.svg?v=20261123_9" alt="" width="22" height="22" /><span>DE</span></button>
+                <button type="button" class="language-choice" data-lang="tr" role="option"><img src="/static/assets/flags/flag-tr.svg?v=20261123_2" alt="" width="22" height="22" /><span>TR</span></button>
+              </div>
+            </div>
           </div>
           <div class="header-utility-actions">
             <button id="rulesButton" class="small secondary" type="button" data-i18n="rules.open_button">📖 Pravila</button>

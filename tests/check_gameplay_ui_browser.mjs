@@ -359,7 +359,7 @@ async function main() {
   assert.equal(patchResult.overtimeSameRow, true);
   assert.equal(patchResult.overtimeAway, true);
 
-  for (const width of [320, 375, 390, 768, 1280]) {
+  for (const width of [320, 375, 390, 430, 768, 1024, 1280, 1920]) {
     await send("Emulation.setDeviceMetricsOverride", {
       width,
       height: width <= 390 ? 844 : 900,
@@ -416,15 +416,39 @@ async function main() {
         });
       }
       window.VaralicaI18n.setUiLanguage("hr", { manual: true });
+      const box = (selector) => {
+        const rect = document.querySelector(selector).getBoundingClientRect();
+        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, right: rect.right };
+      };
+      const languageButton = box("#languageMenuButton");
+      const chatButton = box("#chatModeButton");
       return {
         viewport: innerWidth,
         documentWidth: document.documentElement.scrollWidth,
         inputRight: input ? input.getBoundingClientRect().right : 0,
         nextRight: next ? next.getBoundingClientRect().right : 0,
+        languageLeft: languageButton.x,
+        languageRight: languageButton.right,
+        chatRight: chatButton.right,
+        logoRight: box("#homeLogo").right,
+        home: box("#homeButton"),
+        rules: box("#rulesButton"),
+        contact: box("#contactButton"),
         headers
       };
     })()`);
     assert.equal(dimensions.viewport, width);
+    assert.ok(dimensions.languageLeft >= dimensions.chatRight - 1, `${width}px globe was not after Chat`);
+    assert.ok(dimensions.languageLeft - dimensions.chatRight <= 12, `${width}px globe was separated from Chat`);
+    assert.ok(dimensions.languageLeft > dimensions.logoRight, `${width}px globe overlapped the logo`);
+    for (const button of [dimensions.home, dimensions.rules, dimensions.contact]) {
+      assert.equal(button.width, 106, `${width}px navigation button width changed`);
+      assert.equal(button.height, 34, `${width}px navigation button height changed`);
+    }
+    assert.ok(Math.abs(dimensions.home.y - dimensions.rules.y) <= 0.5, `${width}px Home and Rules were not vertically aligned`);
+    if (Math.abs(dimensions.rules.x - dimensions.contact.x) > 1) {
+      assert.ok(Math.abs(dimensions.rules.y - dimensions.contact.y) <= 0.5, `${width}px Rules and Contact were not vertically aligned`);
+    }
     assert.ok(dimensions.documentWidth <= width, `${width}px viewport overflowed to ${dimensions.documentWidth}px`);
     assert.ok(dimensions.inputRight <= width);
     assert.ok(dimensions.nextRight <= width);
