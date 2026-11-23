@@ -175,6 +175,7 @@ _Add new rows here when bugs are found._
 
 ### Last tests run
 
+- **2026-11-23 13:38 UTC+1:** Confirmed the reported five-digit behavior was a stale local Uvicorn worker, not a source or frontend transform defect. The port-8000 worker had started at 07:00 without `--reload`, before `main.py` changed at 13:24, and its real local SQLite contained the newly created five-digit rooms `11725`, `55682`, and `68851`. Restarted only that verified project process. Against a separate temporary SQLite on port 8765, 20/20 real HTTP-created rooms were unique four-digit values, all room URLs matched, and every join succeeded; real browser creation also passed in SR/HR/DE/TR, and the seeded five-digit `12345` URL/paste/join path passed. Python unittest **81/81 PASS**, Python compile PASS, JavaScript syntax PASS, UI language check PASS, suspicion UI check PASS, and real headless browser regression PASS. The original local database remained byte-identical through the isolated verification: SHA-256 `B8A03F6A65AAA5750C9938F8FBE0E149B1918A301579C812B4C1EA2B9ABE236F`, 53,248 bytes, timestamp `2026-11-23 12:32:22.2014324Z`. After the final port-8000 restart, the user-facing app concurrently created fixed four-digit room `3046`; that legitimate user-owned write changed the current hash to `0AA24222C8D73BC2CDFC30F102439A558E14FA22450D937FEA816BF127AF4267` and timestamp to `2026-11-23 12:38:36.2179309Z`.
 - **2026-11-23:** Python compile, catalog validation, JavaScript syntax, two existing Node checks, a new real headless-browser regression, and **76 Python unittest tests**. All passed. Tests used isolated temporary SQLite storage. The real local `varalica.sqlite3` SHA-256 remained `806DE0CD0F11E768AD6D1165C2085CA910E151DC18B5868CC6C50705FE38CD55`.
 
 ### What passed
@@ -215,8 +216,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `styles.css?v=20261123_18`, `i18n.js?v=20261123_5`, `app.js?v=20261123_3`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
-- **Last frontend version update:** 2026-11-23 (responsive header alignment and globe after Chat)
+- **Frontend cache/version string:** `styles.css?v=20261123_18`, `i18n.js?v=20261123_6`, `app.js?v=20261123_5`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
+- **Last frontend version update:** 2026-11-23 (four-digit room codes; not deployed)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -233,6 +234,32 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-11-23 13:38 UTC+1 — Stale local room-code runtime fixed and verified
+
+- **Tool used:** Cursor
+- **Changed files:** `PROJECT_STATUS_HANDOVER.md` only in this investigation; the existing uncommitted room-code implementation in `main.py`, `static/app.js`, `static/i18n.js`, `static/index.html`, and tests was preserved unchanged.
+- **Summary / root cause:** The confirmed five-digit local behavior came from the existing `127.0.0.1:8000` Uvicorn worker started at 07:00 without `--reload`. It predated the 13:24 `main.py` edit and retained the old in-memory five-digit generator. Real local SQLite evidence showed rooms `11725`, `55682`, and `68851` created by that stale worker at 13:31–13:32. The served frontend was current and same-origin: it posted `POST /api/rooms` to local port 8000, already rendered `maxlength="4"` / placeholder `1234`, and had no code-expanding transform. The verified stale project process only was stopped and a fresh project process was started on port 8000.
+- **Runtime evidence:** Original process tree was launcher PID 28728 (`D:\Projects\Varalica_webapp\.venv\Scripts\python.exe`) and worker/listener PID 30472 (`Python314\python.exe`), port 8000, command `-m uvicorn main:app --host 127.0.0.1 --port 8000`, no reload. The final fresh listener is worker PID 23740 under launcher PID 6520, launched from `D:\Projects\Varalica_webapp`, port 8000, and `/health` returns `{"ok": true}`. The user-facing local app then created four-digit room `3046` through this fresh runtime.
+- **Real HTTP verification:** An isolated real Uvicorn instance on port 8765 used `%TEMP%\varalica_roomcode_verify_9567eae0.sqlite3`. `POST /api/rooms` created 20/20 unique four-digit rooms in range 1000–9999 with matching `/room/{code}` URLs and successful real joins; examples: `8756`, `5392`, `8146`, `2683`, `6230`, `7418`. No new five-digit code was produced.
+- **Real browser verification:** The actual local UI created and displayed SR `7131`, HR `8339`, DE `6255`, and TR `1223`. In every language the visible standard input had four positions, placeholder `1234`, the browser requested `http://127.0.0.1:8765/api/rooms`, and the room URL/invite link retained the same code. A real paste event with `12345` kept the visible four-position input empty, preserved `12345` in the compatibility path, posted to `/api/rooms/12345/join`, opened `/room/12345`, and rendered `12345`.
+- **Tests run:** Python unittest **81/81 PASS** with temporary SQLite; `py_compile` PASS for `main.py`, `words.py`, `validate_words.py`, and `storage.py`; `node --check` PASS for `static/app.js`, `static/i18n.js`, and `tests/check_gameplay_ui_browser.mjs`; UI language, suspicion UI, and real headless browser checks PASS.
+- **Database safety:** Production was not accessed or changed. The user-owned local database was changed concurrently by the pre-existing stale process before it was stopped (the three five-digit room snapshots above). From the post-stop baseline through all isolated verification, the original `varalica.sqlite3` remained byte-identical: SHA-256 `B8A03F6A65AAA5750C9938F8FBE0E149B1918A301579C812B4C1EA2B9ABE236F`, 53,248 bytes, timestamp `2026-11-23 12:32:22.2014324Z`. After the final fixed port-8000 runtime started, the user-facing app concurrently created room `3046`; this was not an agent verification write. The current database hash is `0AA24222C8D73BC2CDFC30F102439A558E14FA22450D937FEA816BF127AF4267`, with timestamp `2026-11-23 12:38:36.2179309Z`. The user room was preserved.
+- **What was not changed:** No source logic, existing tests, production system, production database, unrelated process, commit, push, or deploy.
+- **Deploy status:** LOCAL ONLY. NOT COMMITTED, NOT PUSHED, NOT DEPLOYED.
+- **Manual checks needed:** None for the confirmed local runtime issue.
+- **Known issues / risks:** The development command still has no `--reload`; future Python edits require an explicit restart. The 9,000-code pool intentionally returns HTTP 503 when exhausted.
+
+### 2026-11-23 13:25 UTC+1 — Four-digit room codes
+
+- **Tool used:** Cursor
+- **Changed files:** `main.py`, `static/app.js`, `static/i18n.js`, `static/index.html`, `tests/test_room_codes.py`, `tests/test_ui_translations.py`, `tests/check_gameplay_ui_browser.mjs`, `PROJECT_STATUS_HANDOVER.md`.
+- **Summary:** New room codes are four digits from 1000 through 9999. The generator still uses `random` and skips codes occupied in memory or in recoverable SQLite snapshots. If every code is taken, creation returns HTTP 503. The standard join input is exactly four digits in SR, HR, DE, and TR, with placeholder `1234`. A pasted or linked five-digit code stays out of that input and joins through the existing room URL and invite path. Existing five-digit rooms, links, and saved rows are unchanged.
+- **Tests run:** Python unittest **81/81 PASS** with `VARALICA_DB_PATH` set to a temporary database. `node --check` PASS for `static/app.js`, `static/i18n.js`, and `tests/check_gameplay_ui_browser.mjs`. Headless browser regression PASS, including four-language placeholders, four-digit create/copy/link behavior, and five-digit URL acceptance. The real local and production databases were not modified.
+- **What was not changed:** Room lifecycle, authentication, gameplay, WebSocket protocol, scoring, database schema, catalog, and unrelated translations.
+- **Deploy status:** NOT DEPLOYED. No commit or push.
+- **Manual checks needed:** None for the automated coverage. A physical check of an existing five-digit production link remains appropriate before deployment.
+- **Known issues:** None found in the automated tests. The four-digit pool has 9,000 codes; creation fails safely when all are occupied.
 
 ### 2026-11-23 13:17 UTC+1 — Responsive header deployed
 

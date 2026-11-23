@@ -163,12 +163,54 @@ async function main() {
   await waitFor(async () => evaluate(
     "document.readyState === 'complete' && typeof renderFinalVoting === 'function' && Boolean(window.VaralicaI18n)",
   ), "Varalica frontend");
-  await evaluate(`
-    window.VaralicaI18n.setUiLanguage("hr", { manual: true });
+  const roomLinks = await evaluate(`(() => {
     document.querySelector("#languageGate")?.classList.add("hidden");
     document.querySelector(".app-shell")?.removeAttribute("inert");
-    true
-  `);
+    const input = document.querySelector("#roomCode");
+    const languages = ["sr", "hr", "de", "tr"].map((language) => {
+      window.VaralicaI18n.setUiLanguage(language, { manual: true });
+      return { language, placeholder: input.placeholder, maxLength: input.maxLength };
+    });
+    input.value = "12a0-34567";
+    input.dispatchEvent(new Event("input"));
+    const typed = input.value;
+    showValidInviteUI("12345");
+    const legacyInput = input.value;
+    const legacyCode = joinCode();
+    showValidInviteUI("1024");
+    const createdInput = input.value;
+    localRoomCode = "1024";
+    roomState = { room_code: "1024" };
+    const copied = inviteLink();
+    const origin = "https://varalica.autolovac.space";
+    return {
+      languages,
+      typed,
+      legacyInput,
+      legacyCode,
+      createdInput,
+      copied,
+      fourDigit: isValidInviteUrl(origin + "/room/1024"),
+      fiveDigit: isValidInviteUrl(origin + "/room/12345"),
+      tooShort: isValidInviteUrl(origin + "/room/102"),
+      pathFour: /^\\/room\\/([A-Z0-9]{4,5})$/i.test("/room/1024"),
+      pathFive: /^\\/room\\/([A-Z0-9]{4,5})$/i.test("/room/12345")
+    };
+  })()`);
+  assert.equal(roomLinks.typed, "1203");
+  assert.equal(roomLinks.legacyInput, "");
+  assert.equal(roomLinks.legacyCode, "12345");
+  assert.equal(roomLinks.createdInput, "1024");
+  assert.match(roomLinks.copied, /\/room\/1024$/);
+  assert.equal(roomLinks.fourDigit, true);
+  assert.equal(roomLinks.fiveDigit, true);
+  assert.equal(roomLinks.tooShort, false);
+  assert.equal(roomLinks.pathFour, true);
+  assert.equal(roomLinks.pathFive, true);
+  for (const language of roomLinks.languages) {
+    assert.equal(language.placeholder, "1234", `${language.language} placeholder`);
+    assert.equal(language.maxLength, 4, `${language.language} length`);
+  }
 
   const voteResult = await evaluate(`(async () => {
     localRoomCode = "12345";

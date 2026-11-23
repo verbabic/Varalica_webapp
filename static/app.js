@@ -239,7 +239,7 @@ function openLanguageConfirm(lang) {
   document.querySelector("#languageConfirmModal")?.classList.remove("hidden");
 }
 
-const pathRoomMatch = window.location.pathname.match(/^\/room\/([A-Z0-9]{5})$/i);
+const pathRoomMatch = window.location.pathname.match(/^\/room\/([A-Z0-9]{4,5})$/i);
 if (pathRoomMatch) {
   inviteRoomCode = pathRoomMatch[1].toUpperCase();
   setupView.classList.add("hidden");
@@ -255,8 +255,47 @@ playerNameInput.addEventListener("input", () => {
   sessionStorage.setItem("varalica_username", playerNameInput.value.trim());
   updateJoinButtons();
 });
+function digitsOnly(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function typedRoomCode() {
+  return digitsOnly(roomCodeInput.value).slice(0, 4);
+}
+
+function legacyInviteCode() {
+  const code = String(pendingInviteCode || inviteRoomCode || "").trim();
+  return /^\d{5}$/.test(code) ? code : "";
+}
+
+function joinCode() {
+  const typed = typedRoomCode();
+  return typed.length === 4 ? typed : legacyInviteCode();
+}
+
+function applyRoomCodeInput(raw, { focusNext = false } = {}) {
+  const digits = digitsOnly(raw);
+  if (digits.length === 5) {
+    roomCodeInput.value = "";
+    pendingInviteCode = digits;
+    inviteRoomCode = pendingInviteCode;
+    refreshInviteNotice();
+    if (focusNext) (hasValidPlayerName() ? joinRoomButton : playerNameInput).focus();
+    return;
+  }
+  roomCodeInput.value = digits.slice(0, 4);
+  if (roomCodeInput.value) pendingInviteCode = "";
+  if (focusNext && roomCodeInput.value.length === 4) {
+    (hasValidPlayerName() ? joinRoomButton : playerNameInput).focus();
+  }
+}
+
 roomCodeInput.addEventListener("input", () => {
-  roomCodeInput.value = roomCodeInput.value.replace(/[^1-9]/g, "").slice(0, 5);
+  applyRoomCodeInput(roomCodeInput.value);
+});
+roomCodeInput.addEventListener("paste", (event) => {
+  event.preventDefault();
+  applyRoomCodeInput(event.clipboardData?.getData("text") || "", { focusNext: true });
 });
 copyCodeButton.addEventListener("click", copyRoomCode);
 copyLinkButton.addEventListener("click", copyRoomLink);
@@ -440,9 +479,16 @@ async function joinRoom() {
     return;
   }
   sessionStorage.setItem("varalica_username", name);
-  const code = roomCodeInput.value.trim().toUpperCase();
+  const typed = typedRoomCode();
+  if (typed.length > 0 && typed.length < 4) {
+    showError(t("error.room_code_required"));
+    roomCodeInput.focus();
+    return;
+  }
+  const code = joinCode();
   if (!code) {
     showError(t("error.room_code_required"));
+    roomCodeInput.focus();
     return;
   }
   try {
@@ -1448,8 +1494,20 @@ function showValidInviteUI(code) {
   setupView.classList.remove("hidden");
   roomView.classList.add("hidden");
   homeButton.classList.remove("hidden");
-  roomCodeInput.value = code;
-  pendingInviteCode = code;
+  const normalized = String(code || "").trim();
+  if (/^\d{4}$/.test(normalized)) {
+    roomCodeInput.value = normalized;
+    pendingInviteCode = "";
+    roomCodeInput.focus();
+  } else if (/^\d{5}$/.test(normalized)) {
+    roomCodeInput.value = "";
+    pendingInviteCode = normalized;
+    inviteRoomCode = normalized;
+    (hasValidPlayerName() ? joinRoomButton : playerNameInput).focus();
+  } else {
+    roomCodeInput.value = "";
+    pendingInviteCode = "";
+  }
   refreshInviteNotice();
   createRoomButton.classList.add("hidden");
   clearError();
@@ -1613,7 +1671,7 @@ function isValidInviteUrl(url) {
     if (!/^https?:$/.test(parsed.protocol)) return false;
     const host = parsed.hostname.toLowerCase();
     if (!host || host === "0.0.0.0" || host === "127.0.0.1") return false;
-    const roomMatch = parsed.pathname.match(/^\/room\/([A-Z0-9]{5})$/i);
+    const roomMatch = parsed.pathname.match(/^\/room\/([A-Z0-9]{4,5})$/i);
     if (!roomMatch) return false;
     return true;
   } catch {

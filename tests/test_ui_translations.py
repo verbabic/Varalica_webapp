@@ -115,6 +115,7 @@ class UiTranslationTests(unittest.TestCase):
                 "homeScreen.description",
                 "homeScreen.iphone1",
                 "homeScreen.android1",
+                "setup.room_code_placeholder",
             }:
                 continue
             self.assertEqual(self.packs["tr"][key], turkish, key)
@@ -123,6 +124,8 @@ class UiTranslationTests(unittest.TestCase):
         for key in ("rules.rule_07", "api.voting_not_yet", "rules.expanded.chapter_05.paragraph_01", "rules.expanded.chapter_05.prediction_intro"):
             for lang in ("hr", "sr", "de", "tr"):
                 self.assertIn("30", self.packs[lang][key], f"{lang} {key}")
+        for lang in ("hr", "sr", "de", "tr"):
+            self.assertEqual(self.packs[lang]["setup.room_code_placeholder"], "1234")
 
     def test_stable_titles_and_chat_name(self):
         self.assertEqual(self.packs["hr"]["home.title"], "Varalica")

@@ -242,6 +242,9 @@ async def room_page(room_code: str) -> FileResponse:
 
 
 _feedback_lock = threading.Lock()
+_room_code_lock = threading.RLock()
+ROOM_CODE_MIN = 1000
+ROOM_CODE_MAX = 9999
 _feedback_hits: dict[str, deque[float]] = {}
 FEEDBACK_CATEGORIES = {"bug", "improvement", "other"}
 FEEDBACK_MIN_MESSAGE_CHARS = 5
@@ -365,27 +368,28 @@ async def room_status(room_code: str) -> dict:
 @app.post("/api/rooms")
 async def create_room(request: NameRequest) -> dict:
     name = clean_name(request.name)
-    room_code = make_room_code()
     room_play_mode = normalize_play_mode(request.play_mode)
-    room = Room(
-        code=room_code,
-        used_word_indexes=load_used_word_indexes(room_code),
-        play_mode=room_play_mode,
-    )
-    player = Player(
-        id=str(uuid.uuid4()),
-        name=name,
-        avatar=choose_avatar(room, request.avatar),
-        is_host=True,
-        play_mode=room_play_mode,
-        ui_language=normalize_ui_language(request.ui_language),
-    )
-    room.host_id = player.id
-    room.players[player.id] = player
-    credential = issue_player_credential(room, player)
-    ensure_scoreboard_player(room, player.id)
-    rooms[room_code] = room
-    persist_room(room)
+    with _room_code_lock:
+        room_code = make_room_code()
+        room = Room(
+            code=room_code,
+            used_word_indexes=load_used_word_indexes(room_code),
+            play_mode=room_play_mode,
+        )
+        player = Player(
+            id=str(uuid.uuid4()),
+            name=name,
+            avatar=choose_avatar(room, request.avatar),
+            is_host=True,
+            play_mode=room_play_mode,
+            ui_language=normalize_ui_language(request.ui_language),
+        )
+        room.host_id = player.id
+        room.players[player.id] = player
+        credential = issue_player_credential(room, player)
+        ensure_scoreboard_player(room, player.id)
+        rooms[room_code] = room
+        persist_room(room)
     return {
         "room_code": room_code,
         "player_id": player.id,
@@ -1193,12 +1197,27 @@ def clean_association_text(text: str) -> str:
     return cleaned
 
 
+def occupied_room_codes() -> set[str]:
+    occupied = {str(code).upper() for code in rooms}
+    occupied.update(str(code).upper() for code in load_room_snapshots())
+    return occupied
+
+
 def make_room_code() -> str:
-    alphabet = "123456789"
-    while True:
-        code = "".join(random.choice(alphabet) for _ in range(5))
-        if code not in rooms:
-            return code
+    with _room_code_lock:
+        occupied = occupied_room_codes()
+        for _ in range(64):
+            code = f"{random.randint(ROOM_CODE_MIN, ROOM_CODE_MAX):04d}"
+            if code not in occupied and code not in rooms:
+                return code
+        free_codes = [
+            f"{value:04d}"
+            for value in range(ROOM_CODE_MIN, ROOM_CODE_MAX + 1)
+            if f"{value:04d}" not in occupied and f"{value:04d}" not in rooms
+        ]
+        if not free_codes:
+            raise HTTPException(status_code=503, detail="Nema slobodnog koda sobe.")
+        return random.choice(free_codes)
 
 
 def get_room(room_code: str) -> Room:
