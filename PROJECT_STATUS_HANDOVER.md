@@ -209,8 +209,8 @@ _Add new rows here when bugs are found._
 - **Reverse proxy:** openresty/nginx (observed via response headers) — exact config: **needs manual verification**
 - **SSL status:** HTTPS active on production domain — certificate renewal: **needs manual verification**
 - **Docker status:** Not used for confirmed production workflow
-- **Last deploy:** **needs manual verification** (latest local commit on `master` at doc update: no-cache HTML headers work)
-- **Rollback notes:** Revert git on server (`git pull` previous commit) + `systemctl restart varalica` — **needs manual verification**
+- **Last deploy:** 2026-11-23 — commit `33f6ccd` on `/opt/Varalica_webapp`, service restarted, production verification passed. Previous production commit was `93e9592`.
+- **Rollback notes:** Code and the pre-deploy working tree are archived at `/root/varalica-backups/20261123T090951Z`. A Git stash named `pre-33f6ccd tracked local changes` remains on the server. Roll code back from that archive or commit, then restart `varalica`. Do not restore the SQLite backup over the live database unless the live file itself is damaged.
 - **Render:** `render.yaml` in repo only; **not confirmed** as live production host
 
 ---
@@ -236,6 +236,18 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-11-23 10:13 UTC+1 — Production release deployed
+
+- **Tool used:** Cursor
+- **Summary:** Released commit `33f6ccd` (`Release Varalica catalog, localization, and responsive UI`) to GitHub `master` and fast-forwarded `/opt/Varalica_webapp` from `93e9592`. The live SQLite file was not replaced. `varalica.service` restarted cleanly and remained active.
+- **Backup:** `/root/varalica-backups/20261123T090951Z`. SQLite backup integrity `ok`; counts were rooms 0, used words 0, feedback 3, with `feedback.ui_language` present. The archive also contains the service unit, Git status, and a source archive. Permissions stayed root:root, mode 644.
+- **Database after verification:** integrity `ok`; rooms 0, used words 0, feedback 3. The smoke-test room was removed with `delete_room_data` after all four test players left.
+- **Verification:** HTTPS 200, TLS verification result 0, certificate valid through 19 Feb 2027. Public and local WebSocket handshakes returned `101`. Catalog import reported 1,231 / 1,169 / 62. A four-player test room selected an active word with SR, HR, DE, and TR fields and hints, assigned one Varalica, and synchronized state over WebSocket. Production UI at 1280 CSS px showed all four flags at 85.47×61.72 with a 10.155 px radius and the 3-second pulse. At 320 CSS px, Live and Chat stacked with no page overflow. German production UI showed Betrüger, the home-screen instructions, and iOS/Android labels. Invalid feedback returned `message_too_short` and did not add a row.
+- **Not changed:** service unit, Python environment, dependencies, and the live database file. No Excel import and no schema migration were run.
+- **Deploy status:** DEPLOYED
+- **Manual checks needed:** full multiplayer voting, overtime, and reveal flow with real players.
+- **Known issues:** `GET /health` now returns 404. The reviewed release has no `/health` route; the previously running uncommitted server code answered 200. A local monitor calls it every minute. The unauthenticated public WebSocket probe closed before sending credentials and produced one expected `WebSocketDisconnect` log. One drawn test word had identical Serbian and Croatian hint text even though both hint fields were present.
 
 ### 2026-11-23 10:02 UTC+1 — Release test fix and staging inventory
 
