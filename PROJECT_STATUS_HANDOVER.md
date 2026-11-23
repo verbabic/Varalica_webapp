@@ -207,16 +207,16 @@ _Add new rows here when bugs are found._
 - **Reverse proxy:** openresty/nginx (observed via response headers) — exact config: **needs manual verification**
 - **SSL status:** HTTPS active on production domain — certificate renewal: **needs manual verification**
 - **Docker status:** Not used for confirmed production workflow
-- **Last deploy:** 2026-11-23 — Players-header logo release `b438a7b` on `/opt/Varalica_webapp`. Previous production commit was `e0d20b0`.
-- **Rollback notes:** The immediate pre-release code, service unit, repository bundle, Git status, and consistent SQLite backup are under `/root/varalica-backups/20261123T114304Z`. The older Git stash named `pre-33f6ccd tracked local changes` remains untouched on the server. Roll code back to `e0d20b0` or the archived source, then restart only `varalica`; do not restore the SQLite backup over the live database merely to roll back code.
+- **Last deploy:** 2026-11-23 — Players-header logo enlargement `51045f0` on `/opt/Varalica_webapp`. Previous production commit was `8335fd2`.
+- **Rollback notes:** The immediate pre-release code, service unit, repository bundle, Git status, and consistent SQLite backup are under `/root/varalica-backups/20261123T115401Z`. The older Git stash named `pre-33f6ccd tracked local changes` remains untouched on the server. Roll code back to `8335fd2` or the archived source, then restart only `varalica`; do not restore the SQLite backup over the live database merely to roll back code.
 - **Render:** `render.yaml` in repo only; **not confirmed** as live production host
 
 ---
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `styles.css?v=20261123_16` locally (not deployed; production still serves `styles.css?v=20261123_15`), `i18n.js?v=20261123_5`, `app.js?v=20261123_3`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
-- **Last frontend version update:** 2026-11-23 (Players-header logo enlarged locally; not deployed)
+- **Frontend cache/version string:** `styles.css?v=20261123_16`, `i18n.js?v=20261123_5`, `app.js?v=20261123_3`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
+- **Last frontend version update:** 2026-11-23 (enlarged centered language-specific Players header logo)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -234,6 +234,21 @@ _Add new rows here when bugs are found._
 
 ## 11. Changelog
 
+### 2026-11-23 12:54 UTC+1 — Enlarged Players-header logo deployed
+
+- **Tool used:** Cursor
+- **Release:** Commit `51045f0` (`Enlarge centered players header logo by 55 percent`) was pushed to GitHub `master` without force-pushing and fast-forwarded on `/opt/Varalica_webapp` from `8335fd2`.
+- **Preflight and backup:** Production had no tracked modifications. Ten server-only untracked files and the existing `pre-33f6ccd tracked local changes` stash were preserved. Backup `/root/varalica-backups/20261123T115401Z` contains the pre-release source archive, repository bundle, service unit, Git status, and a transactionally consistent SQLite backup. Backup integrity was `ok`, permissions remained mode 0644, and counts were 2 rooms, 0 used-word rows, and 3 feedback rows.
+- **Local validation:** `node --check` PASS for `static/app.js`, `static/i18n.js`, and `tests/check_gameplay_ui_browser.mjs`. Headless browser regression PASS.
+- **Production service verification:** `varalica.service` restarted once for activation and is active/running with `NRestarts=0`. Public home and `/health` returned HTTP 200; health body was `{"ok":true}` and the vBot360 monitor returned `{"varalica":"ok","detail":"ok"}`. A direct WebSocket handshake to the application and through the public HTTPS endpoint returned HTTP 101.
+- **Production logo verification:** Public HTML serves `styles.css?v=20261123_16`, and that stylesheet contains `clamp(68px, 32.55cqi, 161px)`. Client-only production-browser measurement used no API writes. HR/SR `Varalica_home.png` rendered at 81.38×34.86 (320), 99.27×42.53 (375), 104.16×44.63 (390), and 93.08×39.88 (768 and 1280). DE and TR used the same widths with heights 27.19/27.13, 33.16/33.08, 34.80/34.72, and 31.09/31.02. This is 1.550 times the previous rendered size. Maximum center deviation was 0.008 CSS px. No overlap, clipping, hidden heading or counter, or horizontal overflow occurred. Clearance to the Players panel border was 17 CSS px at the top and 29 CSS px at the bottom in the measured empty room layout.
+- **Database safety:** The live SQLite file was not replaced or migrated. After restart, integrity was `ok`; both backed-up room keys remained present, and counts remained 2 rooms, 0 used-word rows, and 3 feedback rows.
+- **What was not changed:** Gameplay, WebSocket protocol, backend, catalog, logo image files, language mapping, environment, dependencies, systemd unit, reverse proxy, database schema/data, server-only files, existing stash, or prior backups.
+- **Rollback:** Not required.
+- **Deploy status:** DEPLOYED.
+- **Remaining manual checks:** None required for release acceptance.
+- **Known issues:** None confirmed for this release.
+
 ### 2026-11-23 12:50 UTC+1 — Larger Players-header neon logo
 
 - **Tool used:** Cursor
@@ -243,8 +258,8 @@ _Add new rows here when bugs are found._
 - **Vertical clearance:** Distance from the Players card border box to the logo was 17.00 CSS px at the top and 143.00 CSS px at the bottom for HR, SR, DE, and TR at 320, 375, 390, 768, and 1280. Before the change, HR top clearance was 17.75 at 320 and 17.00 at the other widths; bottom clearance was 143.77 at 320 and 143.00 elsewhere.
 - **Tests run:** `node --check` PASS for `static/app.js`, `static/i18n.js`, and `tests/check_gameplay_ui_browser.mjs`. Headless browser regression PASS, including HR/SR/DE/TR logo files, centering, aspect ratio, and no overlap or horizontal overflow at those five widths. Temporary measurement logging was removed; the regression file has no remaining diff.
 - **What was not changed:** Players heading, counter, player list, gameplay, logo assets, i18n logo mapping, backend, and the browser regression assertions.
-- **Deploy status:** NOT DEPLOYED. No commit or push.
-- **Manual checks needed:** None for this local measurement. Production still serves the previous logo size until a deploy.
+- **Deploy status:** Deployed afterward as commit `51045f0`. See the deployment entry below.
+- **Manual checks needed:** None for this local measurement.
 - **Known issues:** None observed in the headless check.
 
 ### 2026-11-23 12:44 UTC+1 — Players-header neon logo deployed
