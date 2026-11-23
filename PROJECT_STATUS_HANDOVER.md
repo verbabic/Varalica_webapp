@@ -208,8 +208,8 @@ _Add new rows here when bugs are found._
 - **Reverse proxy:** openresty/nginx (observed via response headers) — exact config: **needs manual verification**
 - **SSL status:** HTTPS active on production domain — certificate renewal: **needs manual verification**
 - **Docker status:** Not used for confirmed production workflow
-- **Last deploy:** 2026-11-23 — responsive header release `778a5f0` on `/opt/Varalica_webapp`. Previous production commit was `414644a`.
-- **Rollback notes:** The immediate pre-release code, service unit, repository bundle, Git status, and consistent SQLite backup are under `/root/varalica-backups/20261123T121732Z`. The older Git stash named `pre-33f6ccd tracked local changes` remains untouched on the server. Roll code back to `414644a` or the archived source. Static files are read from disk, so a restart is only needed if the rolled-back files are not served; do not restore the SQLite backup over the live database merely to roll back code.
+- **Last deploy:** 2026-11-23 — four-digit room-code release `134e73b` on `/opt/Varalica_webapp`. Previous production commit was `a19a03a` (application behavior from `778a5f0`).
+- **Rollback notes:** The immediate pre-release code, service unit, repository bundle, Git status, and consistent SQLite backup are under `/root/varalica-backups/20261123T125215Z`. The older Git stash named `pre-33f6ccd tracked local changes` remains untouched on the server. Roll code back to `a19a03a` and restart only `varalica.service` if the Python generator must be unloaded. Do not restore the SQLite backup over the live database.
 - **Render:** `render.yaml` in repo only; **not confirmed** as live production host
 
 ---
@@ -217,7 +217,7 @@ _Add new rows here when bugs are found._
 ## 9. Cache / Version Notes
 
 - **Frontend cache/version string:** `styles.css?v=20261123_18`, `i18n.js?v=20261123_6`, `app.js?v=20261123_5`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
-- **Last frontend version update:** 2026-11-23 (four-digit room codes; not deployed)
+- **Last frontend version update:** 2026-11-23 (four-digit room codes; deployed as `134e73b`)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -235,6 +235,23 @@ _Add new rows here when bugs are found._
 
 ## 11. Changelog
 
+### 2026-11-23 14:00 UTC+1 — Four-digit room codes deployed
+
+- **Tool used:** Cursor
+- **Release:** Commit `134e73b` (`Use four-digit room codes while preserving legacy room links`) was pushed to GitHub `master` from `a19a03a` without force-push. Production `/opt/Varalica_webapp` fast-forwarded from verified HEAD `a19a03ac04cbc36b84fea39c743834b6815914aa` to `134e73b9461db08696ba6b5197be08d8ae7091c9`.
+- **Preflight:** Tracked tree was clean. Ten server-only untracked files and stash `pre-33f6ccd tracked local changes` were preserved. `varalica.service` was active as PID `151479`, `NRestarts=0`. Disk had about 58G free. Live SQLite is `/opt/Varalica_webapp/varalica.sqlite3` (`room_code` is unconstrained TEXT). Before activation there was one idle five-digit lobby room, `58351`, with no players and HTTP 404 status. No active gameplay, so nothing was deleted.
+- **Backup:** `/root/varalica-backups/20261123T125215Z` contains `source.tar.gz` (excluding `.venv` and the live SQLite/WAL/SHM), `repo.bundle`, `HEAD.txt`, `git-status.txt`, `stash-list.txt`, the service unit, and a SQLite backup API copy. Live file inode, size 53,248, and mtime were unchanged by the backup. Backup and live integrity were `ok`. Backup counts: room `58351`, 0 used-word rows, feedback ids 1, 2, 3. Permissions on the backup database were preserved.
+- **Activation:** One `systemctl restart varalica`. New PID `154302`, still active/running, `NRestarts` stayed 0. The running command is Uvicorn `main:app` on port 8010. Deployed `main.py` contains `ROOM_CODE_MIN = 1000`.
+- **Public checks:** Homepage HTTP 200 with `maxlength="4"`, placeholder `1234`, `i18n.js?v=20261123_6`, and `app.js?v=20261123_5`. `GET /health` HTTP 200 `{"ok":true}`. `/opt/Varalica_webapp/.venv` `tests/vbot360_health_contract.py` printed `PASS 200 b'{"ok":true}'` against a temporary database. `/usr/local/sbin/app-server-observe` `probe_url()` returned `{"varalica":"ok","detail":"ok"}` for `http://127.0.0.1:8010/health`. A raw TLS WebSocket handshake to `/ws/0000/probe` returned HTTP 101 Switching Protocols. Public `GET /room/58351` returned HTTP 200.
+- **Isolated creation:** A loopback Uvicorn of the deployed code used `/tmp/varalica-isolated.CxeHLP/rooms.sqlite3`, not the live database. Eight `POST /api/rooms` results were unique four-digit codes `6509`, `3057`, `9873`, `4670`, `4635`, `8468`, `1923`, and `4348`. Each join returned the same code and `/room/{code}` returned HTTP 200 with `maxlength="4"`. Seeded legacy code `12345` served `/room/12345`, join returned `12345`, and status returned `{"ok":true,"room_code":"12345","lifecycle":"active"}`. The isolated process was stopped afterward.
+- **Browser:** Public homepage language switching through the real menu and confirmation covered SR, HR, DE, and TR. In each language the join field placeholder was `1234` and maxlength was 4. No horizontal overflow at 1920 CSS px or, in Turkish, at 390 CSS px. No production room was created from the browser.
+- **Database safety:** The live database was not restored, migrated, or overwritten. After the isolated test, integrity was `ok`, feedback ids remained 1, 2, 3, used-word count remained 0, and room `58351` remained. A separate live room `8414` (four digits, empty lobby, updated 2026-11-23 12:53:51 UTC) was already present before the isolated creates and is not one of the isolated test codes. It is real production activity, not a test write.
+- **What was not changed:** Gameplay rules, schema, catalog, systemd unit, proxy, server-only files, stash, and the live SQLite file contents aside from ordinary player activity.
+- **Rollback:** Not required.
+- **Deploy status:** DEPLOYED. Production PID `154302` loaded the new generator, and isolated deployed-code room creation returned four-digit codes.
+- **Manual checks needed:** None for release acceptance. Physical multi-device play remains a general product check.
+- **Known issues:** None introduced by this release. The four-digit pool still returns HTTP 503 when exhausted.
+
 ### 2026-11-23 13:38 UTC+1 — Stale local room-code runtime fixed and verified
 
 - **Tool used:** Cursor
@@ -246,7 +263,7 @@ _Add new rows here when bugs are found._
 - **Tests run:** Python unittest **81/81 PASS** with temporary SQLite; `py_compile` PASS for `main.py`, `words.py`, `validate_words.py`, and `storage.py`; `node --check` PASS for `static/app.js`, `static/i18n.js`, and `tests/check_gameplay_ui_browser.mjs`; UI language, suspicion UI, and real headless browser checks PASS.
 - **Database safety:** Production was not accessed or changed. The user-owned local database was changed concurrently by the pre-existing stale process before it was stopped (the three five-digit room snapshots above). From the post-stop baseline through all isolated verification, the original `varalica.sqlite3` remained byte-identical: SHA-256 `B8A03F6A65AAA5750C9938F8FBE0E149B1918A301579C812B4C1EA2B9ABE236F`, 53,248 bytes, timestamp `2026-11-23 12:32:22.2014324Z`. After the final fixed port-8000 runtime started, the user-facing app concurrently created room `3046`; this was not an agent verification write. The current database hash is `0AA24222C8D73BC2CDFC30F102439A558E14FA22450D937FEA816BF127AF4267`, with timestamp `2026-11-23 12:38:36.2179309Z`. The user room was preserved.
 - **What was not changed:** No source logic, existing tests, production system, production database, unrelated process, commit, push, or deploy.
-- **Deploy status:** LOCAL ONLY. NOT COMMITTED, NOT PUSHED, NOT DEPLOYED.
+- **Deploy status:** Committed and deployed afterward as `134e73b`. See the deployment entry above.
 - **Manual checks needed:** None for the confirmed local runtime issue.
 - **Known issues / risks:** The development command still has no `--reload`; future Python edits require an explicit restart. The 9,000-code pool intentionally returns HTTP 503 when exhausted.
 
@@ -257,7 +274,7 @@ _Add new rows here when bugs are found._
 - **Summary:** New room codes are four digits from 1000 through 9999. The generator still uses `random` and skips codes occupied in memory or in recoverable SQLite snapshots. If every code is taken, creation returns HTTP 503. The standard join input is exactly four digits in SR, HR, DE, and TR, with placeholder `1234`. A pasted or linked five-digit code stays out of that input and joins through the existing room URL and invite path. Existing five-digit rooms, links, and saved rows are unchanged.
 - **Tests run:** Python unittest **81/81 PASS** with `VARALICA_DB_PATH` set to a temporary database. `node --check` PASS for `static/app.js`, `static/i18n.js`, and `tests/check_gameplay_ui_browser.mjs`. Headless browser regression PASS, including four-language placeholders, four-digit create/copy/link behavior, and five-digit URL acceptance. The real local and production databases were not modified.
 - **What was not changed:** Room lifecycle, authentication, gameplay, WebSocket protocol, scoring, database schema, catalog, and unrelated translations.
-- **Deploy status:** NOT DEPLOYED. No commit or push.
+- **Deploy status:** Deployed afterward as commit `134e73b`. See the deployment entry above.
 - **Manual checks needed:** None for the automated coverage. A physical check of an existing five-digit production link remains appropriate before deployment.
 - **Known issues:** None found in the automated tests. The four-digit pool has 9,000 codes; creation fails safely when all are occupied.
 
