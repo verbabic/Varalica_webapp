@@ -207,8 +207,8 @@ _Add new rows here when bugs are found._
 - **Reverse proxy:** openresty/nginx (observed via response headers) — exact config: **needs manual verification**
 - **SSL status:** HTTPS active on production domain — certificate renewal: **needs manual verification**
 - **Docker status:** Not used for confirmed production workflow
-- **Last deploy:** 2026-11-23 — health hotfix `dc25afa` on `/opt/Varalica_webapp`. Previous commit was `6ef771d`.
-- **Rollback notes:** Code and the pre-deploy working tree are archived at `/root/varalica-backups/20261123T090951Z`. A Git stash named `pre-33f6ccd tracked local changes` remains on the server. Roll code back from that archive or commit, then restart `varalica`. Do not restore the SQLite backup over the live database unless the live file itself is damaged.
+- **Last deploy:** 2026-11-23 — gameplay QA-fix release `465871b` on `/opt/Varalica_webapp`. Previous production commit was `4db0f53`.
+- **Rollback notes:** The immediate pre-release code, service unit, repository bundle, Git status, and consistent SQLite backup are under `/root/varalica-backups/20261123T102444Z`. The older Git stash named `pre-33f6ccd tracked local changes` remains untouched on the server. Roll code back to `4db0f53` or the archived source, then restart only `varalica`; do not restore the SQLite backup over the live database merely to roll back code.
 - **Render:** `render.yaml` in repo only; **not confirmed** as live production host
 
 ---
@@ -234,6 +234,21 @@ _Add new rows here when bugs are found._
 
 ## 11. Changelog
 
+### 2026-11-23 11:25 UTC+1 — Gameplay QA fixes deployed
+
+- **Tool used:** Cursor
+- **Release:** Commit `465871b` (`Fix multiplayer voting, leave, presence, and host UI state`) was pushed to GitHub `master` without force-pushing and fast-forwarded on `/opt/Varalica_webapp` from `4db0f53`.
+- **Preflight and backup:** Production had no tracked modifications. Ten server-only untracked files and the existing `pre-33f6ccd tracked local changes` stash were preserved. Backup `/root/varalica-backups/20261123T102444Z` contains the pre-release source, repository bundle, service unit, Git status, and a transactionally consistent SQLite backup. Backup integrity was `ok`, permissions remained root:root mode 0644, and counts were 0 rooms, 0 used-word rows, and 3 feedback rows.
+- **Local validation:** Python unittest **76/76 PASS** with temporary SQLite, Python compilation PASS, catalog validation PASS, JavaScript syntax PASS, language/suspicion checks PASS, and the headless-browser gameplay regression PASS at 320/375/390/768/1280 CSS px. The local database SHA-256 remained unchanged.
+- **Production verification:** `varalica.service` is active/running with `NRestarts=0`. Public home and `/health` returned HTTP 200; health body was `{"ok":true}` and the vBot360 monitor returned `{"varalica":"ok","detail":"ok"}`. TLS 1.3 was valid through 19 Feb 2027. The public WebSocket upgrade returned HTTP 101. The unauthenticated probe then disconnected before authentication and produced the same expected `WebSocketDisconnect` diagnostic as earlier checks.
+- **Runtime and gameplay smoke:** The deployed Python environment imported FastAPI/Uvicorn successfully. An isolated loopback instance of the exact deployed code used temporary SQLite to create seven players, start a two-Varalica round, verify exactly two roles plus HR/SR/DE/TR private words or hints over authenticated WebSockets, and remove every player through authenticated `/leave`; empty-room status then returned 404. No production room or live database row was created. The production venv does not include the test-only `httpx` package, so the TestClient suite was not rerun there and no dependency was installed.
+- **Catalog and frontend:** Deployed counts are 1,231 physical records, 1,169 active, and 62 inactive; all active SR/HR/DE/TR mappings are present, IDs are unique, and inactive records are not selectable. Public HTML references `app.js?v=20261123_3`; the served script exactly matched the deployed file. Browser verification loaded the updated runtime without observed errors, showed localized names `Betrüger`, `Sahtekâr`, and `Varalica`, kept Home/Rules/Contact visible, and had no horizontal overflow at 390 CSS px.
+- **Database safety:** The live SQLite file was not replaced or migrated. Final integrity was `ok`, schema/data counts remained 0/0/3, `feedback.ui_language` remained present, and the live database's logical schema-and-row hash exactly matched the pre-release backup after restart.
+- **What was not changed:** Production environment, dependencies, systemd unit, reverse proxy, SQLite schema/data, catalog, translations, Excel files, server-only files, existing stash, or prior backups.
+- **Rollback:** Not required.
+- **Deploy status:** DEPLOYED.
+- **Remaining manual checks:** Physical multi-device network-loss/tab-kill/reconnect and reaction behavior remain recommended; no release blocker is known.
+
 ### 2026-11-23 11:14 UTC+1 — Consolidated gameplay QA fixes
 
 - **Tool used:** Cursor
@@ -244,8 +259,8 @@ _Add new rows here when bugs are found._
 - **Browser regression coverage:** Verified first vote target → unrelated peer render → retained target → second target → valid two-target submission; one authenticated leave request despite repeated Home actions; failed leave request still cleans local state; active/away/idle/offline presence patching in discussion and overtime without row replacement; host select node/focus/value retained while voting state patches; no horizontal overflow for Chat controls at 320, 375, 390, 768, or 1280 CSS px.
 - **Database safety:** Real local `varalica.sqlite3` SHA-256 remained `806DE0CD0F11E768AD6D1165C2085CA910E151DC18B5868CC6C50705FE38CD55` before and after tests.
 - **What was not changed:** Voting majority/overtime/scoring rules, one-Varalica behavior, catalog, translations, Excel, flag artwork, CSS design, SQLite schema/data, production configuration, or unrelated UI. Existing uncommitted/untracked files were preserved.
-- **Deploy status:** NOT DEPLOYED. No commit, push, server access, production room, database change, or service restart.
-- **Manual checks needed:** Physical-device network-loss/tab-kill/reconnect and reaction smoke tests remain recommended before a future deployment.
+- **Deploy status:** DEPLOYED as release commit `465871b`; see the 11:25 deployment entry above.
+- **Manual checks needed:** Physical-device network-loss/tab-kill/reconnect and reaction smoke tests remain recommended.
 - **Known issues / integration recommendation:** The five QA blockers are resolved with automated regression coverage. No remaining blocker from this audit prevents Triborex integration.
 
 ### 2026-11-23 10:58 UTC+1 — Complete multiplayer gameplay QA
