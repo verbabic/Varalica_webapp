@@ -207,8 +207,8 @@ _Add new rows here when bugs are found._
 - **Reverse proxy:** openresty/nginx (observed via response headers) — exact config: **needs manual verification**
 - **SSL status:** HTTPS active on production domain — certificate renewal: **needs manual verification**
 - **Docker status:** Not used for confirmed production workflow
-- **Last deploy:** 2026-11-23 — Players-header logo enlargement `51045f0` on `/opt/Varalica_webapp`. Previous production commit was `8335fd2`.
-- **Rollback notes:** The immediate pre-release code, service unit, repository bundle, Git status, and consistent SQLite backup are under `/root/varalica-backups/20261123T115401Z`. The older Git stash named `pre-33f6ccd tracked local changes` remains untouched on the server. Roll code back to `8335fd2` or the archived source, then restart only `varalica`; do not restore the SQLite backup over the live database merely to roll back code.
+- **Last deploy:** 2026-11-23 — responsive header release `778a5f0` on `/opt/Varalica_webapp`. Previous production commit was `414644a`.
+- **Rollback notes:** The immediate pre-release code, service unit, repository bundle, Git status, and consistent SQLite backup are under `/root/varalica-backups/20261123T121732Z`. The older Git stash named `pre-33f6ccd tracked local changes` remains untouched on the server. Roll code back to `414644a` or the archived source. Static files are read from disk, so a restart is only needed if the rolled-back files are not served; do not restore the SQLite backup over the live database merely to roll back code.
 - **Render:** `render.yaml` in repo only; **not confirmed** as live production host
 
 ---
@@ -216,7 +216,7 @@ _Add new rows here when bugs are found._
 ## 9. Cache / Version Notes
 
 - **Frontend cache/version string:** `styles.css?v=20261123_18`, `i18n.js?v=20261123_5`, `app.js?v=20261123_3`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
-- **Last frontend version update:** 2026-11-23 (header button alignment and globe after Chat; not deployed)
+- **Last frontend version update:** 2026-11-23 (responsive header alignment and globe after Chat)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -234,6 +234,20 @@ _Add new rows here when bugs are found._
 
 ## 11. Changelog
 
+### 2026-11-23 13:17 UTC+1 — Responsive header deployed
+
+- **Tool used:** Cursor
+- **Release:** Commit `778a5f0` (`Align header controls and place globe after Chat`) was pushed to GitHub `master` without force-pushing and fast-forwarded on `/opt/Varalica_webapp` from `414644a`.
+- **Preflight and backup:** Production had no tracked modifications and no active rooms. Ten server-only untracked files and the existing `pre-33f6ccd tracked local changes` stash were preserved. Backup `/root/varalica-backups/20261123T121732Z` contains the pre-release source archive, repository bundle, service unit, Git status, and a transactionally consistent SQLite backup. Backup integrity was `ok`, permissions remained mode 0644, and counts were 0 rooms, 0 used-word rows, and 3 feedback rows.
+- **Activation:** No service restart was required. `varalica.service` stayed active/running as PID `151479` with `NRestarts=0`. Uvicorn serves `index.html` and static files from disk on each request.
+- **Production verification:** Public home and `/health` returned HTTP 200; health body was `{"ok":true}` and the vBot360 monitor returned `{"varalica":"ok","detail":"ok"}`. The public WebSocket handshake returned HTTP 101. Public HTML serves `styles.css?v=20261123_18` and the new header markup. Client-only browser verification passed all 32 language/viewport checks: SR, HR, DE, and TR at 320, 375, 390, 430, 768, 1024, 1280, and 1920. Home, Rules, and Contact stayed 106×34 at their approved x positions. All three shared one vertical line from 390 upward. At 320 and 375, Contact stayed on the second line at Rules' x. The globe was immediately right of Chat, the language-specific logo files were correct, and there was no overlap or horizontal overflow.
+- **Database safety:** The live SQLite file was not replaced or migrated. After deployment, integrity was `ok` and feedback rows matched the backup exactly. Counts remained 0 rooms, 0 used-word rows, and 3 feedback rows.
+- **What was not changed:** Gameplay, WebSocket protocol, backend, catalog, logo image files, language behavior, environment, dependencies, systemd unit, reverse proxy, database schema/data, server-only files, existing stash, or prior backups.
+- **Rollback:** Not required.
+- **Deploy status:** DEPLOYED.
+- **Remaining manual checks:** None required for release acceptance.
+- **Known issues:** Contact remains wrapped at 320 and 375 by design.
+
 ### 2026-11-23 13:10 UTC+1 — Header alignment and globe after Chat
 
 - **Tool used:** Cursor
@@ -244,7 +258,7 @@ _Add new rows here when bugs are found._
 - **Globe:** It is immediately to the right of Chat at 320, 375, 390, 430, 768, 1024, 1280, and 1920. Live/Chat kept their previous rendered widths. On narrow screens the mode control shifts left by the space the globe previously occupied, so the globe fits after Chat without page overflow.
 - **Tests run:** JavaScript syntax checks PASS. Headless browser regression PASS at all eight widths, including four-language switching and no horizontal overflow.
 - **What was not changed:** Button styling, language-switching behavior, logo assets, gameplay, localization data, catalog, and database.
-- **Deploy status:** NOT DEPLOYED. No commit or push.
+- **Deploy status:** Deployed afterward as commit `778a5f0`. See the deployment entry below.
 - **Manual checks needed:** None for the automated placement check.
 - **Known issues:** Contact cannot share the Home/Rules vertical line at 320 and 375 without changing its horizontal position.
 
