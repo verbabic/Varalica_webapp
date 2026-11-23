@@ -1084,7 +1084,7 @@ body.cinematic-reveal-active .association-overlay-dock {
 .players-header-logo {
   grid-column: 2;
   display: block;
-  width: clamp(44px, 21cqi, 104px);
+  width: clamp(68px, 32.55cqi, 161px);
   max-width: 100%;
   height: auto;
   justify-self: center;

@@ -215,8 +215,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `styles.css?v=20261123_15`, `i18n.js?v=20261123_5`, `app.js?v=20261123_3`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
-- **Last frontend version update:** 2026-11-23 (centered language-specific Players header logo)
+- **Frontend cache/version string:** `styles.css?v=20261123_16` locally (not deployed; production still serves `styles.css?v=20261123_15`), `i18n.js?v=20261123_5`, `app.js?v=20261123_3`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
+- **Last frontend version update:** 2026-11-23 (Players-header logo enlarged locally; not deployed)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -233,6 +233,19 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-11-23 12:50 UTC+1 — Larger Players-header neon logo
+
+- **Tool used:** Cursor
+- **Changed files:** `static/styles.css`, `static/index.html`, `PROJECT_STATUS_HANDOVER.md`.
+- **Summary:** The Players-header logo width changed from `clamp(44px, 21cqi, 104px)` to `clamp(68px, 32.55cqi, 161px)`, about 55% larger at the measured viewports. The three-column grid, image files, and language switching are unchanged. Stylesheet cache token is `styles.css?v=20261123_16`.
+- **Rendered size (HR/SR `Varalica_home.png`, CSS px, previous → new):** 320: 52.50×22.48 → 81.38×34.86; 375: 64.05×27.44 → 99.27×42.53; 390: 67.19×28.78 → 104.16×44.63; 768 and 1280: 60.05×25.72 → 93.08×39.88. DE and TR use the same widths and shorter heights (320: 27.19 / 27.13; 375: 33.16 / 33.08; 390: 34.80 / 34.72; 768 and 1280: 31.09 / 31.02). Scale versus the previous rendered size is 1.550 at every measured width.
+- **Vertical clearance:** Distance from the Players card border box to the logo was 17.00 CSS px at the top and 143.00 CSS px at the bottom for HR, SR, DE, and TR at 320, 375, 390, 768, and 1280. Before the change, HR top clearance was 17.75 at 320 and 17.00 at the other widths; bottom clearance was 143.77 at 320 and 143.00 elsewhere.
+- **Tests run:** `node --check` PASS for `static/app.js`, `static/i18n.js`, and `tests/check_gameplay_ui_browser.mjs`. Headless browser regression PASS, including HR/SR/DE/TR logo files, centering, aspect ratio, and no overlap or horizontal overflow at those five widths. Temporary measurement logging was removed; the regression file has no remaining diff.
+- **What was not changed:** Players heading, counter, player list, gameplay, logo assets, i18n logo mapping, backend, and the browser regression assertions.
+- **Deploy status:** NOT DEPLOYED. No commit or push.
+- **Manual checks needed:** None for this local measurement. Production still serves the previous logo size until a deploy.
+- **Known issues:** None observed in the headless check.
 
 ### 2026-11-23 12:44 UTC+1 — Players-header neon logo deployed
 
