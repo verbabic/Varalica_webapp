@@ -4,96 +4,128 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Varalica</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260607_2" />
+    <link rel="stylesheet" href="/static/styles.css?v=20261123_14" />
   </head>
   <body>
     <div id="landingSplash" class="landing-splash" aria-hidden="true">
-      <img class="landing-splash-image" src="/static/assets/Landing.png?v=20260604_11" alt="" decoding="async" />
+      <img class="landing-splash-image" src="/static/assets/Landing.png?v=20261122_6" alt="" decoding="async" />
     </div>
     <main class="app-shell">
       <section class="hero">
         <div class="hero-brand">
-          <button id="homeButton" class="home-button" type="button">Početna</button>
           <div class="hero-title-block">
             <div class="hero-title-row">
-              <img class="hero-title-logo" src="/static/assets/Logo_title.png?v=20260605_7" alt="" aria-hidden="true" decoding="async" />
-              <h1>Varalica</h1>
+              <img id="homeLogo" class="home-logo" alt="" decoding="async" />
             </div>
           </div>
+          <button id="homeButton" class="home-button" type="button" data-i18n="home.button">Početna</button>
         </div>
         <div class="top-status">
-          <div class="mode-toggle" role="group" aria-label="Nacin igre">
-            <button id="liveModeButton" class="mode-segment active" type="button" data-mode="live">Live</button>
-            <button id="chatModeButton" class="mode-segment" type="button" data-mode="chat">Chat</button>
+          <div id="languageMenuWrap" class="language-menu">
+            <button id="languageMenuButton" class="language-menu-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="languageMenu"><span class="language-emoji" aria-hidden="true">🌐</span></button>
+            <div id="languageMenu" class="language-dropdown hidden" role="listbox">
+              <button type="button" class="language-choice" data-lang="sr" role="option"><img src="/static/assets/flags/flag-rs.svg?v=20261123_9" alt="" width="22" height="22" /><span>SR</span></button>
+              <button type="button" class="language-choice" data-lang="hr" role="option"><img src="/static/assets/flags/flag-hr.svg?v=20261123_7" alt="" width="22" height="22" /><span>HR</span></button>
+              <button type="button" class="language-choice" data-lang="de" role="option"><img src="/static/assets/flags/flag-de.svg?v=20261123_9" alt="" width="22" height="22" /><span>DE</span></button>
+              <button type="button" class="language-choice" data-lang="tr" role="option"><img src="/static/assets/flags/flag-tr.svg?v=20261123_2" alt="" width="22" height="22" /><span>TR</span></button>
+            </div>
           </div>
-          <button id="rulesButton" class="small secondary" type="button">📖 Pravila</button>
+          <div class="mode-toggle" role="group" data-i18n-aria="mode.group_label" aria-label="Nacin igre">
+            <button id="liveModeButton" class="mode-segment active" type="button" data-mode="live" data-i18n="mode.live">Live</button>
+            <button id="chatModeButton" class="mode-segment" type="button" data-mode="chat" data-i18n="mode.chat">Chat</button>
+          </div>
+          <div class="header-utility-actions">
+            <button id="rulesButton" class="small secondary" type="button" data-i18n="rules.open_button">📖 Pravila</button>
+            <button id="contactButton" class="small secondary" type="button" aria-haspopup="dialog" aria-controls="contactModal">
+              <svg class="contact-button-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              <span data-i18n="contact.open_button">Kontakt</span>
+            </button>
+          </div>
           <div id="connectionStatus" class="status-pill hidden"></div>
         </div>
       </section>
 
       <section id="expiredRoomView" class="panel expired-room-view hidden">
-        <h2 class="expired-room-title">Soba je istekla.</h2>
-        <p class="expired-room-text">Vrati se na početnu.</p>
+        <h2 class="expired-room-title" data-i18n="room.expired_title">Soba je istekla.</h2>
+        <p class="expired-room-text" data-i18n="room.expired_body">Vrati se na početnu.</p>
       </section>
 
       <section id="setupView" class="panel setup-panel">
         <div id="inviteNotice" class="invite-notice hidden"></div>
 
-        <label for="playerName">Tvoje ime</label>
-        <input id="playerName" maxlength="15" autocomplete="username" placeholder="Tvoje ime" />
+        <label for="playerName" data-i18n="setup.name_label">Tvoje ime</label>
+        <input id="playerName" maxlength="15" autocomplete="username" placeholder="Tvoje ime" data-i18n-placeholder="setup.name_placeholder" />
 
         <div class="join-box">
-          <label for="roomCode">Kod sobe</label>
-          <input id="roomCode" maxlength="5" inputmode="numeric" autocomplete="off" placeholder="12345" />
-          <button id="joinRoomButton" class="secondary">Pridruzi se</button>
+          <label for="roomCode" data-i18n="setup.room_code_label">Kod sobe</label>
+          <input id="roomCode" maxlength="5" inputmode="numeric" autocomplete="off" placeholder="12345" data-i18n-placeholder="setup.room_code_placeholder" />
+          <button id="joinRoomButton" class="secondary" data-i18n="setup.join">Pridruzi se</button>
         </div>
 
         <div class="actions two-columns">
-          <button id="createRoomButton">Napravi sobu</button>
+          <button id="createRoomButton" data-i18n="setup.create">Napravi sobu</button>
         </div>
 
         <div class="avatar-section">
           <div class="avatar-header">
-            <label>Izaberi avatar</label>
+            <label data-i18n="setup.avatar_label">Izaberi avatar</label>
           </div>
-          <div id="avatarGrid" class="avatar-grid" aria-label="Izaberi avatar"></div>
+          <div class="avatar-scroller">
+            <div id="avatarGrid" class="avatar-grid" data-i18n-aria="setup.avatar_group_label" aria-label="Izaberi avatar"></div>
+            <div id="avatarScrollRail" class="avatar-scroll-rail hidden" aria-hidden="true">
+              <div id="avatarScrollThumb" class="avatar-scroll-thumb"></div>
+            </div>
+            <button id="avatarScrollButton" class="avatar-scroll-button hidden" type="button" aria-label="Prikaži avatare ispod">↓</button>
+          </div>
         </div>
       </section>
+
+      <p id="homeScreenEntry" class="home-screen-entry">
+        <button id="homeScreenButton" class="home-screen-link" type="button" aria-haspopup="dialog" aria-controls="homeScreenModal">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <rect x="7" y="2.5" width="10" height="19" rx="2" fill="none" stroke="currentColor" stroke-width="1.8" />
+            <path d="M11 18.5h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+          <span data-i18n="homeScreen.add">Dodaj na početni zaslon</span>
+        </button>
+      </p>
 
       <section id="roomView" class="room-layout hidden">
         <div class="panel room-panel">
           <div id="roomPanelHeader" class="room-panel-header">
             <div class="room-topline">
               <div class="room-summary">
-                <p class="eyebrow room-summary-label">Kod sobe</p>
+                <p class="eyebrow room-summary-label" data-i18n="room.code_label">Kod sobe</p>
                 <div class="room-summary-row">
                   <div id="roomCodeDisplay" class="room-code">-----</div>
-                  <div id="roundDisplay" class="round-display">Runda 1</div>
+                  <div id="roundDisplay" class="round-display" data-i18n="room.round_initial">Runda 1</div>
                 </div>
               </div>
               <div class="room-topline-controls">
-                <button id="leaveRoomButton" class="small secondary leave-button leave-button-inline">Napusti sobu</button>
+                <button id="leaveRoomButton" class="small secondary leave-button leave-button-inline" data-i18n="room.leave">Napusti sobu</button>
               </div>
             </div>
             <div id="roomPanelCollapsible" class="room-panel-collapsible">
               <div class="room-actions">
-                <button id="copyCodeButton" class="small secondary">Kopiraj kod</button>
-                <button id="copyLinkButton" class="small secondary">Kopiraj link</button>
-                <button id="showQrButton" class="small secondary">QR</button>
+                <button id="copyCodeButton" class="small secondary" data-i18n="room.copy_code">Kopiraj kod</button>
+                <button id="copyLinkButton" class="small secondary" data-i18n="room.copy_link">Kopiraj link</button>
+                <button id="showQrButton" class="small secondary" data-i18n="room.qr">QR</button>
               </div>
               <div id="qrPanel" class="qr-panel hidden"></div>
               <div id="hostPanel" class="host-panel hidden">
-                <p class="eyebrow">Host panel</p>
+                <p class="eyebrow" data-i18n="host.panel_label">Host panel</p>
                 <div id="hostPanelActions" class="room-secondary-actions"></div>
               </div>
               <div class="room-secondary-actions">
-                <button id="resetRoomButton" class="small replay hidden">Resetuj sobu</button>
+                <button id="resetRoomButton" class="small replay hidden" data-i18n="host.reset_hidden">Resetuj sobu</button>
               </div>
             </div>
           </div>
 
           <div class="room-compact-toggle-wrap">
-            <button id="roomPanelToggle" class="room-panel-toggle" type="button" aria-expanded="true" aria-label="Sakrij ili prikaži gornji panel">▲</button>
+            <button id="roomPanelToggle" class="room-panel-toggle" type="button" aria-expanded="true" data-i18n-aria="room.panel_toggle" aria-label="Sakrij ili prikaži gornji panel">▲</button>
           </div>
 
           <div id="phaseContent" class="phase-content"></div>
@@ -104,8 +136,8 @@
 
         <aside class="panel players-panel">
           <div class="players-header">
-            <h2>Igraci</h2>
-            <span id="playerCountBadge" class="status-pill">0/8</span>
+            <h2 data-i18n="players.heading">Igraci</h2>
+            <span id="playerCountBadge" class="status-pill">0/10</span>
           </div>
           <div id="playersList" class="players-list"></div>
         </aside>
@@ -116,47 +148,148 @@
 
     <div id="rulesModal" class="modal-backdrop hidden">
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rulesTitle">
-        <button class="modal-close small secondary" data-close-modal="rulesModal" type="button">Zatvori</button>
-        <h2 id="rulesTitle">📖 Pravila igre</h2>
-        <div class="rules-body">
-          <p>1 igrač je tajno Varalica. Ako je više od 6 igrača, onda su 2 Varalice u igri.</p>
-          <p>Svi igrači dobiju istu riječ, osim Varalice.</p>
-          <p>Varalica ne vidi riječ, nego dobije samo kratki hint.</p>
-          <p>Igrači redom govore jednu asocijaciju na svoju riječ.</p>
-          <p>Cilj igrača je otkriti tko je Varalica.</p>
-          <p>Cilj Varalice je uklopiti se i ne biti otkrivena.</p>
-          <p>Nakon rasprave host otvara glasanje.</p>
-          <p>Varalica je otkrivena ako dobije više od 50% glasova.</p>
-          <p>Ako pogrešan igrač dobije većinu, Varalica pobjeđuje.</p>
-          <p>Ako nitko nema većinu, glasanje je neriješeno i rasprava se produžuje.</p>
-          <p>Ne smiješ direktno reći riječ koju si dobio.</p>
-          <p>Zabavi se, blefiraj i pazi kome vjeruješ.</p>
+        <button class="modal-close small secondary" data-close-modal="rulesModal" type="button" data-i18n="modal.close">Zatvori</button>
+        <h2 id="rulesTitle" data-i18n="rules.title">📖 Pravila igre</h2>
+        <div class="rules-body" tabindex="0">
+          <p data-i18n="rules.rule_01">1 igrač je tajno Varalica. Ako je više od 6 igrača, onda su 2 Varalice u igri.</p>
+          <p data-i18n="rules.rule_02">Svi igrači dobiju istu riječ, osim Varalice.</p>
+          <p data-i18n="rules.rule_03">Varalica ne vidi riječ, nego dobije samo kratki hint.</p>
+          <p data-i18n="rules.rule_04">Igrači redom govore jednu asocijaciju na svoju riječ.</p>
+          <p data-i18n="rules.rule_05">Cilj igrača je otkriti tko je Varalica.</p>
+          <p data-i18n="rules.rule_06">Cilj Varalice je uklopiti se i ne biti otkrivena.</p>
+          <p data-i18n="rules.rule_07">Nakon rasprave host otvara glasanje.</p>
+          <p data-i18n="rules.rule_08">Varalica je otkrivena ako dobije više od 50% glasova.</p>
+          <p data-i18n="rules.rule_09">Ako pogrešan igrač dobije većinu, Varalica pobjeđuje.</p>
+          <p data-i18n="rules.rule_10">Ako nitko nema većinu, glasanje je neriješeno i rasprava se produžuje.</p>
+          <p data-i18n="rules.rule_11">Ne smiješ direktno reći riječ koju si dobio.</p>
+          <p data-i18n="rules.rule_12">Zabavi se, blefiraj i pazi kome vjeruješ.</p>
+          <div id="expandedRules" class="expanded-rules"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="contactModal" class="modal-backdrop hidden">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="contactTitle" aria-describedby="contactIntro" tabindex="-1">
+        <button class="contact-close" data-close-modal="contactModal" type="button" data-i18n-aria="modal.close" aria-label="Zatvori">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+          </svg>
+        </button>
+        <h2 id="contactTitle" data-i18n="contact.title">Kontakt i povratne informacije</h2>
+        <div class="contact-scroll">
+          <p id="contactIntro" class="helper-text" data-i18n="contact.intro">Primjećuješ pogrešku ili imaš prijedlog za poboljšanje? Javi nam. Možeš nam poslati i drugu primjedbu.</p>
+          <form id="contactForm" novalidate>
+            <div class="contact-fields">
+              <fieldset class="contact-categories">
+                <legend data-i18n="contact.category_legend">Vrsta povratne informacije</legend>
+                <label class="contact-segment">
+                  <input type="radio" name="contactCategory" value="bug" />
+                  <span data-i18n="contact.category.bug">Prijava pogreške</span>
+                </label>
+                <label class="contact-segment">
+                  <input type="radio" name="contactCategory" value="improvement" />
+                  <span data-i18n="contact.category.improvement">Prijedlog za poboljšanje</span>
+                </label>
+                <label class="contact-segment">
+                  <input type="radio" name="contactCategory" value="other" />
+                  <span data-i18n="contact.category.other">Primjedba / Ostalo</span>
+                </label>
+              </fieldset>
+              <label for="contactMessage" data-i18n="contact.message_label">Tvoja poruka</label>
+              <textarea id="contactMessage" rows="5" data-i18n-placeholder="contact.message_placeholder" placeholder="Opiši što se dogodilo ili nam reci što predlažeš..."></textarea>
+              <label for="contactEmail" data-i18n="contact.email_label">Adresa e-pošte (nije obavezna)</label>
+              <input id="contactEmail" type="email" autocomplete="email" inputmode="email" maxlength="254" />
+              <p class="contact-help" data-i18n="contact.email_help">Ako želiš da ti možemo odgovoriti, ostavi svoju adresu e-pošte. Polje nije obavezno.</p>
+            </div>
+            <p id="contactError" class="contact-error hidden" role="alert"></p>
+            <p id="contactSuccess" class="contact-success hidden" role="status" data-i18n="contact.success">Poruka je poslana. Hvala ti!</p>
+            <p class="contact-privacy" data-i18n="contact.privacy">Podatke koje pošalješ koristimo za obradu tvoje povratne informacije. Ako ostaviš adresu e-pošte, možemo je upotrijebiti da ti odgovorimo.</p>
+          </form>
+        </div>
+        <div class="modal-actions">
+          <button id="contactSubmitButton" type="submit" form="contactForm" disabled>
+            <span data-i18n="contact.submit">Pošalji</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="homeScreenModal" class="modal-backdrop hidden">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="homeScreenTitle" aria-describedby="homeScreenDescription" tabindex="-1">
+        <button class="home-screen-close" data-close-modal="homeScreenModal" type="button" data-i18n-aria="homeScreen.close" aria-label="Zatvori">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+          </svg>
+        </button>
+        <h2 id="homeScreenTitle" data-i18n="homeScreen.title">Dodaj Varalicu na telefon</h2>
+        <div class="home-screen-body">
+          <p id="homeScreenDescription" class="helper-text" data-i18n="homeScreen.description">Pokreni Varalicu izravno s početnog zaslona telefona.</p>
+          <div class="home-screen-tabs" role="tablist">
+            <button id="homeScreenIphoneTab" type="button" role="tab" aria-selected="true" aria-controls="homeScreenIphoneSteps">iOS</button>
+            <button id="homeScreenAndroidTab" type="button" role="tab" aria-selected="false" aria-controls="homeScreenAndroidSteps">Android</button>
+          </div>
+          <ol id="homeScreenIphoneSteps" role="tabpanel" aria-labelledby="homeScreenIphoneTab">
+            <li data-i18n="homeScreen.iphone1">Otvori Varalicu u Safariju.</li>
+            <li data-i18n="homeScreen.iphone2">Dodirni ikonu za dijeljenje.</li>
+            <li data-i18n="homeScreen.iphone3">Odaberi „Dodaj na početni zaslon” i potvrdi.</li>
+          </ol>
+          <ol id="homeScreenAndroidSteps" class="hidden" role="tabpanel" aria-labelledby="homeScreenAndroidTab">
+            <li data-i18n="homeScreen.android1">Otvori Varalicu u Chrome.</li>
+            <li data-i18n="homeScreen.android2">Otvori izbornik s tri točkice.</li>
+            <li data-i18n="homeScreen.android3">Odaberi „Dodaj na početni zaslon” ili „Instaliraj aplikaciju” i potvrdi.</li>
+          </ol>
+          <p class="helper-text home-screen-note" data-i18n="homeScreen.note">Nazivi opcija mogu se razlikovati ovisno o jeziku telefona i preglednika.</p>
         </div>
       </div>
     </div>
 
     <div id="leaveModal" class="modal-backdrop hidden">
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="leaveTitle">
-        <h2 id="leaveTitle">Da li sigurno želiš da napustiš sobu?</h2>
+        <h2 id="leaveTitle" data-i18n="leave.title">Da li sigurno želiš da napustiš sobu?</h2>
         <div class="modal-actions">
-          <button id="cancelLeaveButton" class="secondary" type="button">Odustani</button>
-          <button id="confirmLeaveButton" class="danger" type="button">Napusti sobu</button>
+          <button id="cancelLeaveButton" class="secondary" type="button" data-i18n="leave.cancel">Odustani</button>
+          <button id="confirmLeaveButton" class="danger" type="button" data-i18n="leave.confirm">Napusti sobu</button>
         </div>
       </div>
     </div>
 
     <div id="confirmActionModal" class="modal-backdrop hidden">
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirmActionTitle">
-        <h2 id="confirmActionTitle">Potvrdi akciju</h2>
+        <h2 id="confirmActionTitle" data-i18n="confirm.title">Potvrdi akciju</h2>
         <p id="confirmActionText" class="helper-text"></p>
         <div class="modal-actions">
-          <button id="cancelActionButton" class="secondary" type="button">Cancel</button>
-          <button id="confirmActionButton" class="danger" type="button">Potvrdi</button>
+          <button id="cancelActionButton" class="secondary" type="button" data-i18n="confirm.cancel">Cancel</button>
+          <button id="confirmActionButton" class="danger" type="button" data-i18n="confirm.ok">Potvrdi</button>
         </div>
       </div>
     </div>
 
+    <div id="languageGate" class="language-gate hidden" role="dialog" aria-modal="true" aria-labelledby="languageGateTitle">
+      <h2 id="languageGateTitle" class="visually-hidden" data-i18n="language.selector.label">Jezik</h2>
+      <div class="language-gate-stage">
+        <img class="language-gate-image" src="/static/assets/Lang.png?v=20261122_2" alt="" />
+        <div class="language-gate-board">
+          <button type="button" class="language-gate-hit" data-gate-lang="de" aria-label="Deutsch"><span class="language-gate-flag"><img src="/static/assets/flags/flag-de.svg?v=20261123_9" alt="" /></span><span class="language-gate-code">DE</span></button>
+          <button type="button" class="language-gate-hit" data-gate-lang="tr" aria-label="Türkçe"><span class="language-gate-flag"><img src="/static/assets/flags/flag-tr.svg?v=20261123_2" alt="" /></span><span class="language-gate-code">TR</span></button>
+          <button type="button" class="language-gate-hit" data-gate-lang="sr" aria-label="Srpski"><span class="language-gate-flag"><img src="/static/assets/flags/flag-rs.svg?v=20261123_9" alt="" /></span><span class="language-gate-code">SR</span></button>
+          <button type="button" class="language-gate-hit" data-gate-lang="hr" aria-label="Hrvatski"><span class="language-gate-flag"><img src="/static/assets/flags/flag-hr.svg?v=20261123_7" alt="" /></span><span class="language-gate-code">HR</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div id="languageConfirmModal" class="modal-backdrop hidden">
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="languageConfirmTitle">
+        <h2 id="languageConfirmTitle"></h2>
+        <p id="languageConfirmText" class="helper-text"></p>
+        <div class="modal-actions">
+          <button id="languageConfirmCancel" class="secondary" type="button"></button>
+          <button id="languageConfirmOk" type="button"></button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/i18n.js?v=20261123_4"></script>
     <script src="/static/vendor/qrcode.min.js?v=20260531_1"></script>
-    <script src="/static/app.js?v=20260605_7"></script>
+    <script src="/static/app.js?v=20261123_2"></script>
   </body>
 </html>

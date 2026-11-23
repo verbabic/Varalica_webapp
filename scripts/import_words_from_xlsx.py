@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import pprint
 import re
+import sys
+import types
 import unicodedata
 import zipfile
 from collections import Counter, defaultdict
@@ -11,6 +13,7 @@ from xml.etree import ElementTree as ET
 
 
 EXPECTED_COLUMNS = ["category_key", "word_sr", "hint_sr", "word_hr", "hint_hr"]
+OPTIONAL_LANGUAGE_COLUMNS = ["word_de", "hint_de"]
 DEFAULT_SOURCE = Path("data/Database words HR SR.xlsx")
 DEFAULT_OUTPUT = Path("words.py")
 
@@ -148,9 +151,12 @@ def split_hints(value: str) -> list[str]:
     return parts or [value.strip()]
 
 
+def language_hints(value: str) -> list[str]:
+    return split_hints(value)[:4]
+
+
 def hints_for(category: str, hr: str, sr: str, hint_hr: str, hint_sr: str) -> list[str]:
-    hints = list(dict.fromkeys(split_hints(hint_hr) + split_hints(hint_sr)))
-    return hints[:4]
+    return language_hints(hint_hr)
 
 
 def difficulty_for(index: int) -> str:
@@ -161,24 +167,259 @@ def difficulty_for(index: int) -> str:
     return "normal"
 
 
+APPROVED_COLUMNS = [
+    "category_key",
+    "word_sr",
+    "hint_sr",
+    "word_hr",
+    "hint_hr",
+    "word_de",
+    "hint_de",
+    "word_tr",
+    "hint_tr",
+]
+ALLOWED_DIFFICULTIES = {"easy", "normal", "hard"}
+
+
+class CatalogSyncError(RuntimeError):
+    """The workbook cannot be applied without moving or dropping a catalog slot."""
+
+
+def concept_pair(hr: str, sr: str) -> tuple[str, str]:
+    from word_locales import _pair
+
+    return _pair(hr, sr)
+
+
+def load_approved_concepts(path: Path) -> tuple[str, list[dict]]:
+    sheet_name, rows = read_xlsx_rows(path)
+    if not rows:
+        raise CatalogSyncError(f"{path} has no rows.")
+    header = [cell.strip() for cell in rows[0]]
+    missing_columns = [name for name in APPROVED_COLUMNS if name not in header]
+    if missing_columns:
+        raise CatalogSyncError(
+            f"{path} is missing required columns: {', '.join(missing_columns)}. Found: {header}"
+        )
+    index = {name: position for position, name in enumerate(header)}
+    concepts: list[dict] = []
+    seen: dict[tuple[str, str], int] = {}
+    blanks: list[str] = []
+    bad_categories: list[str] = []
+    for row_number, row in enumerate(rows[1:], start=2):
+        def cell(name: str, row: list[str] = row) -> str:
+            position = index[name]
+            return row[position].strip() if position < len(row) else ""
+
+        values = {name: cell(name) for name in APPROVED_COLUMNS}
+        if not any(values.values()):
+            continue
+        empty = [name for name in APPROVED_COLUMNS if not values[name]]
+        if empty:
+            blanks.append(f"row {row_number}: empty {', '.join(empty)}")
+            continue
+        category = normalize_category(values["category_key"])
+        if category not in WORD_CATEGORIES:
+            bad_categories.append(f"row {row_number}: {values['category_key']!r}")
+            continue
+        pair = concept_pair(values["word_hr"], values["word_sr"])
+        if pair in seen:
+            raise CatalogSyncError(
+                "Workbook has duplicate concepts and was not imported: "
+                f"rows {seen[pair]} and {row_number} "
+                f"({values['word_hr']} / {values['word_sr']})."
+            )
+        hints = {
+            "hint_hr": language_hints(values["hint_hr"]),
+            "hint_sr": language_hints(values["hint_sr"]),
+            "hint_de": language_hints(values["hint_de"]),
+            "hint_tr": language_hints(values["hint_tr"]),
+        }
+        if any(not hint_list or any(not hint for hint in hint_list) for hint_list in hints.values()):
+            blanks.append(f"row {row_number}: empty hint after splitting")
+            continue
+        seen[pair] = row_number
+        concepts.append(
+            {
+                "row": row_number,
+                "pair": pair,
+                "category": category,
+                "hr": values["word_hr"],
+                "sr": values["word_sr"],
+                "de": values["word_de"],
+                "tr": values["word_tr"],
+                **hints,
+            }
+        )
+    if blanks:
+        preview = "\n".join(f"- {item}" for item in blanks[:20])
+        raise CatalogSyncError(f"Workbook has blank approved fields. Nothing was written.\n{preview}")
+    if bad_categories:
+        preview = "\n".join(f"- {item}" for item in bad_categories[:20])
+        raise CatalogSyncError(f"Workbook has categories outside the game list. Nothing was written.\n{preview}")
+    if not concepts:
+        raise CatalogSyncError("Workbook has no approved concepts. Nothing was written.")
+    return sheet_name, concepts
+
+
+def _parsed_id(word_id: str) -> tuple[str, int]:
+    prefix, separator, suffix = word_id.rpartition("_")
+    if not separator or not suffix.isdigit():
+        raise CatalogSyncError(f"Cannot parse a stable id: {word_id}")
+    return prefix, int(suffix)
+
+
+def _next_id(category: str, used: set[str], counters: dict[str, int]) -> str:
+    prefix = slug(category)
+    number = counters.get(prefix, 0)
+    while True:
+        number += 1
+        candidate = f"{prefix}_{number:03d}"
+        if candidate not in used:
+            counters[prefix] = number
+            used.add(candidate)
+            return candidate
+
+
+def _inactive_entry(word: dict) -> dict:
+    hints = word.get("hint_pool")
+    if not isinstance(hints, list) or not any(str(hint).strip() for hint in hints):
+        raise CatalogSyncError(f"{word.get('id')} has no hint_pool. Refusing to rewrite the catalog.")
+    difficulty = word.get("difficulty")
+    if difficulty not in ALLOWED_DIFFICULTIES:
+        raise CatalogSyncError(f"{word.get('id')} has invalid difficulty {difficulty!r}.")
+    return {
+        "id": word["id"],
+        "hr": word["hr"],
+        "sr": word["sr"],
+        "category": word["category"],
+        "difficulty": difficulty,
+        "hint_pool": list(hints),
+        "active": False,
+    }
+
+
+def _active_entry(word_id: str, difficulty: str, concept: dict) -> dict:
+    hint_hr = list(concept["hint_hr"])
+    return {
+        "id": word_id,
+        "hr": concept["hr"],
+        "sr": concept["sr"],
+        "de": concept["de"],
+        "tr": concept["tr"],
+        "category": concept["category"],
+        "difficulty": difficulty,
+        "hint_hr": hint_hr,
+        "hint_sr": list(concept["hint_sr"]),
+        "hint_de": list(concept["hint_de"]),
+        "hint_tr": list(concept["hint_tr"]),
+        "hint_pool": list(hint_hr),
+        "active": True,
+    }
+
+
+def synchronize_catalog(starter: list[dict], concepts: list[dict]) -> tuple[list[dict], dict]:
+    by_pair = {concept["pair"]: concept for concept in concepts}
+    if len(by_pair) != len(concepts):
+        raise CatalogSyncError("Approved concepts are not unique. Nothing was written.")
+    claimed: dict[tuple[str, str], int] = {}
+    catalog: list[dict] = []
+    updated = 0
+    inactive_absent = 0
+    inactive_duplicate = 0
+    category_changes: list[str] = []
+    seen_ids: set[str] = set()
+    for index, word in enumerate(starter):
+        word_id = str(word.get("id") or "").strip()
+        if not word_id:
+            raise CatalogSyncError(f"Existing catalog index {index} has no id. Nothing was written.")
+        if word_id in seen_ids:
+            raise CatalogSyncError(f"Existing id {word_id} is duplicated. Nothing was written.")
+        seen_ids.add(word_id)
+        _parsed_id(word_id)
+        pair = concept_pair(str(word.get("hr") or ""), str(word.get("sr") or ""))
+        concept = by_pair.get(pair)
+        if concept is not None and pair not in claimed:
+            if word.get("difficulty") not in ALLOWED_DIFFICULTIES:
+                raise CatalogSyncError(f"{word_id} has invalid difficulty {word.get('difficulty')!r}.")
+            if concept["category"] != word.get("category"):
+                category_changes.append(f"{word_id} index {index}: {word.get('category')} -> {concept['category']}")
+            catalog.append(_active_entry(word_id, str(word["difficulty"]), concept))
+            claimed[pair] = index
+            updated += 1
+        else:
+            catalog.append(_inactive_entry(word))
+            if concept is None:
+                inactive_absent += 1
+            else:
+                inactive_duplicate += 1
+    if [entry["id"] for entry in catalog] != [word["id"] for word in starter]:
+        raise CatalogSyncError("Existing indexes or ids changed. Nothing was written.")
+    counters: dict[str, int] = {}
+    for entry in catalog:
+        prefix, number = _parsed_id(entry["id"])
+        counters[prefix] = max(counters.get(prefix, 0), number)
+    used_ids = set(seen_ids)
+    appended_ids: list[str] = []
+    for concept in concepts:
+        if concept["pair"] in claimed:
+            continue
+        word_id = _next_id(concept["category"], used_ids, counters)
+        catalog.append(_active_entry(word_id, difficulty_for(len(catalog) + 1), concept))
+        claimed[concept["pair"]] = len(catalog) - 1
+        appended_ids.append(word_id)
+    active_entries = [entry for entry in catalog if entry["active"]]
+    active_pairs = [concept_pair(entry["hr"], entry["sr"]) for entry in active_entries]
+    if len(active_pairs) != len(set(active_pairs)):
+        raise CatalogSyncError("Active catalog contains duplicate concepts. Nothing was written.")
+    if set(active_pairs) != set(by_pair):
+        raise CatalogSyncError(
+            "Active catalog does not match the workbook "
+            f"({len(set(by_pair) - set(active_pairs))} missing, "
+            f"{len(set(active_pairs) - set(by_pair))} unapproved). Nothing was written."
+        )
+    if len({entry["id"] for entry in catalog}) != len(catalog):
+        raise CatalogSyncError("Catalog ids are not unique. Nothing was written.")
+    report = {
+        "preserved_positions": len(starter),
+        "updated_in_place": updated,
+        "inactive_absent": inactive_absent,
+        "inactive_duplicate": inactive_duplicate,
+        "appended": len(appended_ids),
+        "appended_ids": appended_ids,
+        "physical": len(catalog),
+        "active": len(active_entries),
+        "inactive": len(catalog) - len(active_entries),
+        "category_changes": category_changes,
+    }
+    return catalog, report
+
+
 def load_entries(path: Path) -> tuple[str, list[dict], list[tuple[int, list[str]]], dict[str, int], list[tuple[int, list[str]]]]:
+    """Read rows in worksheet order. This does not preserve catalog indexes.
+
+    Catalog updates go through synchronize_catalog(), which keeps existing slots.
+    """
     sheet_name, rows = read_xlsx_rows(path)
     if not rows:
         raise ValueError("Workbook has no rows.")
-    header = (rows[0] + [""] * len(EXPECTED_COLUMNS))[: len(EXPECTED_COLUMNS)]
-    if header != EXPECTED_COLUMNS:
+    header = [cell.strip() for cell in rows[0]]
+    if header[: len(EXPECTED_COLUMNS)] != EXPECTED_COLUMNS:
         raise ValueError(f"Unexpected columns: {header}. Expected: {EXPECTED_COLUMNS}")
+    has_german = header[len(EXPECTED_COLUMNS): len(EXPECTED_COLUMNS) + 2] == OPTIONAL_LANGUAGE_COLUMNS
 
     entries: list[dict] = []
     missing_rows: list[tuple[int, list[str]]] = []
+    skipped_rows: list[tuple[int, list[str]]] = []
     category_counts: dict[str, int] = defaultdict(int)
     id_counts: dict[str, int] = defaultdict(int)
     for row_number, row in enumerate(rows[1:], start=2):
-        cells = (row + [""] * len(EXPECTED_COLUMNS))[: len(EXPECTED_COLUMNS)]
+        width = len(EXPECTED_COLUMNS) + (2 if has_german else 0)
+        cells = (row + [""] * width)[:width]
         cells = [cell.strip() for cell in cells]
-        if not any(cells):
+        if not any(cells[: len(EXPECTED_COLUMNS)]):
             continue
-        if any(not cell for cell in cells):
+        if any(not cell for cell in cells[: len(EXPECTED_COLUMNS)]):
             missing_rows.append((row_number, cells))
             continue
         if is_excluded_category(cells[0]):
@@ -188,15 +429,21 @@ def load_entries(path: Path) -> tuple[str, list[dict], list[tuple[int, list[str]
         category = normalize_category(cells[0])
         category_counts[category] += 1
         id_counts[category] += 1
-        hints = hints_for(category, cells[3], cells[1], cells[4], cells[2])
+        hint_hr = language_hints(cells[4])
+        hint_sr = language_hints(cells[2])
+        hint_de = language_hints(cells[6]) if has_german and len(cells) > 6 else []
         entries.append(
             {
                 "id": f"{slug(category)}_{id_counts[category]:03d}",
                 "hr": cells[3],
                 "sr": cells[1],
+                "de": cells[5] if has_german and len(cells) > 5 else "",
                 "category": category,
                 "difficulty": difficulty_for(len(entries) + 1),
-                "hint_pool": hints[:4],
+                "hint_hr": hint_hr,
+                "hint_sr": hint_sr,
+                "hint_de": hint_de,
+                "hint_pool": hint_hr[:4],
             }
         )
     return sheet_name, entries, missing_rows, dict(category_counts), []
@@ -295,6 +542,10 @@ def ascii_fold(value: str) -> str:
 STARTER_WORDS = {data}
 
 
+def is_active_word(word: dict) -> bool:
+    return bool(word.get("active", True))
+
+
 def validate_words(words: list[dict], strict: bool = False) -> ValidationResult:
     result = ValidationResult()
 
@@ -317,11 +568,19 @@ def validate_words(words: list[dict], strict: bool = False) -> ValidationResult:
 
         hr = str(word.get("hr", "")).strip()
         sr = str(word.get("sr", "")).strip()
-        pair = (hr.casefold(), sr.casefold())
-        if pair in pairs:
-            result.warn(word_id, "word", f"Duplicate word pair: {{hr}} / {{sr}} also used by {{pairs[pair]}}")
-        else:
-            pairs[pair] = word_id
+        if is_active_word(word):
+            pair = (hr.casefold(), sr.casefold())
+            if pair in pairs:
+                result.add(word_id, "word", f"Duplicate active word pair: {{hr}} / {{sr}} also used by {{pairs[pair]}}")
+            else:
+                pairs[pair] = word_id
+            for field_name in ("de", "tr"):
+                if not str(word.get(field_name, "")).strip():
+                    result.add(word_id, field_name, "Empty field")
+            for field_name in ("hint_hr", "hint_sr", "hint_de", "hint_tr"):
+                localized_hints = word.get(field_name)
+                if not isinstance(localized_hints, list) or not any(str(hint).strip() for hint in localized_hints):
+                    result.add(word_id, field_name, "Missing language hint")
 
         category = str(word.get("category", ""))
         if category not in WORD_CATEGORIES:
@@ -366,6 +625,8 @@ def duplicate_word_warnings(words: list[dict]) -> list[str]:
     hr_words: defaultdict[str, list[str]] = defaultdict(list)
     pairs: defaultdict[tuple[str, str], list[str]] = defaultdict(list)
     for word in words:
+        if not word.get("active", True):
+            continue
         word_id = word["id"]
         sr_words[str(word.get("sr", "")).casefold()].append(word_id)
         hr_words[str(word.get("hr", "")).casefold()].append(word_id)
@@ -382,6 +643,8 @@ def hint_repetition_warnings(words: list[dict]) -> list[str]:
     exact: defaultdict[tuple[str, ...], list[str]] = defaultdict(list)
     first_three: defaultdict[tuple[str, ...], list[str]] = defaultdict(list)
     for word in words:
+        if not word.get("active", True):
+            continue
         hints = tuple(word.get("hint_pool", []))
         exact[hints].append(word["id"])
         first_three[hints[:3]].append(word["id"])
@@ -413,56 +676,58 @@ def normalize_category(category: str | None) -> str:
 
 def words_for_category(category: str | None) -> list[dict]:
     selected_category = normalize_category(category)
+    active_words = [word for word in STARTER_WORDS if is_active_word(word)]
     if selected_category == DEFAULT_CATEGORY:
-        return STARTER_WORDS
-    filtered_words = [word for word in STARTER_WORDS if word["category"] == selected_category]
-    return filtered_words or STARTER_WORDS
+        return active_words
+    filtered_words = [word for word in active_words if word["category"] == selected_category]
+    return filtered_words or active_words
 '''
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Synchronize words.py with the approved workbook.")
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--write", action="store_true")
     args = parser.parse_args()
 
-    sheet_name, entries, missing_rows, category_counts, skipped_rows = load_entries(args.source)
-    duplicates = duplicate_report(entries)
+    try:
+        sheet_name, concepts = load_approved_concepts(args.source)
+        from words import STARTER_WORDS
+
+        catalog, report = synchronize_catalog(list(STARTER_WORDS), concepts)
+        repeated, _repeated_report = synchronize_catalog(catalog, concepts)
+        if repeated != catalog:
+            raise CatalogSyncError("Repeating the import changed the catalog. Nothing was written.")
+        generated = words_py_text(catalog)
+        preview = types.ModuleType("words_preview")
+        preview.__file__ = str(args.output)
+        sys.modules["words_preview"] = preview
+        try:
+            exec(compile(generated, str(args.output), "exec"), preview.__dict__)
+        finally:
+            sys.modules.pop("words_preview", None)
+        if preview.STARTER_WORDS != catalog:
+            raise CatalogSyncError("Generated words.py does not round-trip. Nothing was written.")
+    except CatalogSyncError as exc:
+        raise SystemExit(str(exc)) from exc
 
     print(f"Sheet: {sheet_name}")
-    print(f"Columns: {', '.join(EXPECTED_COLUMNS)}")
-    print(f"Excel data rows read: {len(entries) + len(missing_rows) + len(skipped_rows)}")
-    print(f"Imported entries: {len(entries)}")
-    print(f"Rows with missing required values: {len(missing_rows)}")
-    if missing_rows:
-        for row_number, cells in missing_rows[:10]:
-            print(f"- row {row_number}: {cells}")
-    print(f"Balkan rows found/excluded: {len(skipped_rows)}")
-    print(f"Rows skipped for technical/data-quality reasons: {len(missing_rows)}")
-    for row_number, cells in skipped_rows[:20]:
-        print(f"- skipped row {row_number}: {cells}")
-    print("Category counts:")
-    for category in WORD_CATEGORIES:
-        print(f"- {category}: {category_counts.get(category, 0)}")
-    print("Duplicate checks:")
-    for name, values in duplicates.items():
-        print(f"- {name}: {len(values)}")
-    for label, fields in (("duplicate_pairs", ("hr", "sr")), ("duplicate_sr", ("sr",)), ("duplicate_hr", ("hr",))):
-        details = duplicate_details(entries, fields)
-        if details:
-            print(f"{label} details:")
-            for detail in details[:25]:
-                print(f"- {detail}")
-
-    invalid_categories = sorted(set(category_counts) - set(WORD_CATEGORIES))
-    if invalid_categories:
-        raise SystemExit(f"Invalid categories: {invalid_categories}")
-    if missing_rows:
-        raise SystemExit("Missing required values detected; not writing output.")
-
+    print(f"Workbook concepts: {len(concepts)}")
+    print(f"Preserved positions: {report['preserved_positions']}")
+    print(f"Updated in place: {report['updated_in_place']}")
+    print(f"Inactive, absent from workbook: {report['inactive_absent']}")
+    print(f"Inactive, redundant duplicates: {report['inactive_duplicate']}")
+    print(f"Appended: {report['appended']}")
+    print(f"Physical records: {report['physical']}")
+    print(f"Active records: {report['active']}")
+    print(f"Inactive records: {report['inactive']}")
+    print(f"Category changes: {len(report['category_changes'])}")
+    for change in report["category_changes"]:
+        print(f"- {change}")
+    print("Repeated import check: unchanged")
     if args.write:
-        args.output.write_text(words_py_text(entries), encoding="utf-8", newline="\n")
+        args.output.write_text(generated, encoding="utf-8", newline="\n")
         print(f"Wrote {args.output}")
     else:
         print("Dry run only. Pass --write to update words.py.")

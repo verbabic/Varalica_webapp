@@ -35,6 +35,18 @@ def init_storage() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL,
+                message TEXT NOT NULL,
+                email TEXT,
+                ui_language TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            )
+            """
+        )
 
 
 def load_used_word_indexes(room_code: str) -> set[int]:
@@ -94,6 +106,37 @@ def delete_room_data(room_code: str) -> None:
     with get_connection() as connection:
         connection.execute("DELETE FROM rooms WHERE room_code = ?", (room_code,))
         connection.execute("DELETE FROM room_used_words WHERE room_code = ?", (room_code,))
+
+
+def find_recent_feedback(category: str, message: str, email: str | None, since: str) -> int | None:
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT id FROM feedback
+            WHERE category = ?
+              AND message = ?
+              AND IFNULL(email, '') = ?
+              AND created_at >= ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (category, message, email or "", since),
+        ).fetchone()
+    if row is None:
+        return None
+    return int(row[0])
+
+
+def insert_feedback(category: str, message: str, email: str | None, ui_language: str, created_at: str) -> int:
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO feedback (category, message, email, ui_language, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (category, message, email, ui_language, created_at),
+        )
+        return int(cursor.lastrowid)
 
 
 def load_room_snapshots() -> dict[str, dict]:

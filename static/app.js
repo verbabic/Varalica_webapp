@@ -22,11 +22,29 @@ const playerCountBadge = document.querySelector("#playerCountBadge");
 const errorBox = document.querySelector("#errorBox");
 const inviteNotice = document.querySelector("#inviteNotice");
 const avatarGrid = document.querySelector("#avatarGrid");
+const avatarScrollRail = document.querySelector("#avatarScrollRail");
+const avatarScrollThumb = document.querySelector("#avatarScrollThumb");
+const avatarScrollButton = document.querySelector("#avatarScrollButton");
 const clearAvatarButton = document.querySelector("#clearAvatarButton");
 const qrPanel = document.querySelector("#qrPanel");
 const hostPanel = document.querySelector("#hostPanel");
 const hostPanelActions = document.querySelector("#hostPanelActions");
 const rulesButton = document.querySelector("#rulesButton");
+const contactButton = document.querySelector("#contactButton");
+const contactModal = document.querySelector("#contactModal");
+const contactForm = document.querySelector("#contactForm");
+const contactMessage = document.querySelector("#contactMessage");
+const contactEmail = document.querySelector("#contactEmail");
+const contactError = document.querySelector("#contactError");
+const contactSuccess = document.querySelector("#contactSuccess");
+const contactSubmitButton = document.querySelector("#contactSubmitButton");
+const homeScreenEntry = document.querySelector("#homeScreenEntry");
+const homeScreenButton = document.querySelector("#homeScreenButton");
+const homeScreenModal = document.querySelector("#homeScreenModal");
+const homeScreenIphoneTab = document.querySelector("#homeScreenIphoneTab");
+const homeScreenAndroidTab = document.querySelector("#homeScreenAndroidTab");
+const homeScreenIphoneSteps = document.querySelector("#homeScreenIphoneSteps");
+const homeScreenAndroidSteps = document.querySelector("#homeScreenAndroidSteps");
 const liveModeButton = document.querySelector("#liveModeButton");
 const chatModeButton = document.querySelector("#chatModeButton");
 const rulesModal = document.querySelector("#rulesModal");
@@ -78,6 +96,7 @@ let roomState = null;
 let socket = null;
 let localRoomCode = localStorage.getItem("varalica_room_code") || "";
 let localPlayerId = localStorage.getItem("varalica_player_id") || "";
+let localCredential = localStorage.getItem("varalica_player_credential") || "";
 let selectedAvatar = localStorage.getItem("varalica_avatar") || "";
 let selectedPlayMode = localStorage.getItem("varalica_play_mode") || "live";
 let selectedCategory = localStorage.getItem("varalica_selected_category") || "Sve kategorije";
@@ -116,8 +135,12 @@ let pendingNextPlayerTurnId = "";
 let pendingNextPlayerStartedAt = 0;
 let pendingConfirmAction = null;
 let roomPanelCollapsed = sessionStorage.getItem("varalica_room_panel_collapsed") === "true";
+let modalReturnFocus = null;
+let contactSubmitting = false;
+let contactSucceeded = false;
 let lastAssociationBannerStackKey = "";
 let lastPlayersListPhase = "";
+let lastSuspicionOpen = null;
 let lastRenderedRevealPhase = "";
 let revealCountdownImageReady = false;
 
@@ -133,9 +156,83 @@ function initLandingSplash() {
     window.setTimeout(() => landingSplash.remove(), 760);
   };
 
-  window.setTimeout(removeSplash, 3000);
-  window.setTimeout(removeSplash, 5000);
-  splashImage?.addEventListener("error", removeSplash, { once: true });
+  const finish = () => {
+    removeSplash();
+    showLanguageGateIfNeeded();
+  };
+  window.setTimeout(finish, 3000);
+  window.setTimeout(finish, 5000);
+  splashImage?.addEventListener("error", finish, { once: true });
+}
+
+function renderExpandedRules() {
+  const root = document.querySelector("#expandedRules");
+  if (!root || !window.VaralicaI18n) return;
+  root.replaceChildren();
+  let list = null;
+  for (const key of window.VaralicaI18n.expandedRuleKeys || []) {
+    const text = t(key);
+    if (!text || text === key) continue;
+    const isTitle = key === "rules.expanded.title" || key.endsWith(".title");
+    const isItem = key.includes(".item_") || key.includes(".outcome_");
+    if (isTitle) {
+      list = null;
+      const heading = document.createElement("h3");
+      heading.textContent = text;
+      root.append(heading);
+    } else if (isItem) {
+      if (!list) {
+        list = document.createElement("ul");
+        root.append(list);
+      }
+      const item = document.createElement("li");
+      item.textContent = text;
+      list.append(item);
+    } else {
+      list = null;
+      const paragraph = document.createElement("p");
+      paragraph.textContent = text;
+      root.append(paragraph);
+    }
+  }
+}
+
+let pendingLanguage = "";
+
+function showLanguageGateIfNeeded() {
+  const gate = document.querySelector("#languageGate");
+  if (!gate || window.VaralicaI18n.hasSavedLanguage()) return;
+  gate.classList.remove("hidden");
+  document.querySelector(".app-shell")?.setAttribute("inert", "");
+}
+
+function closeLanguageGate(lang) {
+  window.VaralicaI18n.setUiLanguage(lang, { manual: true });
+  document.querySelector("#languageGate")?.classList.add("hidden");
+  document.querySelector(".app-shell")?.removeAttribute("inert");
+  renderExpandedRules();
+  refreshInviteNotice();
+}
+
+function setLanguageMenuOpen(open) {
+  const menu = document.querySelector("#languageMenu");
+  const button = document.querySelector("#languageMenuButton");
+  if (!menu || !button) return;
+  menu.classList.toggle("hidden", !open);
+  button.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+function openLanguageConfirm(lang) {
+  pendingLanguage = lang;
+  const title = document.querySelector("#languageConfirmTitle");
+  const text = document.querySelector("#languageConfirmText");
+  const ok = document.querySelector("#languageConfirmOk");
+  const cancel = document.querySelector("#languageConfirmCancel");
+  if (title) title.textContent = window.VaralicaI18n.tFor(lang, "language.change.title");
+  if (text) text.textContent = window.VaralicaI18n.tFor(lang, "language.change.confirm");
+  if (ok) ok.textContent = window.VaralicaI18n.tFor(lang, "confirm.ok");
+  if (cancel) cancel.textContent = window.VaralicaI18n.tFor(lang, "language.change.cancel");
+  document.querySelector("#languageConfirmModal")?.classList.remove("hidden");
 }
 
 const pathRoomMatch = window.location.pathname.match(/^\/room\/([A-Z0-9]{5})$/i);
@@ -170,6 +267,44 @@ phaseContent?.addEventListener("click", (event) => {
   sendReaction(button.dataset.reactionEmoji);
 });
 rulesButton.addEventListener("click", () => showModal(rulesModal));
+contactButton?.addEventListener("click", openContactModal);
+homeScreenButton?.addEventListener("click", openHomeScreenModal);
+homeScreenIphoneTab?.addEventListener("click", () => setHomeScreenPlatform("iphone"));
+homeScreenAndroidTab?.addEventListener("click", () => setHomeScreenPlatform("android"));
+homeScreenModal?.querySelector(".home-screen-tabs")?.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+  event.preventDefault();
+  const current = homeScreenIphoneTab?.getAttribute("aria-selected") === "true" ? "iphone" : "android";
+  const choice = current === "iphone" ? "android" : "iphone";
+  setHomeScreenPlatform(choice);
+  (choice === "iphone" ? homeScreenIphoneTab : homeScreenAndroidTab)?.focus();
+});
+contactForm?.addEventListener("submit", submitContact);
+contactMessage?.addEventListener("input", syncContactSubmit);
+contactForm?.addEventListener("change", (event) => {
+  if (event.target?.name === "contactCategory") updateContactPlaceholder();
+  syncContactSubmit();
+});
+avatarGrid?.addEventListener("scroll", updateAvatarScroller, { passive: true });
+avatarScrollButton?.addEventListener("click", scrollAvatarGrid);
+window.addEventListener("resize", updateAvatarScroller);
+rulesModal?.addEventListener("wheel", (event) => {
+  if (rulesModal.classList.contains("hidden")) return;
+  const body = rulesModal.querySelector(".rules-body");
+  if (!body) return;
+  body.scrollTop += event.deltaY;
+  event.preventDefault();
+}, { passive: false });
+rulesModal?.addEventListener("keydown", (event) => {
+  const body = rulesModal.querySelector(".rules-body");
+  if (!body || rulesModal.classList.contains("hidden")) return;
+  if (event.key === "ArrowDown") body.scrollTop += 48;
+  if (event.key === "ArrowUp") body.scrollTop -= 48;
+  if (event.key === "PageDown") body.scrollTop += body.clientHeight;
+  if (event.key === "PageUp") body.scrollTop -= body.clientHeight;
+  if (event.key === "End") body.scrollTop = body.scrollHeight;
+  if (event.key === "Home") body.scrollTop = 0;
+});
 liveModeButton.addEventListener("click", () => setPlayMode("live"));
 chatModeButton.addEventListener("click", () => setPlayMode("chat"));
 cancelLeaveButton.addEventListener("click", () => hideModal(leaveModal));
@@ -242,7 +377,7 @@ function setPlayMode(mode) {
     localStorage.setItem("varalica_play_mode", selectedPlayMode);
     renderModeToggle();
     if (nextMode !== roomMode) {
-      showToast(`Host je napravio ${roomMode === "chat" ? "Chat" : "Live"} sobu.`, "info");
+      showToast(t("toast.mode_locked", { mode: modeLabel(roomMode) }), "info");
     }
     return;
   }
@@ -278,18 +413,18 @@ async function createRoom() {
   const name = playerNameInput.value.trim();
   if (!hasValidPlayerName()) {
     updateJoinButtons();
-    showError("Username mora imati 3 do 15 znakova.");
+    showError(t("error.name_length"));
     return;
   }
   sessionStorage.setItem("varalica_username", name);
-  const result = await apiRequest("/api/rooms", { name, avatar: selectedAvatar || null, play_mode: selectedPlayMode });
+  const result = await apiRequest("/api/rooms", { name, avatar: selectedAvatar || null, play_mode: selectedPlayMode, ui_language: currentUiLanguage() });
   if (!result) return;
   if (result.room_play_mode) {
     selectedPlayMode = result.room_play_mode;
     localStorage.setItem("varalica_play_mode", selectedPlayMode);
     renderModeToggle();
   }
-  enterRoom(result.room_code, result.player_id, result.avatar);
+  enterRoom(result.room_code, result.player_id, result.avatar, result.credential);
 }
 
 async function joinRoom() {
@@ -297,24 +432,26 @@ async function joinRoom() {
   const name = playerNameInput.value.trim();
   if (!hasValidPlayerName()) {
     updateJoinButtons();
-    showError("Username mora imati 3 do 15 znakova.");
+    showError(t("error.name_length"));
     return;
   }
   sessionStorage.setItem("varalica_username", name);
   const code = roomCodeInput.value.trim().toUpperCase();
   if (!code) {
-    showError("Unesi kod sobe.");
+    showError(t("error.room_code_required"));
     return;
   }
   try {
+    const reclaiming = localRoomCode === code && localPlayerId && localCredential;
     const response = await fetch(`/api/rooms/${code}/join`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }, reclaiming),
       body: JSON.stringify({
         name,
         avatar: selectedAvatar || null,
         play_mode: selectedPlayMode,
-        player_id: localRoomCode === code ? localPlayerId || null : null,
+        player_id: reclaiming ? localPlayerId : null,
+        ui_language: currentUiLanguage(),
       }),
     });
     const data = await response.json();
@@ -323,7 +460,7 @@ async function joinRoom() {
         showExpiredRoomUI(code);
         return;
       }
-      showError(data.detail || "Doslo je do greske.");
+      showError(data.detail || t("error.generic"));
       return;
     }
     if (data.room_play_mode) {
@@ -331,19 +468,23 @@ async function joinRoom() {
       localStorage.setItem("varalica_play_mode", selectedPlayMode);
       renderModeToggle();
     }
-    enterRoom(data.room_code, data.player_id, data.avatar);
+    enterRoom(data.room_code, data.player_id, data.avatar, data.credential);
     if (data.spectator && data.message) {
-      showToast(data.message, "info");
+      showToast(window.VaralicaI18n.translateServerMessage(data.message), "info");
     }
   } catch {
-    showError("Nije moguce spojiti se na server.");
+    showError(t("error.server_unreachable"));
   }
 }
 
-function enterRoom(roomCode, playerId, avatar) {
+function enterRoom(roomCode, playerId, avatar, credential) {
   isExplicitlyLeavingRoom = false;
   localRoomCode = roomCode;
   localPlayerId = playerId;
+  if (credential) {
+    localCredential = credential;
+    localStorage.setItem("varalica_player_credential", credential);
+  }
   hasRevealedPrivateCard = false;
   lastPlayersListPhase = "";
   localStorage.setItem("varalica_room_code", roomCode);
@@ -371,9 +512,9 @@ function setConnectionMode(mode) {
   }
   connectionStatus.classList.remove("hidden");
   const labels = {
-    stable: "Stable",
-    reconnecting: "Reconnecting",
-    disconnected: "Disconnected",
+    stable: "connection.stable",
+    reconnecting: "connection.reconnecting",
+    disconnected: "connection.disconnected",
   };
   const icons = {
     stable: "●",
@@ -381,7 +522,7 @@ function setConnectionMode(mode) {
     disconnected: "●",
   };
   connectionStatus.className = `status-pill connection-${mode}`;
-  connectionStatus.textContent = `${icons[mode]} ${labels[mode]}`;
+  connectionStatus.textContent = `${icons[mode]} ${t(labels[mode])}`;
 }
 
 function showToast(message, type = "info") {
@@ -399,15 +540,15 @@ function handleRoomEvent(event) {
   if (event.created_at && Date.now() / 1000 - event.created_at > 6) return;
   if (event.type === "change_word") {
     hasRevealedPrivateCard = false;
-    showToast("Host je promijenio riječ. Pogledajte novu karticu.", "success");
+    showToast(t("toast.word_changed"), "success");
     return;
   }
   if (event.player_id === localPlayerId) return;
   if (event.type === "join") {
-    showToast(`${event.player_avatar || ""} ${event.player_name} se pridruzio`, "celebrate");
+    showToast(t("toast.player_joined", { avatar: event.player_avatar || "", player_name: event.player_name }), "celebrate");
   }
   if (event.type === "reconnect") {
-    showToast(`${event.player_avatar || ""} ${event.player_name} se vratio`, "success");
+    showToast(t("toast.player_returned", { avatar: event.player_avatar || "", player_name: event.player_name }), "success");
   }
 }
 
@@ -440,12 +581,225 @@ function nextPlayerLockSecondsLeft() {
   return Math.max(0, Math.ceil((nextPlayerUnlockAt - Date.now()) / 1000));
 }
 
-function showModal(modal) {
+function showModal(modal, returnFocus = null) {
   modal.classList.remove("hidden");
+  document.body.classList.add("modal-open");
+  if (modal === rulesModal) {
+    const body = modal.querySelector(".rules-body");
+    if (body) {
+      body.scrollTop = 0;
+      body.focus();
+    }
+  }
+  if (modal === contactModal) {
+    modalReturnFocus = returnFocus || contactButton;
+    const dialog = modal.querySelector(".modal-card");
+    if (dialog) dialog.focus();
+  }
+  if (modal === homeScreenModal) {
+    modalReturnFocus = returnFocus || homeScreenButton;
+    const dialog = modal.querySelector(".modal-card");
+    if (dialog) dialog.focus();
+  }
 }
 
 function hideModal(modal) {
+  const returnTo = modal === contactModal || modal === homeScreenModal ? (modalReturnFocus || (modal === contactModal ? contactButton : homeScreenButton)) : null;
   modal.classList.add("hidden");
+  if (!document.querySelector(".modal-backdrop:not(.hidden)")) {
+    document.body.classList.remove("modal-open");
+  }
+  if (modal === contactModal && contactSucceeded) resetContactForm();
+  if (returnTo && typeof returnTo.focus === "function") {
+    returnTo.focus();
+    modalReturnFocus = null;
+  }
+}
+
+function openContactModal() {
+  const scroller = contactModal?.querySelector(".contact-scroll");
+  if (scroller) scroller.scrollTop = 0;
+  updateContactPlaceholder();
+  showModal(contactModal, contactButton);
+}
+
+function isInstalledDisplay() {
+  const media = window.matchMedia ? window.matchMedia("(display-mode: standalone)") : null;
+  return Boolean(media?.matches || window.navigator.standalone);
+}
+
+function syncHomeScreenEntry() {
+  homeScreenEntry?.classList.toggle("hidden", isInstalledDisplay());
+}
+
+function detectHomeScreenPlatform() {
+  const agent = navigator.userAgent || "";
+  const ios = /iPad|iPhone|iPod/.test(agent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (ios) return "iphone";
+  if (/Android/i.test(agent)) return "android";
+  return "iphone";
+}
+
+function setHomeScreenPlatform(platform) {
+  const iphone = platform === "iphone";
+  homeScreenIphoneTab?.setAttribute("aria-selected", iphone ? "true" : "false");
+  homeScreenAndroidTab?.setAttribute("aria-selected", iphone ? "false" : "true");
+  homeScreenIphoneSteps?.classList.toggle("hidden", !iphone);
+  homeScreenAndroidSteps?.classList.toggle("hidden", iphone);
+}
+
+function openHomeScreenModal() {
+  setHomeScreenPlatform(detectHomeScreenPlatform());
+  const scroller = homeScreenModal?.querySelector(".home-screen-body");
+  if (scroller) scroller.scrollTop = 0;
+  showModal(homeScreenModal, homeScreenButton);
+}
+
+function updateContactPlaceholder() {
+  if (!contactMessage) return;
+  contactMessage.placeholder = t("contact.message_placeholder");
+}
+
+function isContactEmail(value) {
+  const email = String(value || "").trim();
+  if (!email || email.length > 254) return false;
+  if (!/^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/.test(email)) return false;
+  if (email.includes("..") || email.startsWith(".") || email.includes("@.")) return false;
+  return true;
+}
+
+function clearContactStatus() {
+  contactError?.classList.add("hidden");
+  if (contactError) {
+    contactError.textContent = "";
+    delete contactError.dataset.i18n;
+  }
+}
+
+function showContactError(key) {
+  contactSucceeded = false;
+  contactModal?.classList.remove("is-sent");
+  contactSuccess?.classList.add("hidden");
+  if (!contactError) return;
+  contactError.dataset.i18n = key;
+  contactError.textContent = t(key);
+  contactError.classList.remove("hidden");
+}
+
+function showContactSuccess() {
+  contactSucceeded = true;
+  contactModal?.classList.add("is-sent");
+  clearContactStatus();
+  if (!contactSuccess) return;
+  contactSuccess.dataset.i18n = "contact.success";
+  contactSuccess.textContent = t("contact.success");
+  contactSuccess.classList.remove("hidden");
+}
+
+function showContactDuplicate() {
+  contactSucceeded = false;
+  contactModal?.classList.remove("is-sent");
+  clearContactStatus();
+  if (!contactSuccess) return;
+  contactSuccess.dataset.i18n = "contact.duplicate";
+  contactSuccess.textContent = t("contact.duplicate");
+  contactSuccess.classList.remove("hidden");
+}
+
+function contactDraftReady() {
+  const category = document.querySelector('input[name="contactCategory"]:checked');
+  const message = contactMessage?.value.trim() || "";
+  return Boolean(category) && message.length >= 5;
+}
+
+function syncContactSubmit() {
+  if (!contactSubmitButton || contactSubmitting || contactSucceeded) return;
+  contactSubmitButton.disabled = !contactDraftReady();
+}
+
+function setContactBusy(busy) {
+  if (!contactSubmitButton) return;
+  contactSubmitButton.disabled = busy || !contactDraftReady();
+  const label = contactSubmitButton.querySelector("[data-i18n]");
+  if (label) label.textContent = busy ? t("contact.sending") : t("contact.submit");
+  contactSubmitButton.setAttribute("aria-busy", busy ? "true" : "false");
+}
+
+function resetContactForm() {
+  contactSucceeded = false;
+  contactSubmitting = false;
+  contactForm?.reset();
+  contactModal?.classList.remove("is-sent");
+  contactSuccess?.classList.add("hidden");
+  clearContactStatus();
+  updateContactPlaceholder();
+  setContactBusy(false);
+  syncContactSubmit();
+}
+
+async function submitContact(event) {
+  event.preventDefault();
+  if (contactSubmitting || contactSucceeded) return;
+  clearContactStatus();
+  contactSuccess?.classList.add("hidden");
+  const category = document.querySelector('input[name="contactCategory"]:checked')?.value || "";
+  const message = contactMessage?.value.trim() || "";
+  const email = contactEmail?.value.trim() || "";
+  if (!category) {
+    showContactError("contact.validation.category_required");
+    return;
+  }
+  if (message.length < 5) {
+    showContactError("contact.validation.message_required");
+    return;
+  }
+  if (message.length > 2000) {
+    showContactError("contact.validation.message_too_long");
+    return;
+  }
+  if (email && !isContactEmail(email)) {
+    showContactError("contact.validation.email_invalid");
+    return;
+  }
+  contactSubmitting = true;
+  setContactBusy(true);
+  try {
+    const response = await fetch("/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category,
+        message,
+        email: email || null,
+        ui_language: currentUiLanguage(),
+      }),
+    });
+    let data = {};
+    try {
+      data = await response.json();
+    } catch {
+      data = {};
+    }
+    if (!response.ok || data.ok !== true) {
+      const code = typeof data.detail === "string" ? data.detail : "";
+      const key = {
+        category_required: "contact.validation.category_required",
+        message_too_short: "contact.validation.message_required",
+        message_too_long: "contact.validation.message_too_long",
+        email_invalid: "contact.validation.email_invalid",
+        rate_limited: "contact.rate_limit",
+      }[code] || "contact.error";
+      showContactError(key);
+      return;
+    }
+    if (data.duplicate === true) showContactDuplicate();
+    else showContactSuccess();
+  } catch {
+    showContactError("contact.error");
+  } finally {
+    contactSubmitting = false;
+    if (!contactSucceeded) setContactBusy(false);
+  }
 }
 
 function showLeaveModal() {
@@ -480,10 +834,11 @@ function connectSocket() {
   socket = new WebSocket(`${protocol}://${window.location.host}/ws/${localRoomCode}/${localPlayerId}`);
 
   socket.addEventListener("open", () => {
+    socket.send(JSON.stringify({ type: "auth", credential: localCredential, language: currentUiLanguage() }));
     setConnectionMode("stable");
     startHeartbeat();
     if (hadSocketDisconnect) {
-      showToast("Ponovno povezano", "success");
+      showToast(t("toast.reconnected"), "success");
       hadSocketDisconnect = false;
     }
     touchSession();
@@ -553,9 +908,10 @@ async function handleInvalidSessionClose() {
     clearStoredSession();
     localRoomCode = "";
     localPlayerId = "";
+    localCredential = "";
     roomState = null;
     showValidInviteUI(code);
-    showError("Sesija je istekla. Unesi ime i pridruži se ponovo.");
+    showError(t("error.session_expired"));
     setConnectionMode("disconnected");
     return;
   }
@@ -575,7 +931,12 @@ function stopHeartbeat() {
 
 function sendHeartbeat() {
   if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: "heartbeat", hidden: document.hidden, sent_at: Date.now() }));
+    socket.send(JSON.stringify({
+      type: "heartbeat",
+      hidden: document.hidden,
+      sent_at: Date.now(),
+      language: window.VaralicaI18n?.language || "hr",
+    }));
   }
 }
 
@@ -584,18 +945,13 @@ function isLikelyMobileBrowser() {
 }
 
 function sendLikelyTabClose() {
-  if (isExplicitlyLeavingRoom || !localRoomCode || !localPlayerId) return;
+  if (isExplicitlyLeavingRoom || !localRoomCode || !localPlayerId || !localCredential) return;
   const payload = JSON.stringify({ player_id: localPlayerId });
   const url = `/api/rooms/${encodeURIComponent(localRoomCode)}/tab-close`;
-  if (navigator.sendBeacon) {
-    const blob = new Blob([payload], { type: "application/json" });
-    navigator.sendBeacon(url, blob);
-    return;
-  }
   fetch(url, {
     method: "POST",
     body: payload,
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     keepalive: true,
   }).catch(() => {});
 }
@@ -632,9 +988,10 @@ async function confirmSeen() {
 async function nextPlayer() {
   clearError();
   touchSession();
+  if (roomState?.state === "discussion" && Number(roomState.discussion?.remaining_seconds) === 0) return;
   const turnId = currentTurnPlayerId();
   if (!turnId) {
-    showError("Trenutni igrač nije spreman.");
+    showError(t("error.turn_not_ready"));
     return;
   }
   if (pendingNextPlayerTurnId && pendingNextPlayerTurnId === turnId) return;
@@ -678,7 +1035,7 @@ async function sendAssociation() {
   const input = document.querySelector("#associationInput");
   const text = input?.value || associationDraft;
   if (!text.trim()) {
-    showError("Unesi asocijaciju.");
+    showError(t("error.association_required"));
     return;
   }
   associationSendInFlight = true;
@@ -762,7 +1119,7 @@ async function startNewRound() {
 }
 
 function promptRestartRoom() {
-  showConfirmAction("Resetovati sobu i vratiti je na postavke?", () => resetRoom(), false);
+  showConfirmAction(t("confirm.reset"), () => resetRoom(), false);
 }
 
 async function resetRoom() {
@@ -804,10 +1161,12 @@ async function leaveRoom() {
   if (socket) socket.close();
   localStorage.removeItem("varalica_room_code");
   localStorage.removeItem("varalica_player_id");
+  localStorage.removeItem("varalica_player_credential");
   localStorage.removeItem("varalica_last_active_at");
   sessionStorage.clear();
   localRoomCode = "";
   localPlayerId = "";
+  localCredential = "";
   roomState = null;
   lastPlayersListPhase = "";
   roomView.classList.add("hidden");
@@ -996,7 +1355,8 @@ function ensureFinalResultSceneTransition() {
 function expireOldSession() {
   const lastActiveAt = Number(localStorage.getItem("varalica_last_active_at") || 0);
   const hasSession = Boolean(localStorage.getItem("varalica_room_code") || localStorage.getItem("varalica_player_id"));
-  if (hasSession && (!lastActiveAt || Date.now() - lastActiveAt > SESSION_MAX_AGE_MS)) {
+  const hasCredential = Boolean(localStorage.getItem("varalica_player_credential"));
+  if (!hasCredential || (hasSession && (!lastActiveAt || Date.now() - lastActiveAt > SESSION_MAX_AGE_MS))) {
     clearStoredSession();
   }
 }
@@ -1010,12 +1370,25 @@ function touchSession() {
 function clearStoredSession() {
   localStorage.removeItem("varalica_room_code");
   localStorage.removeItem("varalica_player_id");
+  localStorage.removeItem("varalica_player_credential");
   localStorage.removeItem("varalica_last_active_at");
 }
 
 function isExpiredRoomDetail(detail) {
   const message = String(detail || "").toLowerCase();
   return message.includes("istekla") || message.includes("ne postoji");
+}
+
+let pendingInviteCode = "";
+
+function refreshInviteNotice() {
+  const code = (roomCodeInput.value || pendingInviteCode || inviteRoomCode || "").trim();
+  if (!code || !window.VaralicaI18n.hasSavedLanguage()) {
+    inviteNotice.classList.add("hidden");
+    return;
+  }
+  inviteNotice.textContent = t("invite.notice", { code });
+  inviteNotice.classList.remove("hidden");
 }
 
 function showValidInviteUI(code) {
@@ -1025,8 +1398,8 @@ function showValidInviteUI(code) {
   roomView.classList.add("hidden");
   homeButton.classList.remove("hidden");
   roomCodeInput.value = code;
-  inviteNotice.textContent = `Pridruzuješ se sobi ${code}. Unesi ime i klikni “Pridruzi se”.`;
-  inviteNotice.classList.remove("hidden");
+  pendingInviteCode = code;
+  refreshInviteNotice();
   createRoomButton.classList.add("hidden");
   clearError();
   updateJoinButtons();
@@ -1104,7 +1477,7 @@ function handleKicked(message) {
   window.history.replaceState({}, "", "/");
   setConnectionMode("disconnected");
   applyRoomPanelCollapse();
-  showToast(message, "error");
+  showToast(window.VaralicaI18n.translateServerMessage(message), "error");
 }
 
 async function validateRoomExists(roomCode) {
@@ -1124,7 +1497,7 @@ function renderAvatarGrid() {
         class="avatar-option ${avatar === selectedAvatar ? "selected" : ""}"
         type="button"
         data-avatar="${escapeHtml(avatar)}"
-        aria-label="Avatar ${escapeHtml(avatar)}"
+        aria-label="${escapeHtml(t("a11y.avatar_option", { avatar }))}"
       >
         ${escapeHtml(avatar)}
       </button>
@@ -1138,17 +1511,48 @@ function renderAvatarGrid() {
       renderAvatarGrid();
     });
   });
+  updateAvatarScroller();
+}
+
+function avatarScrollBehavior() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
+function updateAvatarScroller() {
+  if (!avatarGrid || !avatarScrollRail || !avatarScrollThumb || !avatarScrollButton) return;
+  const overflow = avatarGrid.scrollHeight - avatarGrid.clientHeight;
+  const canScroll = overflow > 4;
+  avatarScrollRail.classList.toggle("hidden", !canScroll);
+  avatarScrollButton.classList.toggle("hidden", !canScroll);
+  if (!canScroll) return;
+  const atBottom = avatarGrid.scrollTop + avatarGrid.clientHeight >= avatarGrid.scrollHeight - 4;
+  const railHeight = avatarScrollRail.clientHeight;
+  const thumbHeight = Math.max(18, (avatarGrid.clientHeight / avatarGrid.scrollHeight) * railHeight);
+  const maxTop = Math.max(0, railHeight - thumbHeight);
+  const top = overflow <= 0 ? 0 : (avatarGrid.scrollTop / overflow) * maxTop;
+  avatarScrollThumb.style.height = `${thumbHeight}px`;
+  avatarScrollThumb.style.top = `${top}px`;
+  avatarScrollButton.textContent = atBottom ? "↑" : "↓";
+  avatarScrollButton.setAttribute("aria-label", t(atBottom ? "avatar.scroll_up" : "avatar.scroll_down"));
+}
+
+function scrollAvatarGrid() {
+  if (!avatarGrid) return;
+  const atBottom = avatarGrid.scrollTop + avatarGrid.clientHeight >= avatarGrid.scrollHeight - 4;
+  const behavior = avatarScrollBehavior();
+  if (atBottom) avatarGrid.scrollTo({ top: 0, behavior });
+  else avatarGrid.scrollBy({ top: Math.max(48, avatarGrid.clientHeight * 0.8), behavior });
 }
 
 function playerNameHtml(player) {
   const avatar = player?.avatar || "🎲";
-  const name = player?.name || "Nepoznato";
+  const name = player?.name || t("results.unknown_name");
   return `<span class="player-avatar">${escapeHtml(avatar)}</span><span>${escapeHtml(name)}</span>`;
 }
 
 function playerNameText(player) {
   const avatar = player?.avatar || "🎲";
-  const name = player?.name || "Nepoznato";
+  const name = player?.name || t("results.unknown_name");
   return `${avatar} ${name}`;
 }
 
@@ -1212,12 +1616,12 @@ function updateAssociationComposerState() {
     input.value = associationDraft;
   }
   if (showingSent) {
-    button.textContent = "Poslano";
+    button.textContent = t("chat.sent");
     button.disabled = true;
     button.dataset.canSend = "false";
     return;
   }
-  button.textContent = "Pošalji";
+  button.textContent = t("chat.send");
   button.dataset.canSend = isMyTurn ? "true" : "false";
   button.disabled = !isMyTurn || input.value.trim().length === 0 || associationSendInFlight;
 }
@@ -1247,7 +1651,8 @@ function discussionMonitorContext() {
   const isCurrentChatPlayer = Boolean(
     me && data && me.id === data.current_player_id && me.play_mode === "chat",
   );
-  const showNextButton = canAdvanceTurn && !isCurrentChatPlayer;
+  const discussionClosed = roomState.state === "discussion" && Number(data?.remaining_seconds) === 0;
+  const showNextButton = canAdvanceTurn && !isCurrentChatPlayer && !discussionClosed;
   const isNextPending = Boolean(data?.current_player_id && pendingNextPlayerTurnId === data.current_player_id);
   return {
     isHost,
@@ -1273,22 +1678,22 @@ function syncDiscussionTimerWarning(remainingSeconds) {
 }
 
 function renderHostVotingButtonHtml(voteLocked) {
-  return `<button id="openFinalVotingButton" class="discussion-host-vote-button" type="button" ${voteLocked ? "disabled" : ""} title="${voteLocked ? "Glasanje još nije otključano" : "Otvori finalno glasanje"}">Otvori glasanje</button>`;
+  return `<button id="openFinalVotingButton" class="discussion-host-vote-button" type="button" ${voteLocked ? "disabled" : ""} title="${escapeHtml(voteLocked ? t("vote.locked_title") : t("vote.open_title"))}">${escapeHtml(t("vote.open_button"))}</button>`;
 }
 
 function nextPlayerButtonLabel(nextLockLeft, isPending = false) {
-  if (isPending) return "Sljedeći...";
-  return nextLockLeft > 0 ? `Sljedeći (${nextLockLeft})` : "Sljedeći igrač";
+  if (isPending) return t("turn.next_pending");
+  return nextLockLeft > 0 ? t("turn.next_countdown", { seconds: nextLockLeft }) : t("turn.next");
 }
 
 function nextPlayerButtonTitle(nextLockLeft, isPending = false) {
-  if (isPending) return "Prebacivanje igrača je u toku";
-  return nextLockLeft > 0 ? `Dostupno za ${nextLockLeft}s` : "Prebaci na sljedećeg igrača";
+  if (isPending) return t("turn.pending_title");
+  return nextLockLeft > 0 ? t("turn.available_in", { seconds: nextLockLeft }) : t("turn.advance_title");
 }
 
 function renderNextPlayerButtonHtml(nextLockLeft, isPending = false) {
   const disabled = nextLockLeft > 0 || isPending;
-  return `<button id="nextPlayerButton" class="discussion-next-button" type="button" ${disabled ? "disabled" : ""} title="${nextPlayerButtonTitle(nextLockLeft, isPending)}">${nextPlayerButtonLabel(nextLockLeft, isPending)}</button>`;
+  return `<button id="nextPlayerButton" class="discussion-next-button" type="button" ${disabled ? "disabled" : ""} title="${escapeHtml(nextPlayerButtonTitle(nextLockLeft, isPending))}">${escapeHtml(nextPlayerButtonLabel(nextLockLeft, isPending))}</button>`;
 }
 
 function syncDiscussionMonitorActions() {
@@ -1331,9 +1736,13 @@ function updateDiscussionShellInPlace() {
   if (!data || !timerValue) return false;
 
   const currentPlayer = roomState.players.find((player) => player.id === data.current_player_id);
-  timerValue.textContent = formatSeconds(data.remaining_seconds);
+  const clock = discussionClock(data, data.remaining_seconds);
+  timerValue.textContent = formatClock(clock.seconds);
+  const phaseLabel = document.querySelector("#discussionPhaseLabel");
+  if (phaseLabel && clock.final) phaseLabel.textContent = t("final_discussion.title");
   if (currentName) currentName.textContent = playerNameText(currentPlayer);
   syncDiscussionMonitorActions();
+  syncSuspicionBanner();
   updateAssociationComposerState();
   syncAssociationOverlayDock(roomState.association_banners);
   syncActiveTargetReactions();
@@ -1347,7 +1756,7 @@ function associationBannerStackKey(banners) {
 
 function associationOverlayCardMarkup(banner) {
   return `
-    <p class="association-overlay-name">${escapeHtml(banner.player_name || "Nepoznato")}</p>
+    <p class="association-overlay-name">${escapeHtml(banner.player_name || t("results.unknown_name"))}</p>
     <p class="association-overlay-word">${escapeHtml(banner.text)}</p>
   `;
 }
@@ -1374,7 +1783,7 @@ function updateAssociationOverlayCard(element, banner) {
   element.dataset.expiresAt = String(banner.expires_at);
   const nameEl = element.querySelector(".association-overlay-name");
   const wordEl = element.querySelector(".association-overlay-word");
-  const nameText = banner.player_name || "Nepoznato";
+  const nameText = banner.player_name || t("results.unknown_name");
   const wordText = banner.text || "";
   if (nameEl && nameEl.textContent !== nameText) nameEl.textContent = nameText;
   if (wordEl && wordEl.textContent !== wordText) wordEl.textContent = wordText;
@@ -1561,10 +1970,59 @@ function syncActiveTargetReactions() {
   });
 }
 
+function currentUiLanguage() {
+  return window.VaralicaI18n?.language || "hr";
+}
+let forceFullRender = false;
+
+function t(key, params) {
+  return window.VaralicaI18n.t(key, params);
+}
+
+function modeLabel(mode) {
+  return window.VaralicaI18n.modeLabel(mode);
+}
+
+function categoryLabel(name) {
+  if (name === "Sve kategorije") return t("category.all");
+  const key = `category.${String(name || "").toLowerCase()}`;
+  const translated = t(key);
+  return translated === key ? name : translated;
+}
+
+function localizedWord(word) {
+  if (!word) return "";
+  if (typeof word.text === "string") return word.text || t("api.hint_missing");
+  const lang = currentUiLanguage();
+  if (lang === "sr") return word.sr || word.hr || "";
+  if (lang === "de") return word.de || t("api.hint_missing");
+  return word.hr || "";
+}
+
+function localizedHint(source) {
+  if (!source) return "";
+  if (typeof source.hint === "string" && source.hint_sr == null && source.hint_hr == null) return source.hint;
+  const lang = currentUiLanguage();
+  if (lang === "sr") return source.hint_sr || source.hint || "";
+  if (lang === "de") return source.hint_de || source.hint || "";
+  return source.hint_hr || source.hint || "";
+}
+
 function renderDiscussionMonitorPanel(currentPlayer, phaseLabel, remainingSeconds, ctx) {
   const timerWarning = remainingSeconds <= 15 ? " timer-warning" : "";
   const votingReady = ctx.data?.voting_unlocked ? " timer-voting-ready" : "";
-  const phaseText = phaseLabel ? `<span>${escapeHtml(phaseLabel)}</span>` : "";
+  const clock = discussionClock(ctx.data, remainingSeconds);
+  const finalDiscussion = clock.final
+    ? `<div class="final-discussion-banner" role="status">
+         <p class="final-discussion-title">${escapeHtml(t("final_discussion.title"))}</p>
+         <p class="final-discussion-prompt">${escapeHtml(t("final_discussion.prompt"))}</p>
+       </div>`
+    : "";
+  const phaseText = clock.final
+    ? `<span id="discussionPhaseLabel">${escapeHtml(t("final_discussion.title"))}</span>`
+    : phaseLabel
+      ? `<span id="discussionPhaseLabel">${escapeHtml(phaseLabel)}</span>`
+      : "";
   const hostVoting = ctx.isHost
     ? renderHostVotingButtonHtml(!ctx.data.voting_unlocked)
     : "";
@@ -1576,18 +2034,68 @@ function renderDiscussionMonitorPanel(currentPlayer, phaseLabel, remainingSecond
     <div id="discussionMonitorPanel" class="discussion-monitor-panel">
       <div id="discussionMonitorHeader" class="discussion-monitor-top-row">
         <div class="current-player-card compact-current-player reaction-target-host">
-          <p class="eyebrow">Trenutni igrač</p>
+          <p class="eyebrow">${escapeHtml(t("discussion.current_player"))}</p>
           <p id="currentPlayerName" class="current-player-name">${escapeHtml(playerNameText(currentPlayer))}</p>
         </div>
         <div class="discussion-timer-column">
           <div id="discussionTimerBox" class="timer-box compact-timer compact-timer-inline${timerWarning}${votingReady}">
             ${phaseText}
-            <strong id="discussionTimerValue" class="${`${timerWarning}${votingReady}`.trim()}">${formatSeconds(remainingSeconds)}</strong>
+            <strong id="discussionTimerValue" class="${`${timerWarning}${votingReady}`.trim()}">${formatClock(clock.seconds)}</strong>
           </div>
           ${hostVoting}
         </div>
       </div>
       ${nextAction}
+      ${finalDiscussion}
+      ${suspicionBannerHtml()}
+    </div>
+  `;
+}
+
+function syncSuspicionBanner() {
+  const panel = document.querySelector("#discussionMonitorPanel");
+  if (!panel) return;
+  const html = suspicionBannerHtml().trim();
+  const current = panel.querySelector(".suspicion-banner");
+  if (!html) {
+    current?.remove();
+    return;
+  }
+  if (!current) {
+    panel.insertAdjacentHTML("beforeend", html);
+    return;
+  }
+  const holder = document.createElement("div");
+  holder.innerHTML = html;
+  current.replaceWith(holder.firstElementChild);
+}
+
+function discussionClock(data, remainingSeconds) {
+  const finalLeft = Number(data?.final_discussion_seconds_left || 0);
+  const final = roomState?.state === "discussion" && Number(remainingSeconds) === 0 && finalLeft > 0;
+  return { seconds: final ? finalLeft : remainingSeconds, final };
+}
+
+function formatClock(totalSeconds) {
+  const safeSeconds = Math.max(0, Number(totalSeconds) || 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function suspicionBannerHtml() {
+  if (!roomState || roomState.state !== "discussion" || !roomState.suspicion_open) return "";
+  const total = Number(roomState.suspicion_total || 0);
+  const countLine = total > 0
+    ? t("suspicion.count", { count: total })
+    : t("suspicion.empty");
+  return `
+    <div class="suspicion-banner" role="region" aria-label="${escapeHtml(t("suspicion.title"))}">
+      <p class="suspicion-title">${escapeHtml(t("suspicion.title"))}</p>
+      <p>${escapeHtml(t("suspicion.question"))}</p>
+      <p class="suspicion-note">${escapeHtml(t("suspicion.instruction"))}</p>
+      <p class="suspicion-note">${escapeHtml(t("suspicion.optional"))} ${escapeHtml(t("suspicion.not_vote"))}</p>
+      <p class="suspicion-note">${escapeHtml(countLine)}</p>
     </div>
   `;
 }
@@ -1599,12 +2107,12 @@ function render() {
   }
   setCinematicRevealActive(isCinematicRevealActive());
   roomCodeDisplay.textContent = roomState.room_code;
-  roundDisplay.textContent = `Runda ${roomState.round_number || 1}`;
+  roundDisplay.textContent = t("room.round_label", { round_number: roomState.round_number || 1 });
   const spectatorCount = roomState.players.filter((player) => player.is_spectator).length;
   const activePlayerCount = Math.max(0, Number(roomState.player_count || 0) - spectatorCount);
   playerCountBadge.textContent = spectatorCount > 0
-    ? `Igrači: ${activePlayerCount}/${roomState.max_players} · Posmatrači: ${spectatorCount}`
-    : `Igrači: ${activePlayerCount}/${roomState.max_players}`;
+    ? `${t("players.heading")}: ${activePlayerCount}/${roomState.max_players} · ${t("spectator.badge")}: ${spectatorCount}`
+    : `${t("players.heading")}: ${activePlayerCount}/${roomState.max_players}`;
   resetRoomButton.classList.add("hidden");
   renderModeToggle();
   applyRoomPanelCollapse();
@@ -1627,7 +2135,7 @@ function render() {
   }
 
   if (roomState.state === "discussion") {
-    if (hasDiscussionShell() && updateDiscussionShellInPlace()) return;
+    if (!forceFullRender && hasDiscussionShell() && updateDiscussionShellInPlace()) return;
     renderDiscussion();
     return;
   }
@@ -1643,7 +2151,7 @@ function render() {
   }
 
   if (roomState.state === "overtime") {
-    if (hasDiscussionShell() && updateDiscussionShellInPlace()) return;
+    if (!forceFullRender && hasDiscussionShell() && updateDiscussionShellInPlace()) return;
     renderOvertime();
     return;
   }
@@ -1672,33 +2180,33 @@ function renderHostPanel() {
   }
 
   const roundHasStarted = roomState.state !== "lobby";
-  const actions = roundHasStarted ? [`<button id="hostResetRoomButton" class="small replay">Resetuj sobu</button>`] : [];
+  const actions = roundHasStarted ? [`<button id="hostResetRoomButton" class="small replay">${escapeHtml(t("host.reset"))}</button>`] : [];
   if (roomState.state === "reveal" || (roomState.state === "discussion" && roomState.change_word_available)) {
     const secondsLeft = roomState.state === "discussion" ? Number(roomState.change_word_seconds_left || 0) : 0;
     const helper = roomState.state === "discussion" && secondsLeft > 0
-      ? `<p class="helper-text">Dostupno još ${secondsLeft}s</p>`
+      ? `<p class="helper-text">${escapeHtml(t("host.change_word_left", { seconds: secondsLeft }))}</p>`
       : "";
     actions.unshift(`
       <div class="host-helper">
-        <button id="hostChangeWordButton" class="small secondary">Promijeni riječ</button>
+        <button id="hostChangeWordButton" class="small secondary">${escapeHtml(t("host.change_word"))}</button>
         ${helper}
       </div>
     `);
   }
   if (roomState.state === "discussion" && roomState.discussion) {
-    actions.unshift(`<button id="hostOpenVotingButton" class="small" ${roomState.discussion.voting_unlocked ? "" : "disabled"}>Otvori glasanje</button>`);
+    actions.unshift(`<button id="hostOpenVotingButton" class="small" ${roomState.discussion.voting_unlocked ? "" : "disabled"}>${escapeHtml(t("vote.open_button"))}</button>`);
   }
   if (roomState.state === "overtime" && roomState.overtime?.voting_unlocked) {
-    actions.unshift(`<button id="hostOpenVotingButton" class="small">Otvori glasanje</button>`);
+    actions.unshift(`<button id="hostOpenVotingButton" class="small">${escapeHtml(t("vote.open_button"))}</button>`);
   }
   if (roomState.state === "ready_for_final_voting") {
-    actions.unshift(`<button id="hostOpenVotingButton" class="small">Otvori glasanje</button>`);
+    actions.unshift(`<button id="hostOpenVotingButton" class="small">${escapeHtml(t("vote.open_button"))}</button>`);
   }
   const transferTargets = roomState.players.filter((player) => player.id !== roomState.viewer_id);
   if (transferTargets.length > 0) {
     actions.push(`
-      <select id="transferHostSelect" class="small-select" aria-label="Prenesi hosta">
-        <option value="">Prenesi hosta</option>
+      <select id="transferHostSelect" class="small-select" aria-label="${escapeHtml(t("host.transfer_label"))}">
+        <option value="">${escapeHtml(t("host.transfer_label"))}</option>
         ${transferTargets.map((player) => `<option value="${escapeHtml(player.id)}">${escapeHtml(playerNameText(player))}</option>`).join("")}
       </select>
     `);
@@ -1712,7 +2220,7 @@ function renderHostPanel() {
     const targetId = event.target.value;
     const target = roomState.players.find((player) => player.id === targetId);
     if (!target) return;
-    showConfirmAction(`Da li zelis prenijeti hosta na ${playerNameText(target)}?`, () => transferHost(targetId), false);
+    showConfirmAction(t("confirm.transfer_host", { player_name: playerNameText(target) }), () => transferHost(targetId), false);
     event.target.value = "";
   });
 }
@@ -1743,42 +2251,42 @@ function renderLobby() {
   }
   phaseContent.innerHTML = `
     <div class="phase-card">
-      <h2>Lobby</h2>
-      <p class="helper-text">Podijeli kod sobe ili link. Runda moze poceti kad su tu najmanje 4 igraca.</p>
+      <h2>${escapeHtml(t("lobby.title"))}</h2>
+      <p class="helper-text">${escapeHtml(t("lobby.help"))}</p>
       ${
         isHost
           ? `<div class="category-control">
-              <label for="categorySelect">Kategorija</label>
+              <label for="categorySelect">${escapeHtml(t("lobby.category"))}</label>
               <select id="categorySelect">
                 ${categories
                   .map(
-                    (category) => `<option value="${escapeHtml(category)}" ${category === selectedCategory ? "selected" : ""}>${escapeHtml(category)}</option>`,
+                    (category) => `<option value="${escapeHtml(category)}" ${category === selectedCategory ? "selected" : ""}>${escapeHtml(categoryLabel(category))}</option>`,
                   )
                   .join("")}
               </select>
             </div>
             <div class="category-control">
-              <label for="durationSelect">Vrijeme diskusije</label>
+              <label for="durationSelect">${escapeHtml(t("lobby.duration"))}</label>
               <select id="durationSelect">
                 ${durationOptions
                   .map(
-                    (seconds) => `<option value="${seconds}" ${seconds === selectedDiscussionSeconds ? "selected" : ""}>${seconds / 60} min</option>`,
+                    (seconds) => `<option value="${seconds}" ${seconds === selectedDiscussionSeconds ? "selected" : ""}>${escapeHtml(t("lobby.duration_option", { minutes: seconds / 60 }))}</option>`,
                   )
                   .join("")}
               </select>
             </div>
             <div class="category-control">
-              <label for="varalicaCountSelect">Broj Varalica</label>
+              <label for="varalicaCountSelect">${escapeHtml(t("lobby.varalica_count"))}</label>
               <select id="varalicaCountSelect">
-                <option value="1" ${selectedVaralicaCount === 1 ? "selected" : ""}>1 Varalica</option>
-                <option value="2" ${selectedVaralicaCount === 2 ? "selected" : ""} ${allowedVaralicaCounts.includes(2) ? "" : "disabled"}>2 Varalice</option>
+                <option value="1" ${selectedVaralicaCount === 1 ? "selected" : ""}>${escapeHtml(t("lobby.one_varalica"))}</option>
+                <option value="2" ${selectedVaralicaCount === 2 ? "selected" : ""} ${allowedVaralicaCounts.includes(2) ? "" : "disabled"}>${escapeHtml(t("lobby.two_varalice"))}</option>
               </select>
-              ${allowedVaralicaCounts.includes(2) ? "" : `<p class="helper-text">2 Varalice dostupne su od 7 igrača.</p>`}
+              ${allowedVaralicaCounts.includes(2) ? "" : `<p class="helper-text">${escapeHtml(t("lobby.two_varalice_help"))}</p>`}
             </div>
             <button id="startRoundButton" ${canStart ? "" : "disabled"}>
-              ${canStart ? "Pokreni rundu" : "Potrebna su najmanje 4 igraca"}
+              ${canStart ? escapeHtml(t("lobby.start")) : escapeHtml(t("lobby.need_players"))}
             </button>`
-          : `<p class="helper-text">Host pokrece rundu.</p>`
+          : `<p class="helper-text">${escapeHtml(t("lobby.host_starts"))}</p>`
       }
     </div>
   `;
@@ -1809,12 +2317,12 @@ function renderLobby() {
 
 function revealStatusForPlayer(player) {
   if (player.confirmed) {
-    return { label: "Spreman", className: "ready" };
+    return { label: t("reveal.ready"), className: "ready" };
   }
   if (player.viewed_secret) {
-    return { label: "Pregleda", className: "viewing" };
+    return { label: t("reveal.viewing"), className: "viewing" };
   }
-  return { label: "Nije vidio", className: "waiting" };
+  return { label: t("reveal.not_seen"), className: "waiting" };
 }
 
 function syncRevealCardStateFromRoom() {
@@ -1865,8 +2373,8 @@ function renderReveal() {
   if (roomState.all_confirmed) {
     phaseContent.innerHTML = `
       <div class="phase-card">
-        <h2>Svi su spremni</h2>
-        <p class="helper-text">Diskusija se pokrece automatski.</p>
+        <h2>${escapeHtml(t("reveal.all_ready_title"))}</h2>
+        <p class="helper-text">${escapeHtml(t("reveal.all_ready_body"))}</p>
       </div>
     `;
     return;
@@ -1875,11 +2383,11 @@ function renderReveal() {
   if (!privateInfo) {
     phaseContent.innerHTML = `
       <div class="phase-card">
-        <h2>Otkrivanje</h2>
+        <h2>${escapeHtml(t("reveal.waiting_title"))}</h2>
         ${
           roomState.viewer_is_spectator
             ? spectatorNoticeHtml()
-            : `<p class="helper-text">Cekamo podatke za ovu rundu.</p>`
+            : `<p class="helper-text">${escapeHtml(t("reveal.waiting_body"))}</p>`
         }
       </div>
     `;
@@ -1889,13 +2397,13 @@ function renderReveal() {
   if (alreadyConfirmed) {
     phaseContent.innerHTML = `
       <div class="phase-card private-card-phase private-card-phase-locked">
-        <h2>Tvoja tajna kartica</h2>
-        <p class="helper-text">Kartica je potvrđena i zaključana.</p>
+        <h2>${escapeHtml(t("reveal.card_title"))}</h2>
+        <p class="helper-text">${escapeHtml(t("reveal.locked_body"))}</p>
         <div class="private-card-closed-static" aria-hidden="true">
           <img class="private-card-closed-img" src="${escapeHtml(PRIVATE_CARD_CLOSED_URL)}" alt="" decoding="async" />
         </div>
-        <button id="confirmSeenButton" class="private-card-confirm-button" type="button" disabled>Potvrđeno</button>
-        <p class="helper-text">Diskusija ne moze poceti dok svi aktivni igraci ne potvrde.</p>
+        <button id="confirmSeenButton" class="private-card-confirm-button" type="button" disabled>${escapeHtml(t("reveal.confirmed"))}</button>
+        <p class="helper-text">${escapeHtml(t("reveal.wait_all"))}</p>
       </div>
     `;
     return;
@@ -1904,12 +2412,12 @@ function renderReveal() {
   if (!hasRevealedPrivateCard) {
     phaseContent.innerHTML = `
       <div class="phase-card private-card-phase private-card-phase-closed">
-        <h2>Tvoja tajna kartica</h2>
-        <p class="helper-text">Provjeri je na svom telefonu i ne pokazuj drugim igracima.</p>
-        <button id="showWordButton" class="private-card-closed-button" type="button" aria-label="Dodirni kartu">
+        <h2>${escapeHtml(t("reveal.card_title"))}</h2>
+        <p class="helper-text">${escapeHtml(t("reveal.check_phone"))}</p>
+        <button id="showWordButton" class="private-card-closed-button" type="button" aria-label="${escapeHtml(t("reveal.tap_card"))}">
           <img class="private-card-closed-img" src="${escapeHtml(PRIVATE_CARD_CLOSED_URL)}" alt="" aria-hidden="true" decoding="async" />
         </button>
-        <p class="private-card-tap-label">Dodirni kartu</p>
+        <p class="private-card-tap-label">${escapeHtml(t("reveal.tap_card"))}</p>
       </div>
     `;
     document.querySelector("#showWordButton").addEventListener("click", async () => {
@@ -1925,26 +2433,26 @@ function renderReveal() {
   const openCardUrl = isVaralica ? PRIVATE_CARD_OPEN_VARALICA_URL : PRIVATE_CARD_OPEN_NORMAL_URL;
   const secretHtml = isVaralica
     ? `<div class="private-card-secret private-card-secret-varalica">
-         <p class="private-card-secret-title">Ti si Varalica</p>
-         <p class="private-card-secret-label">Smjernica</p>
-         <p class="private-card-secret-hint">${escapeHtml(privateInfo.hint || "Pokušaj da se uklopiš.")}</p>
+         <p class="private-card-secret-title">${escapeHtml(t("reveal.you_are_varalica"))}</p>
+         <p class="private-card-secret-label">${escapeHtml(t("reveal.hint_label"))}</p>
+         <p class="private-card-secret-hint">${escapeHtml(localizedHint(privateInfo) || t("reveal.hint_fallback"))}</p>
        </div>`
     : `<div class="private-card-secret private-card-secret-word">
-         <p class="private-card-secret-kicker">Tvoja riječ</p>
-         <p class="private-card-secret-title">${escapeHtml(privateInfo.word.hr)}</p>
+         <p class="private-card-secret-kicker">${escapeHtml(t("reveal.word_kicker"))}</p>
+         <p class="private-card-secret-title">${escapeHtml(localizedWord(privateInfo.word))}</p>
        </div>`;
 
   phaseContent.innerHTML = `
     <div class="phase-card private-card-phase private-card-phase-open">
-      <h2>Tvoja tajna kartica</h2>
+      <h2>${escapeHtml(t("reveal.card_title"))}</h2>
       <div class="private-card-open-stage ${isVaralica ? "is-varalica" : "is-normal"}">
         <img class="private-card-open-img" src="${escapeHtml(openCardUrl)}" alt="" aria-hidden="true" decoding="async" />
         <div class="private-card-text-panel">
           ${secretHtml}
         </div>
       </div>
-      <button id="confirmSeenButton" class="private-card-confirm-button" type="button">Video sam kartu</button>
-      <p class="helper-text">Diskusija ne moze poceti dok svi aktivni igraci ne potvrde.</p>
+      <button id="confirmSeenButton" class="private-card-confirm-button" type="button">${escapeHtml(t("reveal.seen_button"))}</button>
+      <p class="helper-text">${escapeHtml(t("reveal.wait_all"))}</p>
     </div>
   `;
 
@@ -1975,7 +2483,7 @@ function renderDiscussion() {
       <div class="discussion-monitor-layout">
         ${renderReactionColumn("left", REACTION_EMOJIS_LEFT)}
         <div class="discussion-monitor-body">
-          ${renderDiscussionMonitorPanel(currentPlayer, "Diskusija", discussion.remaining_seconds, ctx)}
+          ${renderDiscussionMonitorPanel(currentPlayer, t("discussion.phase"), discussion.remaining_seconds, ctx)}
           ${renderAssociationComposer(discussion.current_player_id)}
         </div>
         ${renderReactionColumn("right", REACTION_EMOJIS_RIGHT)}
@@ -1995,11 +2503,11 @@ function renderReadyForFinalVoting() {
   const isHost = roomState.viewer_id === roomState.host_id;
   phaseContent.innerHTML = `
     <div class="phase-card">
-      <h2>Svi igrači su spremni za glasanje.</h2>
-      <p class="helper-text">Host sada moze otvoriti finalno glasanje.</p>
+      <h2>${escapeHtml(t("vote.ready_title"))}</h2>
+      <p class="helper-text">${escapeHtml(t("vote.ready_body"))}</p>
       ${
         isHost
-          ? `<button id="openFinalVotingButton">Otvori glasanje</button>`
+          ? `<button id="openFinalVotingButton">${escapeHtml(t("vote.open_button"))}</button>`
           : ""
       }
     </div>
@@ -2016,7 +2524,7 @@ function renderOvertime() {
 
   phaseContent.innerHTML = `
     <div class="phase-card overtime-card">
-      <p class="overtime-compact-title">PRODUŽETAK — Glasanje je nerešeno</p>
+      <p class="overtime-compact-title">${escapeHtml(t("overtime.compact_title"))}</p>
       ${roomState.viewer_is_spectator ? spectatorNoticeHtml() : ""}
       <div class="discussion-monitor-layout">
         ${renderReactionColumn("left", REACTION_EMOJIS_LEFT)}
@@ -2044,10 +2552,10 @@ function renderAssociationComposer(currentPlayerId) {
   const draft = escapeHtml(associationDraft);
   return `
     <div class="association-composer">
-      <label for="associationInput">Tvoja asocijacija</label>
+      <label for="associationInput">${escapeHtml(t("chat.association_label"))}</label>
       <div class="association-input-row">
-        <input id="associationInput" maxlength="80" autocomplete="off" placeholder="npr. nesto za kuhinju" value="${draft}" />
-        <button id="sendAssociationButton" class="small" data-can-send="${isMyTurn ? "true" : "false"}" ${isMyTurn ? "" : "disabled"}>Pošalji</button>
+        <input id="associationInput" maxlength="80" autocomplete="off" placeholder="${escapeHtml(t("chat.association_placeholder"))}" value="${draft}" />
+        <button id="sendAssociationButton" class="small" data-can-send="${isMyTurn ? "true" : "false"}" ${isMyTurn ? "" : "disabled"}>${escapeHtml(t("chat.send"))}</button>
       </div>
     </div>
   `;
@@ -2059,10 +2567,10 @@ function renderReactionColumn(side, emojis) {
   const buttons = emojis
     .map(
       (emoji) =>
-        `<button class="reaction-button" type="button" data-reaction-emoji="${escapeHtml(emoji)}" aria-label="Reakcija ${escapeHtml(emoji)}" ${enabled ? "" : "disabled"}>${escapeHtml(emoji)}</button>`,
+        `<button class="reaction-button" type="button" data-reaction-emoji="${escapeHtml(emoji)}" aria-label="${escapeHtml(t("reactions.button_label", { emoji }))}" ${enabled ? "" : "disabled"}>${escapeHtml(emoji)}</button>`,
     )
     .join("");
-  return `<div class="reaction-row reaction-row-${side}" aria-label="Reakcije">${buttons}</div>`;
+  return `<div class="reaction-row reaction-row-${side}" aria-label="${escapeHtml(t("reactions.row_label"))}">${buttons}</div>`;
 }
 
 function syncReactionButtonsEnabled() {
@@ -2088,15 +2596,15 @@ function bindAssociationComposer() {
 
 function renderVotingChecklist(players) {
   return `
-    <div class="voting-checklist" aria-label="Status glasanja">
+    <div class="voting-checklist" aria-label="${escapeHtml(t("vote.status_label"))}">
       ${players
         .map((player) => {
           const mark = player.has_voted ? "✓" : "";
           const stateClass = player.has_voted ? "voted" : "pending";
-          const label = player.has_voted ? "Glasao/la" : "Još nije glasao/la";
+          const label = player.has_voted ? t("vote.voted") : t("vote.not_voted");
           return `
             <div class="voting-check-item ${stateClass}">
-              <span class="vote-check-box" aria-label="${label}">${mark}</span>
+              <span class="vote-check-box" aria-label="${escapeHtml(label)}">${mark}</span>
               <span class="inline-player">${playerNameHtml(player)}</span>
             </div>
           `;
@@ -2107,10 +2615,10 @@ function renderVotingChecklist(players) {
 }
 
 function spectatorNoticeHtml() {
-  const message = roomState?.spectator_message || "Ušao si kao posmatrač. Igraš od sledeće runde.";
+  const message = t("api.spectator");
   return `
     <div class="spectator-notice">
-      <strong>Posmatrač</strong>
+      <strong>${escapeHtml(t("spectator.badge"))}</strong>
       <span>${escapeHtml(message)}</span>
     </div>
   `;
@@ -2129,11 +2637,11 @@ function renderFinalVoting() {
   if (isSpectator) {
     phaseContent.innerHTML = `
       <div class="phase-card voting-phase-card">
-        <h2>${isOvertimeVote ? "Glasanje nakon produzetka" : "Finalno glasanje"}</h2>
+        <h2>${escapeHtml(isOvertimeVote ? t("vote.title_overtime") : t("vote.title_final"))}</h2>
         ${spectatorNoticeHtml()}
         <div class="vote-progress-private">
           <strong>${votedCount}/${activeRoundPlayers.length}</strong>
-          <span>igrača glasalo</span>
+          <span>${escapeHtml(t("vote.progress"))}</span>
         </div>
         ${renderVotingChecklist(activeRoundPlayers)}
       </div>
@@ -2143,18 +2651,18 @@ function renderFinalVoting() {
 
   phaseContent.innerHTML = `
     <div class="phase-card voting-phase-card">
-      <h2>${isOvertimeVote ? "Glasanje nakon produzetka" : "Finalno glasanje"}</h2>
+      <h2>${escapeHtml(isOvertimeVote ? t("vote.title_overtime") : t("vote.title_final"))}</h2>
       <p class="helper-text">
-        ${requiredTargets === 2 ? "Odaberi 2 igrača za koje misliš da su Varalice." : "Odaberi igrača za kojeg misliš da je Varalica."}
-        Glasovi se ne otkrivaju dok svi ne glasaju.
+        ${escapeHtml(requiredTargets === 2 ? t("vote.pick_two") : t("vote.pick_one"))}
+        ${escapeHtml(t("vote.hidden_until_all"))}
       </p>
-      <p class="helper-text">Ne mozes glasati za sebe.</p>
+      <p class="helper-text">${escapeHtml(t("vote.not_self"))}</p>
       <div class="vote-progress-private">
         <strong>${votedCount}/${activeRoundPlayers.length}</strong>
-        <span>igrača glasalo</span>
+        <span>${escapeHtml(t("vote.progress"))}</span>
       </div>
       ${renderVotingChecklist(activeRoundPlayers)}
-      ${requiredTargets === 2 && !hasVoted ? `<p id="voteSelectionCounter" class="helper-text">Izabrano: 0/2</p>` : ""}
+      ${requiredTargets === 2 && !hasVoted ? `<p id="voteSelectionCounter" class="helper-text">${escapeHtml(t("vote.selected_count", { selected: 0, required: 2 }))}</p>` : ""}
       <div class="vote-list">
         ${activePlayers
           .map(
@@ -2162,19 +2670,19 @@ function renderFinalVoting() {
               <div class="vote-option ${requiredTargets === 2 ? "selectable-vote-option" : ""}" data-select-target-id="${escapeHtml(player.id)}">
                 <div>
                   <strong class="inline-player">${playerNameHtml(player)}</strong>
-                  ${player.id === roomState.viewer_id ? `<span class="helper-text">Ti</span>` : ""}
+                  ${player.id === roomState.viewer_id ? `<span class="helper-text">${escapeHtml(t("vote.you"))}</span>` : ""}
                 </div>
                 <button class="small vote-button" data-target-id="${escapeHtml(player.id)}" ${hasVoted ? "disabled" : ""}>
-                  ${requiredTargets === 2 ? "Odaberi" : "Glasaj"}
+                  ${escapeHtml(requiredTargets === 2 ? t("vote.select") : t("vote.cast"))}
                 </button>
               </div>
             `,
           )
           .join("")}
       </div>
-      ${requiredTargets === 2 && !hasVoted ? `<button id="submitMultiVoteButton" disabled>Potvrdi izbor</button>` : ""}
+      ${requiredTargets === 2 && !hasVoted ? `<button id="submitMultiVoteButton" disabled>${escapeHtml(t("vote.confirm_choice"))}</button>` : ""}
       <p class="helper-text">
-        ${hasVoted ? "Tvoj glas je zaprimljen. Cekamo ostale igrace." : "Mozes glasati samo jednom."}
+        ${escapeHtml(hasVoted ? t("vote.received") : t("vote.once"))}
       </p>
     </div>
   `;
@@ -2194,9 +2702,9 @@ function renderFinalVoting() {
         const selected = selectedTargets.has(targetId);
         row.classList.toggle("selected", selected);
         const button = row.querySelector(".vote-button");
-        if (button) button.textContent = selected ? "Izabrano" : "Odaberi";
+        if (button) button.textContent = selected ? t("vote.chosen") : t("vote.select");
       });
-      if (counter) counter.textContent = `Izabrano: ${selectedTargets.size}/2`;
+      if (counter) counter.textContent = t("vote.selected_count", { selected: selectedTargets.size, required: 2 });
       if (submitButton) submitButton.disabled = selectedTargets.size !== 2;
     };
     document.querySelectorAll(".vote-button").forEach((button) => {
@@ -2222,9 +2730,9 @@ function renderVotingComplete() {
     if (voting.can_reveal) {
       phaseContent.innerHTML = `
         <div class="phase-card overtime-card">
-          <h2>Glasanje je nerešeno.</h2>
-          <p class="helper-text">Produžeci su završeni. Host može prikazati Varalicu.</p>
-          ${isHost ? `<button id="revealResultsButton">Prikaži Varalicu</button>` : `<p class="helper-text">Čeka se da host prikaže Varalicu.</p>`}
+          <h2>${escapeHtml(t("results.tie_title"))}</h2>
+          <p class="helper-text">${escapeHtml(t("results.tie_done"))}</p>
+          ${isHost ? `<button id="revealResultsButton">${escapeHtml(t("results.reveal_button"))}</button>` : `<p class="helper-text">${escapeHtml(t("results.wait_host_reveal"))}</p>`}
         </div>
       `;
       const revealButton = document.querySelector("#revealResultsButton");
@@ -2233,28 +2741,28 @@ function renderVotingComplete() {
     }
     phaseContent.innerHTML = `
       <div class="phase-card overtime-card">
-        <h2>Glasanje je nerešeno.</h2>
-        <p class="helper-text">Varalica se ne otkriva. Diskusija se produžava za 30 sekundi.</p>
+        <h2>${escapeHtml(t("results.tie_title"))}</h2>
+        <p class="helper-text">${escapeHtml(t("results.tie_hide"))}</p>
       </div>
     `;
     return;
   }
   phaseContent.innerHTML = `
     <div class="phase-card">
-      <h2>Glasanje je završeno</h2>
+      <h2>${escapeHtml(t("results.voting_done"))}</h2>
       <p class="helper-text">
-        ${isHost ? "Prikaži Varalicu kada su svi spremni da vide rezultat." : "Čeka se da host prikaže Varalicu."}
+        ${escapeHtml(isHost ? t("results.host_reveal_ready") : t("results.wait_host_reveal"))}
       </p>
       ${
         voting.can_overtime
           ? `<div class="overtime-card">
-              <h2>Glasanje je neriješeno.</h2>
-              <p class="helper-text">Diskusija se produžava za 30 sekundi.</p>
-              ${isHost ? `<button id="startOvertimeButton">Produži igru 30 sekundi</button>` : ""}
+              <h2>${escapeHtml(t("results.tie_alt"))}</h2>
+              <p class="helper-text">${escapeHtml(t("results.tie_extend"))}</p>
+              ${isHost ? `<button id="startOvertimeButton">${escapeHtml(t("results.extend_button"))}</button>` : ""}
             </div>`
           : ""
       }
-      ${isHost ? `<button id="revealResultsButton">Prikaži Varalicu</button>` : ""}
+      ${isHost ? `<button id="revealResultsButton">${escapeHtml(t("results.reveal_button"))}</button>` : ""}
     </div>
   `;
 
@@ -2294,9 +2802,9 @@ function revealTheme(results, phase = "complete") {
 
 function revealStatusLabel(results) {
   if (results.was_varalica_caught === true) {
-    return isViewerVaralica(results) ? "PROVALJENA" : "OTKRIVENA";
+    return isViewerVaralica(results) ? t("results.caught_self") : t("results.caught_other");
   }
-  return "PREŽIVJELA";
+  return t("results.survived_status");
 }
 
 function revealStatusClass(results) {
@@ -2308,17 +2816,17 @@ function revealStatusClass(results) {
 
 function revealOutcomeTitle(results) {
   if (results.was_varalica_caught === true) {
-    return isViewerVaralica(results) ? "PROVALJENA" : "OTKRIVENA";
+    return isViewerVaralica(results) ? t("results.caught_self") : t("results.caught_other");
   }
-  return "PREŽIVJELA";
+  return t("results.survived_status");
 }
 
 function revealOutcomeSubtitle(results) {
   const isCurrentUserVaralica = isViewerVaralica(results);
   if (results.was_varalica_caught === true) {
-    return isCurrentUserVaralica ? "Manipulacija nije uspjela." : "Igrači su pronašli Varalicu.";
+    return isCurrentUserVaralica ? t("results.manipulation_failed") : t("results.players_found");
   }
-  return isCurrentUserVaralica ? "Varalica je preživjela." : "Igrači nisu uspjeli otkriti Varalicu.";
+  return isCurrentUserVaralica ? t("results.survived_self") : t("results.players_failed");
 }
 
 function impostorAvatarHtml() {
@@ -2348,7 +2856,7 @@ function renderVaralicaNamesHtml(results, { animate = false } = {}) {
   const names = resultVaralice(results);
   const animateClass = animate ? " impostor-name-reveal" : "";
   if (!names.length) {
-    return `<h2 class="impostor-nickname${animateClass}">Nepoznato</h2>`;
+    return `<h2 class="impostor-nickname${animateClass}">${escapeHtml(t("results.unknown_name"))}</h2>`;
   }
   if (names.length === 1) {
     const label = playerNameText(names[0]);
@@ -2373,7 +2881,7 @@ function isRevealTransitionPhase(phase) {
 }
 
 function finalResultHeadline(results) {
-  return results.was_varalica_caught === true ? "VARALICA JE UHVAĆENA" : "VARALICA JE PREŽIVJELA";
+  return results.was_varalica_caught === true ? t("results.fullscreen_caught") : t("results.fullscreen_survived");
 }
 
 function patchImpostorRevealCountdown() {
@@ -2427,7 +2935,7 @@ function renderImpostorReveal(results) {
         </div>
         <div class="impostor-reveal-copy impostor-reveal-copy-front">
           ${showStatus ? `<p class="impostor-status-label ${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</p>` : ""}
-          ${showPretitle ? `<p class="impostor-pretitle impostor-pretitle-game">VARALICA JE...</p>` : ""}
+          ${showPretitle ? `<p class="impostor-pretitle impostor-pretitle-game">${escapeHtml(t("results.pre_title"))}</p>` : ""}
           ${showName ? `<div class="impostor-name-reveal-wrap">${showName && phase === "name_reveal" ? '<span class="impostor-name-smoke" aria-hidden="true"></span>' : ""}${renderVaralicaNamesHtml(results, { animate: phase === "name_reveal" })}</div>` : ""}
           ${showSubtitle ? `<p class="impostor-subtitle impostor-subtitle-reveal">${escapeHtml(subtitle)}</p>` : ""}
         </div>
@@ -2576,49 +3084,51 @@ function renderResults() {
       (item) => `
         <div class="score-row">
           <span>${escapeHtml(playerNameText(item))}</span>
-          <strong>${item.discoveries} pronasao/la</strong>
-          <strong>${item.survivals} prezivio/la</strong>
+          <strong>${escapeHtml(t("score.found", { count: item.discoveries }))}</strong>
+          <strong>${escapeHtml(t("score.survived", { count: item.survivals }))}</strong>
         </div>
       `,
     )
     .join("");
   const correctGuessers = (results.correct_guessers || [])
-    .map((player) => escapeHtml(playerNameText(player)))
+    .map((player) => playerNameText(player))
     .join(", ");
 
-  const varalicaSummaryLabel = (results.varalice || []).length > 1 ? "Varalice su bile" : "Varalica je bio/la";
+  const pluralLabel = t("results.were_plural");
+  const singularLabel = t("results.was_singular");
+  const varalicaSummaryLabel = ((results.varalice || []).length > 1 ? pluralLabel : singularLabel).replace(/:$/, "");
 
   phaseContent.innerHTML = `
     <div class="phase-card results-card results-card-${escapeHtml(finalResultDisplayMode)}">
       ${renderResultRevealHero(results, finalResultDisplayMode)}
       ${roomState.viewer_is_spectator ? spectatorNoticeHtml() : ""}
-      <h2 class="vote-statistics-title">Statistika glasanja</h2>
+      <h2 class="vote-statistics-title">${escapeHtml(t("results.vote_stats"))}</h2>
       <p class="big-result varalica-summary">
-        <span class="varalica-summary-label">${varalicaSummaryLabel}:</span>
+        <span class="varalica-summary-label">${escapeHtml(varalicaSummaryLabel)}:</span>
         <span class="varalica-summary-name">${escapeHtml(varaliceNameText(results))}</span>
       </p>
-      <p class="word-result">Riječ je bila: ${escapeHtml(results.word.hr)} (${escapeHtml(results.word.sr)})</p>
-      <p class="outcome-text">${escapeHtml(results.outcome)}</p>
+      <p class="word-result">${escapeHtml(t("results.word_was", { word: localizedWord(results.word) }))}</p>
+      <p class="outcome-text">${escapeHtml(window.VaralicaI18n.translateServerMessage(results.outcome))}</p>
       <p class="helper-text">
-        ${correctGuessers ? `Tacno pogodili: ${correctGuessers}` : "Niko nije tacno pogodio Varalicu."}
+        ${correctGuessers ? escapeHtml(t("results.correct_guessers", { names: correctGuessers })) : escapeHtml(t("results.nobody_guessed"))}
       </p>
       <div class="result-list">
         ${voteRows}
       </div>
-      <h2>Ko je za koga glasao</h2>
+      <h2>${escapeHtml(t("results.who_voted"))}</h2>
       <div class="result-list">
         ${individualVoteRows}
       </div>
       ${
         scoreboardRows
-          ? `<h2>Mini scoreboard</h2>
+          ? `<h2>${escapeHtml(t("results.scoreboard"))}</h2>
              <div class="scoreboard-list">${scoreboardRows}</div>`
           : ""
       }
       ${
         isHost && revealSequence.showReplay
-          ? `<button id="newRoundButton" class="replay">Nova runda</button>`
-          : `<p class="helper-text">${isHost ? "Nova runda ce biti dostupna za trenutak." : "Host moze pokrenuti novu rundu."}</p>`
+          ? `<button id="newRoundButton" class="replay">${escapeHtml(t("results.new_round"))}</button>`
+          : `<p class="helper-text">${escapeHtml(isHost ? t("results.new_round_wait_host") : t("results.new_round_wait_others"))}</p>`
       }
     </div>
   `;
@@ -2650,7 +3160,7 @@ function renderPlayerReactionCluster(reactions) {
   const bubbles = list
     .map(
       (reaction) =>
-        `<span class="reaction-pop" data-reaction-key="${escapeHtml(playerReactionKey(reaction))}" aria-label="Reakcija">${escapeHtml(reaction.emoji)}</span>`,
+        `<span class="reaction-pop" data-reaction-key="${escapeHtml(playerReactionKey(reaction))}" aria-label="${escapeHtml(t("reactions.single_label"))}">${escapeHtml(reaction.emoji)}</span>`,
     )
     .join("");
   return `<span class="reaction-pop-cluster">${bubbles}</span>`;
@@ -2695,7 +3205,7 @@ function syncPlayerReactionBubbles(inlinePlayer, reactions) {
     if (!bubble) {
       bubble = document.createElement("span");
       bubble.className = "reaction-pop";
-      bubble.setAttribute("aria-label", "Reakcija");
+      bubble.setAttribute("aria-label", t("reactions.single_label"));
       cluster.appendChild(bubble);
     }
 
@@ -2747,6 +3257,7 @@ function patchDiscussionPlayersInPlace() {
     );
 
     const nameBlock = row.querySelector(".player-name");
+    syncSuspicionControl(row, player);
     let associationEl = row.querySelector(".association-bubble");
     if (player.association) {
       const associationText = player.association.text || "";
@@ -2764,8 +3275,9 @@ function patchDiscussionPlayersInPlace() {
 
 function renderPlayers() {
   const phase = roomState.state;
+  const suspicionKey = `${Boolean(roomState.suspicion_open)}:${Boolean(roomState.suspicion_visible)}`;
   let patched = false;
-  if (phase === lastPlayersListPhase) {
+  if (phase === lastPlayersListPhase && suspicionKey === lastSuspicionOpen) {
     if (phase === "discussion" || phase === "overtime") {
       patched = patchDiscussionPlayersInPlace();
     } else if (phase === "reveal") {
@@ -2774,6 +3286,7 @@ function renderPlayers() {
   }
   if (patched) return;
   lastPlayersListPhase = phase;
+  lastSuspicionOpen = suspicionKey;
 
   playersList.innerHTML = "";
   const orderedPlayers = orderedRoomPlayers();
@@ -2788,25 +3301,28 @@ function renderPlayers() {
     if (player.is_current && !player.is_spectator) {
       row.classList.add("is-current");
     }
+    if (roomState.suspicion_visible && roomState.viewer_suspicion_target_id === player.id) {
+      row.classList.add("is-suspicion-target");
+    }
 
     const revealStatus = revealStatusForPlayer(player);
     const connectionLabels = {
-      active: "Active",
-      away: "Away",
-      idle: "Idle",
-      offline: "Offline",
+      active: "players.active",
+      away: "players.away",
+      idle: "players.idle",
+      offline: "players.offline",
     };
-    const connectionStatusLabel = connectionLabels[player.connection_status] || "Offline";
+    const connectionStatusLabel = t(connectionLabels[player.connection_status] || "players.offline");
     const disconnectedLabel = "";
     const connectedLabel = "";
     const isViewerHost = roomState.viewer_id === roomState.host_id;
-    const hostLabel = player.is_host ? `<span class="badge host-badge" title="Host">👑</span>` : "";
+    const hostLabel = player.is_host ? `<span class="badge host-badge" title="${escapeHtml(t("players.host_title"))}">👑</span>` : "";
     const currentLabel = "";
-    const spectatorWaitingText = player.id === roomState.viewer_id ? "Igraš od sledeće runde" : "Igra od sledeće runde";
+    const spectatorWaitingText = player.id === roomState.viewer_id ? t("spectator.wait_self") : t("spectator.wait_other");
     const spectatorLabel = player.is_spectator
-      ? `<span class="badge spectator-badge">Posmatrač</span><span class="badge spectator-waiting-badge">${spectatorWaitingText}</span>`
+      ? `<span class="badge spectator-badge">${escapeHtml(t("spectator.badge"))}</span><span class="badge spectator-waiting-badge">${escapeHtml(spectatorWaitingText)}</span>`
       : "";
-    const voteLabel = player.requested_vote ? `<span class="badge vote-requested">Trazi glasanje</span>` : "";
+    const voteLabel = player.requested_vote ? `<span class="badge vote-requested">${escapeHtml(t("players.vote_requested"))}</span>` : "";
     const associationBubble = player.association
       ? `<div class="association-bubble">${escapeHtml(player.association.text)}</div>`
       : "";
@@ -2815,11 +3331,7 @@ function renderPlayers() {
 
     row.innerHTML = `
       <div class="player-name">
-        <span class="inline-player">
-          <span class="status-dot ${escapeHtml(player.connection_status || "offline")}" title="${connectionStatusLabel}"></span>
-          ${playerNameHtml(player)}
-          ${reactionCluster}
-        </span>
+        ${suspicionControlHtml(player, connectionStatusLabel, reactionCluster)}
         ${associationBubble}
       </div>
       <div class="player-meta">
@@ -2836,7 +3348,7 @@ function renderPlayers() {
         }
         ${
           isViewerHost && player.id !== roomState.viewer_id
-            ? `<button class="kick-x-button" data-kick-id="${escapeHtml(player.id)}" title="Izbaci igrača" aria-label="Izbaci igrača">×</button>`
+            ? `<button class="kick-x-button" data-kick-id="${escapeHtml(player.id)}" title="${escapeHtml(t("players.kick_title"))}" aria-label="${escapeHtml(t("players.kick_title"))}">×</button>`
             : ""
         }
       </div>
@@ -2845,10 +3357,82 @@ function renderPlayers() {
   }
 
   document.querySelectorAll("[data-kick-id]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
       const targetId = button.dataset.kickId;
-      showConfirmAction("Da li sigurno zelis izbaciti ovog igraca?", () => kickPlayer(targetId));
+      showConfirmAction(t("confirm.kick"), () => kickPlayer(targetId));
     });
+  });
+  document.querySelectorAll("[data-suspicion-id]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      submitSuspicion(button.dataset.suspicionId);
+    });
+  });
+}
+
+function suspicionSelectable(player) {
+  return Boolean(
+    roomState
+    && roomState.state === "discussion"
+    && roomState.suspicion_open
+    && !roomState.viewer_is_spectator
+    && player.is_active_round_player
+    && !player.is_spectator
+    && player.id !== roomState.viewer_id
+  );
+}
+
+function suspicionControlHtml(player, connectionStatusLabel, reactionCluster) {
+  const percentLabel = t("suspicion.percent", { percent: Number(player.suspicion_percent || 0) });
+  const selected = roomState.viewer_suspicion_target_id === player.id;
+  const identity = `
+    <span class="inline-player">
+      <span class="status-dot ${escapeHtml(player.connection_status || "offline")}" title="${connectionStatusLabel}"></span>
+      ${playerNameHtml(player)}
+      ${reactionCluster}
+    </span>
+    ${roomState.suspicion_visible && player.is_active_round_player ? `<span class="suspicion-percent">${escapeHtml(percentLabel)}</span>` : ""}
+  `;
+  if (!suspicionSelectable(player)) return identity;
+  return `
+    <button type="button" class="suspicion-select${selected ? " is-selected" : ""}" data-suspicion-id="${escapeHtml(player.id)}" aria-pressed="${selected ? "true" : "false"}" aria-label="${escapeHtml(`${player.name}. ${percentLabel}`)}">
+      ${identity}
+    </button>
+  `;
+}
+
+function syncSuspicionControl(row, player) {
+  const selected = Boolean(roomState.suspicion_visible) && roomState.viewer_suspicion_target_id === player.id;
+  row.classList.toggle("is-suspicion-target", selected);
+  const percentLabel = t("suspicion.percent", { percent: Number(player.suspicion_percent || 0) });
+  let percent = row.querySelector(".suspicion-percent");
+  const showPercent = Boolean(roomState.suspicion_visible) && player.is_active_round_player;
+  if (showPercent) {
+    if (!percent) {
+      percent = document.createElement("span");
+      percent.className = "suspicion-percent";
+      (row.querySelector(".suspicion-select") || row.querySelector(".player-name"))?.appendChild(percent);
+    }
+    percent.textContent = percentLabel;
+  } else {
+    percent?.remove();
+  }
+  const button = row.querySelector(".suspicion-select");
+  if (!button) return;
+  const selectable = suspicionSelectable(player);
+  button.disabled = !selectable;
+  button.classList.toggle("is-selected", selected);
+  button.setAttribute("aria-pressed", selected ? "true" : "false");
+  button.setAttribute("aria-label", `${player.name}. ${percentLabel}`);
+}
+
+async function submitSuspicion(targetId) {
+  if (!targetId || !roomState?.suspicion_open || targetId === roomState.viewer_id) return;
+  if (targetId === roomState.viewer_suspicion_target_id) return;
+  await apiRequest(`/api/rooms/${localRoomCode}/suspicion`, {
+    player_id: localPlayerId,
+    target_id: targetId,
   });
 }
 
@@ -2856,9 +3440,9 @@ async function copyRoomLink() {
   const link = inviteLink();
   try {
     await navigator.clipboard.writeText(link);
-    copyLinkButton.textContent = "Kopirano";
+    copyLinkButton.textContent = t("room.copied_link");
     setTimeout(() => {
-      copyLinkButton.textContent = "Kopiraj link";
+      copyLinkButton.textContent = t("room.copy_link");
     }, 1200);
   } catch {
     showError(link);
@@ -2868,9 +3452,9 @@ async function copyRoomLink() {
 async function copyRoomCode() {
   try {
     await navigator.clipboard.writeText(localRoomCode);
-    copyCodeButton.textContent = "Kod kopiran";
+    copyCodeButton.textContent = t("room.copied_code");
     setTimeout(() => {
-      copyCodeButton.textContent = "Kopiraj kod";
+      copyCodeButton.textContent = t("room.copy_code");
     }, 1200);
   } catch {
     showError(localRoomCode);
@@ -2880,18 +3464,18 @@ async function copyRoomCode() {
 function toggleQrPanel() {
   const inviteUrl = inviteLink();
   if (!inviteUrl) {
-    showError("QR link nije spreman. Pokušaj ponovo.");
+    showError(t("error.qr_not_ready"));
     return;
   }
   if (!qrPanel.classList.contains("hidden")) {
     qrPanel.classList.add("hidden");
-    showQrButton.textContent = "QR";
+    showQrButton.textContent = t("room.qr");
     return;
   }
 
   qrPanel.innerHTML = `
     <div class="qr-code-card">
-      <div id="roomQrCode" class="qr-code-box" aria-label="QR kod za ulazak u sobu"></div>
+      <div id="roomQrCode" class="qr-code-box" aria-label="${escapeHtml(t("room.qr_label"))}"></div>
     </div>
   `;
   console.log("QR invite URL:", inviteUrl);
@@ -2914,30 +3498,42 @@ function toggleQrPanel() {
       node.removeAttribute("title");
     });
     qrPanel.classList.remove("hidden");
-    showQrButton.textContent = "Sakrij QR";
+    showQrButton.textContent = t("room.qr_hide");
   } catch (error) {
     console.error("QR generation failed:", error);
-    showError("QR kod nije mogao biti generisan. Koristi Kopiraj link.");
+    showError(t("error.qr_failed"));
     qrPanel.innerHTML = "";
     qrPanel.classList.add("hidden");
   }
+}
+
+function authHeaders(extra = {}, includeCredential = true) {
+  const headers = { ...extra };
+  if (includeCredential && localCredential) {
+    headers.Authorization = `Bearer ${localCredential}`;
+  }
+  return headers;
 }
 
 async function apiRequest(url, body) {
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
     });
     const data = await response.json();
     if (!response.ok) {
-      showError(data.detail || "Doslo je do greske.");
+      if (response.status === 401) {
+        showError(t("error.session_expired"));
+        return null;
+      }
+      showError(data.detail || t("error.generic"));
       return null;
     }
     return data;
   } catch {
-    showError("Nije moguce spojiti se na server.");
+    showError(t("error.server_unreachable"));
     return null;
   }
 }
@@ -2949,7 +3545,7 @@ function clearError() {
 
 function showError(message) {
   errorBox.classList.remove("hidden");
-  errorBox.textContent = message;
+  errorBox.textContent = window.VaralicaI18n.translateServerMessage(message);
 }
 
 function escapeHtml(value) {
@@ -2995,5 +3591,70 @@ async function bootstrapRoomSession() {
     showValidInviteUI(code);
   }
 }
+
+document.querySelectorAll("[data-gate-lang]").forEach((button) => {
+  button.addEventListener("click", () => closeLanguageGate(button.dataset.gateLang));
+});
+document.querySelector("#languageMenuButton")?.addEventListener("click", () => {
+  const open = document.querySelector("#languageMenu")?.classList.contains("hidden");
+  setLanguageMenuOpen(Boolean(open));
+});
+document.querySelectorAll(".language-choice").forEach((button) => {
+  button.addEventListener("click", () => {
+    setLanguageMenuOpen(false);
+    if (button.dataset.lang === currentUiLanguage()) return;
+    openLanguageConfirm(button.dataset.lang);
+  });
+});
+document.querySelector("#languageConfirmCancel")?.addEventListener("click", () => {
+  pendingLanguage = "";
+  document.querySelector("#languageConfirmModal")?.classList.add("hidden");
+});
+document.querySelector("#languageConfirmOk")?.addEventListener("click", () => {
+  if (pendingLanguage) window.VaralicaI18n.setUiLanguage(pendingLanguage, { manual: true });
+  pendingLanguage = "";
+  document.querySelector("#languageConfirmModal")?.classList.add("hidden");
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest("#languageMenuWrap")) setLanguageMenuOpen(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  if (contactModal && !contactModal.classList.contains("hidden")) {
+    event.preventDefault();
+    hideModal(contactModal);
+    return;
+  }
+  if (homeScreenModal && !homeScreenModal.classList.contains("hidden")) {
+    event.preventDefault();
+    hideModal(homeScreenModal);
+    return;
+  }
+  setLanguageMenuOpen(false);
+});
+renderExpandedRules();
+syncHomeScreenEntry();
+
+window.VaralicaI18n.onUiLanguageChange(() => {
+  updateContactPlaceholder();
+  if (contactError?.dataset.i18n) contactError.textContent = t(contactError.dataset.i18n);
+  if (contactSuccess && !contactSuccess.classList.contains("hidden") && contactSuccess.dataset.i18n) {
+    contactSuccess.textContent = t(contactSuccess.dataset.i18n);
+  }
+  if (contactSubmitting) setContactBusy(true);
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "language", language: currentUiLanguage() }));
+  }
+  renderExpandedRules();
+  forceFullRender = true;
+  if (connectionMode) setConnectionMode(connectionMode);
+  refreshInviteNotice();
+  if (qrPanel && !qrPanel.classList.contains("hidden")) {
+    showQrButton.textContent = t("room.qr_hide");
+  }
+  if (roomState) render();
+  else renderAvatarGrid();
+  forceFullRender = false;
+});
 
 bootstrapRoomSession();

@@ -1,0 +1,20 @@
+Flag graphics in this directory are stored locally. The application does not load them from a CDN.
+
+flag-rs.svg (Serbia), flag-de.svg (Germany), and the previous simplified flag-hr.svg
+Source: Twemoji v15.1.0, https://github.com/jdecked/twemoji
+Paths: assets/svg/1f1f7-1f1f8.svg, assets/svg/1f1e9-1f1ea.svg, assets/svg/1f1ed-1f1f7.svg
+Copyright: Twitter, Inc. and other contributors
+Graphics license: Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+Credit: “Twemoji” by Twitter, Inc. and other contributors, licensed under CC BY 4.0.
+
+flag-hr.svg (Croatia), current file
+Source: https://commons.wikimedia.org/wiki/File:Flag_of_Croatia.svg
+Original file: https://upload.wikimedia.org/wikipedia/commons/1/1b/Flag_of_Croatia.svg
+Authors: Nightstallion, Elephantus, Neoneo13, Denelson83, Rainman, R-41, Minestrone, Lupo, Zscout370, MaGa, and later editors, based on the Parliament of Croatia graphical standard.
+License: public domain. Wikimedia Commons records a public-domain release from the Open Clip Art Library and cites the Croatian Copyright Act, Article 8, under which official texts and official works disclosed to inform the public are not copyright subject matter.
+Use of a national flag as an insignia can be restricted by laws that are separate from copyright. This copy is used as a language indicator.
+Presentation adaptation: the outer canvas and three stripe backgrounds are 36:26 for visual consistency in the language selector. The original coat of arms is translated vertically without scaling or distortion.
+
+flag-tr.svg (Turkey)
+Presentation adaptation: the outer red canvas is 36:26 for visual consistency in the language selector. The existing crescent and star geometry is translated vertically without scaling or distortion.

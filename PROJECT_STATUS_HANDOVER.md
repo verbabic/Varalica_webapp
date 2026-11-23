@@ -29,7 +29,10 @@ Every future **Cursor** or **Codex** session must:
 ### What is currently implemented
 
 - FastAPI backend with REST API and WebSocket room sync (`main.py`)
-- Mobile-first dark frontend (`static/index.html`, `static/app.js`, `static/styles.css`)
+- Mobile-first dark frontend (`static/index.html`, `static/app.js`, `static/styles.css`, `static/i18n.js`)
+- Interface languages `hr`, `sr`, `de`, and `tr`. Each player receives the same secret concept in their own language. The room word id and the canonical Croatian hint stay shared.
+- Active players: minimum 4, maximum 10. Two Varalice are available from 7 active players.
+- First visit shows `Landing.png`, then `Lang.png`, until a language is saved in `localStorage` (`varalica_ui_language`). The home language control is one globe button with a four-language menu and a confirmation in the newly selected language.
 - Room create/join by code or `/room/{code}` link
 - Player names, optional emoji avatars, host role, kick/transfer-host
 - Lobby settings: category, discussion duration, Varalica count (1 or 2 when >6 players)
@@ -48,7 +51,7 @@ Every future **Cursor** or **Codex** session must:
 - Reconnect / presence handling (away, idle, tab-close, leave)
 - Frontend cache busting via query string on static assets
 - HTML no-cache headers on `/` and `/room/{room_code}` (inferred from latest commit on `master`)
-- Word validation tooling (`validate_words.py`, 1014 Excel-imported non-Balkan words in `words.py`)
+- Word catalog in `words.py`: 1,231 physical records, 1,169 active workbook concepts, and 62 inactive legacy slots. Indexes `0–1013` and their ids are unchanged. New concepts are appended. Inactive slots cannot be drawn.
 
 ### What is partially implemented
 
@@ -101,7 +104,7 @@ Every future **Cursor** or **Codex** session must:
 
 - `main.py` — app routes, game state, WebSocket, timers, reactions, voting
 - `storage.py` — SQLite read/write for rooms and used words
-- `words.py` — word/hint data (do not change casually)
+- `words.py` — generated word catalog. Update it with `python -m scripts.import_words_from_xlsx --write` after a dry run, not by hand.
 - `validate_words.py` — word pool validation script
 
 ### Main frontend files
@@ -172,17 +175,18 @@ _Add new rows here when bugs are found._
 
 ### Last tests run
 
-- **2026-05-31** (inferred from recent development session): `python -m py_compile main.py`, `python -X utf8 validate_words.py`, `node --check static/app.js` — passed during reaction/cache work.
+- **2026-11-23:** Python compile, `validate_words.py`, `node --check` for `app.js` and `i18n.js`, and 64 unittest tests. All passed. Local `varalica.sqlite3` stayed 53,248 bytes, mtime 2026-11-23T06:00:36Z. Tests used a temporary `VARALICA_DB_PATH`.
 
 ### What passed
 
-- Python compile (`main.py`, `words.py`, `validate_words.py`)
-- Word validation script (1000 words, categories, hints)
-- JS syntax check (`static/app.js`)
+- Python compile for the runtime modules and importer
+- Word validation structure for 1,231 records, including 1,169 active and 62 inactive
+- JavaScript syntax for `static/app.js` and `static/i18n.js`
+- 64 unittest tests, including catalog IDs, localization, rooms, WebSocket authentication, and player limits
 
 ### What failed
 
-- None recorded at handover creation.
+- None in the 2026-11-23 release run. `validate_words.py` still prints 7 hint-quality warnings, 159 hint-repetition warnings, and 7 single-language overlaps. Those are known approved-catalog warnings and do not fail the test process.
 
 ### What still needs manual testing
 
@@ -213,8 +217,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `styles.css?v=20260607_2`; `app.js?v=20260605_7`; `Logo_title.png?v=20260605_7` (verified in `static/index.html`)
-- **Last frontend version update:** 2026-06-07 (hero title logo size/glow CSS polish)
+- **Frontend cache/version string:** `styles.css?v=20261123_14`, `i18n.js?v=20261123_4`, `app.js?v=20261123_2`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
+- **Last frontend version update:** 2026-11-23 (language-flag cache tokens aligned)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -232,6 +236,617 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-11-23 10:02 UTC+1 — Release test fix and staging inventory
+
+- **Tool used:** Cursor
+- **Summary:** The home-screen localization test now compares every `homeScreen.*` string in `static/i18n.js` with the saved reviewed workbook. The old hardcoded expectation that eight German and Turkish workbook cells still said “Varalica” was removed. Header references to `flag-de.svg` and `flag-rs.svg` now use `?v=20261123_9`, the same token as the language gate. `.gitignore` now covers SQLite databases, WAL/SHM files, and Excel lock files without ignoring source, tests, or assets.
+- **Changed files:** `tests/test_ui_translations.py`, `static/index.html`, `.gitignore`, `PROJECT_STATUS_HANDOVER.md`.
+- **Tests run:** `py_compile` for `main.py`, `words.py`, `validate_words.py`, `word_locales.py`, `storage.py`, and `scripts/import_words_from_xlsx.py`: PASS. `node --check static/app.js` and `static/i18n.js`: PASS. `validate_words.py`: structure OK, 1,231 records; 7 quality warnings and 7 single-language overlaps remain known approved-catalog warnings. Unittest: **64/64 OK**. Catalog assertions still require 1,169 active concepts, 62 inactive slots, and preserved indexes/IDs. Local SQLite unchanged: 53,248 bytes, 2026-11-23T06:00:36Z. `git diff --check`: CRLF warnings only.
+- **Release inventory to stage:** `.gitignore`, `PROJECT_STATUS_HANDOVER.md`, `main.py`, `storage.py`, `words.py`, `word_locales.py`, `scripts/import_words_from_xlsx.py`, `scripts/merge_ui_packs.py`, `data/Database words HR SR.xlsx`, `docs/localization/VARALICA_UI_TRANSLATIONS_REVIEWED_V3.xlsx`, `docs/localization/VARALICA_LOCALIZATION_AUDIT.md`, `docs/localization/VARALICA_UI_TRANSLATION_INVENTORY.csv`, `static/app.js`, `static/i18n.js`, `static/index.html`, `static/styles.css`, `static/assets/Landing.png`, `static/assets/Lang.png`, `static/assets/Varalica_home.png`, `static/assets/Betrüger_home.png`, `static/assets/Sahtekar_home.png`, `static/assets/flags/`, and `tests/`.
+- **Exclude:** `varalica.sqlite3`, `.env`, `Fotos/`, `data/proposed_locale_gaps.json`, `data/~$Database words HR SR.xlsx`, `docs/localization/~$VARALICA_UI_TRANSLATIONS_REVIEWED_V3.xlsx`, `docs/localization/VARALICA_UI_TRANSLATIONS_DRAFT.xlsx`, `scripts/prepare_avatar_transparency.py`, `static/assets/eyes_normal.png`, `varalica_curated_words_sample_200_old.py`. `proposed_locale_gaps.json` is loaded into an unused variable and is not applied by `with_locales`.
+- **Not changed:** Excel workbooks, catalog data, flag artwork, CSS layout, pulse animation, SQLite contents. No `git add`, commit, push, deploy, or server access.
+- **Deploy status:** NOT DEPLOYED. A fresh checkout of this inventory can run and pass tests. Production still needs its own service, database-path, Python, and WebSocket verification before activation.
+- **Manual checks needed:** production systemd command, live database path, Python version, proxy WebSocket, and HTTPS after a future authorized deploy.
+- **Known issues:** validator quality and repetition warnings remain. Startup still creates a missing `feedback` table and reads the word workbook once for empty locale fields.
+
+### 2026-11-23 09:51 UTC+1 — Uniform visible language-flag artwork
+
+- **Tool used:** Cursor
+- **Root cause:** The CSS frames were equal, but `object-fit: contain` preserved incompatible source canvases: Turkey was square (1:1) and Croatia was 2:1, while the approved Germany/Serbia reference is 36:26. This produced side or top/bottom letterboxing, so the colored artwork was visibly unequal.
+- **Summary:** Adapted the Turkish and Croatian SVG outer canvases/backgrounds to the shared 36:26 presentation ratio. Turkey's red field now fills the canvas; its crescent and star geometry was translated vertically without scaling. Croatia's three stripes now fill the canvas; its original public-domain coat-of-arms group was translated vertically without changing its scale or geometry. Germany and Serbia were not changed. `object-fit: contain` remains, but all four sources now have the same ratio, so there is no letterboxing. All four continue to use the same CSS frame and rounded clipping.
+- **Changed files:** `static/assets/flags/flag-tr.svg`, `static/assets/flags/flag-hr.svg`, `static/assets/flags/NOTICE.txt`, `static/index.html`, `PROJECT_STATUS_HANDOVER.md`. Asset cache identifiers: Turkey `v=20261123_2`, Croatia `v=20261123_7`. No CSS change was needed in this correction.
+- **1280 CSS px rendered artwork:** DE 85.36×61.65, TR 85.36×61.65, SR 85.36×61.65, HR 85.36×61.65 at rest; each reaches 88.78×64.11 at the 1.04 pulse peak. Each source reports the same browser intrinsic ratio (208×150), the colored background reaches all four frame edges, and the shared computed corner radius is 10.155 px.
+- **Tests run:** Browser screenshots and DOM measurements at 320, 375, 390, 768, and 1280 CSS px. All four visible colored areas matched at every width; 2×2 alignment, symbols, rounded corners, and full-bleed backgrounds were visually checked. No horizontal overflow occurred. At 320, the 1.04 pulse retained 36.22 px between frames, 3.47 px above labels, and 9.21 px inside the grid edge. DE/TR/SR/HR clicks produced Betrüger/Sahtekâr/Varalica/Varalica. `prefers-reduced-motion: reduce` produced `animation-name: none`. SVG XML parsing and `git diff --check` passed.
+- **Animation:** unchanged: `languageFlagPulse`, 3s, ease-in-out, infinite, center origin, scale 1 → 1.04 → 1.
+- **Not changed:** Germany/Serbia SVGs, CSS layout, labels, translation strings, game/backend/WebSocket/voting/timer/player/room logic, catalog, Excel, SQLite, legal UI, or unrelated UI. No commit, push, deploy, or service restart.
+- **Deploy status:** NOT DEPLOYED
+- **Manual checks needed:** none for the requested viewport set.
+- **Known issues:** none found within this correction. Native browser zoom was not part of this request and was not driven.
+
+### 2026-11-23 — Complete national flags inside equal frames
+
+- **Tool used:** Cursor
+- **Summary:** The equal rounded flag frames and the 3s pulse (scale 1 to 1.04, ease-in-out) stay as they were. The image fit changed from `object-fit: cover` to `object-fit: contain` with `object-position: center`. Germany and Serbia still fill the 36:26 frame. Croatia (2:1) and Turkey (1:1) are letterboxed inside the same frame, so the stripes, coat of arms, red field, crescent, and star are fully visible and not stretched. The empty bands show the black panel.
+- **Changed files:** `static/styles.css`, `static/index.html`, `PROJECT_STATUS_HANDOVER.md`. Cache: `styles.css?v=20261123_14`.
+- **Rendered frames:** 1280 → 85.36×61.65; 768 → 90.67×65.49; 390 → 46.43×33.53; 375 → 45.13×32.59; 320 → 38.53×27.83. All four languages share one size at each width. `object-fit` computed as `contain`.
+- **Tests:** page overflow 0 at every width. At 320, scale 1.04 still leaves 36.75 px between flag frames, 3.73 px above the label, and 9.47 px inside the grid edge. Clicks set Betrüger, Sahtekâr, Varalica, Varalica. `prefers-reduced-motion: reduce` sets the animation name to `none`. Close-up of the Croatian flag shows all three stripes, the checkerboard, the five shields, and the crown. Native browser zoom was not driven.
+- **Not changed:** SVG artwork, labels, language logic, catalog, database, translations, other UI. No commit, push, or deploy.
+- **Deploy status:** NOT DEPLOYED
+
+### 2026-11-23 — Equal language-flag dimensions and 3s pulse
+
+- **Tool used:** Cursor
+- **Summary:** Removed the per-language flag heights. Every language-gate flag is now one rectangle, `calc(1.7em * 36 / 26)` by `1.7em`, aspect ratio 36/26. The image uses `object-fit: cover` and `object-position: center`, so the visible rectangle is the same for DE, TR, SR, and HR and the artwork is not stretched. Germany and Serbia already match that ratio. Croatia and Turkey are center-cropped into it; their coats of arms, crescent, and star stay visible. The pulse is `scale(1)` to `scale(1.04)` and back over 3s with ease-in-out. The earlier 1.15 scale was not restored because it overlapped the neighbouring flags. Reduced motion sets the animation to none.
+- **Changed files:** `static/styles.css`, `static/index.html`, `PROJECT_STATUS_HANDOVER.md`. Cache: `styles.css?v=20261123_13`.
+- **At 1280 CSS px:** all four flags measure 85.75×61.92. At scale 1.04 the smallest flag-to-flag gap is 83.5 px, the label gap is 8.8 px, and the grid-edge gap is 21.7 px.
+- **Tests:** 320, 375, 390, 768, and 1280. Identical dimensions and no page overflow at each width. At 320 the pulse gaps stay positive (flags 37.1 px, label 3.9 px, grid edge 9.7 px). Clicks on DE, TR, SR, and HR set Betrüger, Sahtekâr, Varalica, and Varalica. With `prefers-reduced-motion: reduce`, the animation name is `none`. Native browser zoom was not driven.
+- **Not changed:** SVG files, labels, language logic, catalog, database, other UI. No commit, push, or deploy.
+- **Deploy status:** NOT DEPLOYED
+
+### 2026-11-23 — Balanced language flags, rounded corners, safe pulse
+
+- **Tool used:** Cursor
+- **Summary:** The four language flags no longer share one height. Each height is a fixed multiple of the shared label size, so the visual areas are close and Croatia is the slightly smaller one. Germany and Serbia use `1.82em`, Turkey `2.05em`, Croatia `1.42em`. Aspect ratios are unchanged. All four use `.language-gate-flag` with `border-radius: 0.28em` and `overflow: hidden`. The pulse scales from 1 to 1.04 over 3.2s. `prefers-reduced-motion` disables it. SVG files were not edited.
+- **Changed files:** `static/styles.css`, `static/index.html`, `PROJECT_STATUS_HANDOVER.md`. Cache: `styles.css?v=20261123_12`.
+- **Rendered size at 1280 CSS px:** DE 91.4×66, TR 74.3×74.3, SR 91.4×66, HR 103×51.5. Areas about 6031, 5527, 6031, and 5305. Labels are 36.3 px. Corner radius 10.2 px.
+- **Pulse clearance at scale 1.04:** smallest flag-to-flag gap is 34.3 px at 320 CSS px. Smallest gap from a flag to its label is 3.4 px. Smallest gap from a flag to the grid edge is 3.5 px. No overlap at 320, 375, 390, 768, or 1280. CSS zoom at 0.5, 0.75, 1.25, 1.5, and 2 kept those gaps positive. Native browser-chrome zoom was not driven.
+- **Language selection:** clicking DE set the title to Betrüger.
+- **Not changed:** flag SVG artwork, catalog, SQLite, workbooks, chat, modals, background art. No commit, push, or deploy.
+- **Deploy status:** NOT DEPLOYED
+
+### 2026-11-23 — Language gate flag and label scale together
+
+- **Tool used:** Cursor
+- **Root cause:** The language labels used `clamp(0.95rem, 2.6vw, 1.25rem)`. Browser zoom enlarges `rem` relative to the viewport. The flags were the leftover percentage of a hit box that was only 12% of the artwork, so the growing label consumed the cell and the flag shrank. A first container-query attempt put `cqh` on the button itself; that size was circular, so the font fell back to the viewport and overflowed. The grid gap then used `cqh` on the board, which also refers to an ancestor and became a fraction of the viewport, clipping the labels on a short stage.
+- **Correction:** The four options are one 2×2 grid over the existing panel. The board is the size container. Each label is `13cqh` of that board, and each flag is `1.7em` of that same font, so the flag-to-label ratio stays 1.70. Gaps are percentages of the board. Germany and Serbia viewBoxes were cropped from `0 0 36 36` to `0 5 36 26` to remove the empty emoji padding; colors and symbols were not changed. The Croatian SVG was not edited. Turkey was already full-bleed.
+- **Changed files:** `static/styles.css`, `static/index.html`, `static/assets/flags/flag-de.svg`, `static/assets/flags/flag-rs.svg`, `PROJECT_STATUS_HANDOVER.md`
+- **Rendered size at 1280 CSS px:** all four flags are 61.6 px tall. Widths follow each file’s proportions: DE 85.4, TR 61.6, SR 85.4, HR 123.3. Labels are 36.3 px. Ratio 1.70. At 320 CSS px the flags are 27.4 px tall and the labels are 16.1 px, same ratio.
+- **Tests:** Embedded browser at `http://127.0.0.1:8000/`. Viewports 320, 375, 390, 768, and 1280: equal flag heights, ratio 1.70, no overlap, no clipping, no page overflow. CSS zoom at 0.5, 0.75, 1.25, 1.5, and 2 kept the ratio at 1.70. `Emulation.setPageScaleFactor` did not change the layout scale. Native browser-chrome zoom at 50%, 75%, 100%, 125%, 150%, and 200% could not be driven. Clicking DE, TR, SR, and HR still selects that language. Cache: `styles.css?v=20261123_11`.
+- **Not changed:** Croatian flag artwork, catalog, SQLite, workbooks, chat layout, gameplay. No commit, push, or deploy.
+- **Deploy status:** NOT DEPLOYED
+
+### 2026-11-23 — Responsive flags, Croatian flag, and mobile Chat
+
+- **Tool used:** Cursor
+- **Root causes:** The first-visit language flags used a percentage height, a fixed aspect ratio, `flex: 0 0 auto`, and a pulse that scaled each flag to 1.15. When that percentage did not constrain the SVG, the image kept a large intrinsic size and painted over the next flag. The Chat/Live control was an `inline-flex` row with `white-space: nowrap` inside a `max-content` column and `overflow: hidden`, so long labels extended past a 320 px viewport and were clipped.
+- **Changed files:** `static/styles.css`, `static/index.html`, `static/assets/flags/flag-hr.svg`, `static/assets/flags/NOTICE.txt`, `PROJECT_STATUS_HANDOVER.md`
+- **Visual corrections:** Each language-gate flag is now a flex cell with the image at `width/height: 100%` and `object-fit: contain`. The scale pulse is removed. Dropdown flags share one 28×18 box, also with `object-fit: contain`. Below 430 px the Live/Chat control stacks vertically, wraps at spaces, and stays inside the viewport. Home, Rules, and Contact remain 106×34 with an 8 px radius.
+- **Croatian flag source:** `flag-hr.svg` replaces the simplified Twemoji icon. Source: Wikimedia Commons, File:Flag of Croatia.svg, https://commons.wikimedia.org/wiki/File:Flag_of_Croatia.svg (original https://upload.wikimedia.org/wikipedia/commons/1/1b/Flag_of_Croatia.svg). Authors recorded there include Nightstallion, Elephantus, Neoneo13, Denelson83, Rainman, R-41, Minestrone, Lupo, Zscout370, MaGa, and later editors, based on the Parliament of Croatia graphical standard. License: public domain, through the Open Clip Art Library release and the Croatian Copyright Act, Article 8, as stated on that Commons page. National-insignia use can still be restricted by laws separate from copyright. This copy is a language indicator. Serbia, Germany, and Turkey flags were not replaced. Cache: `styles.css?v=20261123_8`, `flag-hr.svg?v=20261123_5`.
+- **Browser and zoom tests:** Embedded browser at `http://127.0.0.1:8000/`. Viewport widths 320, 375, 390, 768, and 1280: flags stayed inside their hit areas with no overlap, Chat stayed inside the viewport in HR, SR, DE, and TR, and page overflow was 0. At 320, Turkish shows “Canlı mod” and “Sohbet modu” without clipping. Gate clicks still select a language. Home, Rules, and Contact open. The Add to Home Screen modal shows `iOS` and the language-specific names in all four languages. Contact Send stays disabled when empty and when the message is four characters, and enables at five characters plus a category. The form was not submitted. Chromium CSS `zoom` at 0.5, 0.75, 1, 1.25, 1.5, and 2 kept the flag width at 0.204 of the artwork stage, with no overlap and no page overflow. The browser’s own zoom control (Ctrl/Cmd +/-) was not available, so 50%, 75%, 100%, 125%, 150%, and 200% browser-chrome zoom were not tested. Viewport resizing was not treated as that zoom test.
+- **Localization comparison:** Sheet `01_UI_Translations` still differs from `static/i18n.js` in eight cells. The workbook was not edited, and the application text was not replaced with the older workbook text. `homeScreen.title` DE book `Varalica zum Startbildschirm hinzufügen` / app `Betrüger zum Startbildschirm hinzufügen`; TR book `Varalica'yı ana ekrana ekle` / app `Sahtekâr'ı ana ekrana ekle`. `homeScreen.description` DE book `Starte Varalica direkt vom Startbildschirm deines Smartphones.` / app `Starte Betrüger direkt vom Startbildschirm deines Smartphones.`; TR book `Varalica'yı telefonunun ana ekranından doğrudan aç.` / app `Sahtekâr'ı telefonunun ana ekranından doğrudan aç.`. `homeScreen.iphone1` DE book `Öffne Varalica in Safari.` / app `Öffne Betrüger in Safari.`; TR book `Varalica'yı Safari'de aç.` / app `Sahtekâr'ı Safari'de aç.`. `homeScreen.android1` DE book `Öffne Varalica in Chrome.` / app `Öffne Betrüger in Chrome.`; TR book `Varalica'yı Chrome'da aç.` / app `Sahtekâr'ı Chrome'da aç.`. The other seven `homeScreen.*` keys match in HR, SR, DE, and TR. The visible tab says `iOS`.
+- **Tests run:** `python -m unittest tests.test_word_catalog tests.test_final_discussion_and_hints tests.test_feedback tests.test_ui_translations tests.test_player_limits tests.test_player_auth tests.test_suspicion_tips`: 64 tests, OK, on a temporary `VARALICA_DB_PATH`. Catalog files were not regenerated. `varalica.sqlite3` stayed 53,248 bytes, modified 2026-11-23T06:00:36.5589610Z.
+- **Not changed:** both Excel workbooks, `words.py`, SQLite, gameplay rules, Serbia/Germany/Turkey flag artwork, and production. No commit, push, or deploy.
+- **Deploy status:** NOT DEPLOYED
+- **Known limitations:** The localization workbook still has the eight German and Turkish “Varalica” sentences listed above. Browser-chrome zoom was not driven directly. Privacy/GDPR wording remains an open product item from earlier work.
+
+### 2026-11-23 — Home screen names and pre-deployment QA
+
+- **Tool used:** Cursor
+- **Changed files:** `static/i18n.js`, `static/index.html`, `tests/test_ui_translations.py`, `PROJECT_STATUS_HANDOVER.md`
+- **Summary:** The eleven `homeScreen.*` keys were compared with `docs/localization/VARALICA_UI_TRANSLATIONS_REVIEWED_V3.xlsx`, sheet `01_UI_Translations`. All eleven already matched the saved workbook. The workbook still uses “Varalica” in the German and Turkish title, description, Safari step, and Chrome step. Those four strings now use the language-specific game names already used by the home title: German `Betrüger`, Turkish `Sahtekâr'ı` (accusative, because the name ends in a consonant). Serbian and Croatian stay `Varalica`. The entry link has no game name in any language, so it was not rewritten. The visible platform tab now says `iOS`; the internal keys remain `homeScreen.iphone1`, `homeScreen.iphone2`, and `homeScreen.iphone3`. Android is unchanged. Cache: `i18n.js?v=20261123_4`. The word catalog was not regenerated.
+- **Tests run:** `node --check static/i18n.js` and `node --check static/app.js` passed. `python -m unittest tests.test_word_catalog tests.test_final_discussion_and_hints tests.test_feedback tests.test_ui_translations tests.test_player_limits tests.test_player_auth tests.test_suspicion_tips`: 64 tests, OK. Catalog remains 1,231 physical, 1,169 active, 62 inactive. `varalica.sqlite3` stayed 53,248 bytes, modified 2026-11-23T06:00:36Z. Tests used a temporary `VARALICA_DB_PATH`.
+- **Browser:** `http://127.0.0.1:8000/`. The modal opened on the iOS tab, switched to Android, updated immediately in HR, SR, DE, and TR, closed with Escape, and restored focus to the link. At 320, 375, and 390 the modal stayed inside the viewport and the page had no horizontal scrollbar. Home, Rules, and Contact stayed 106×34 with an 8 px radius. Contact Send stayed disabled with no message and with four characters, then enabled for five characters plus a category. The form was not submitted.
+- **Not changed:** both Excel workbooks, `words.py` order and contents, SQLite, gameplay rules, production.
+- **Deploy status:** NOT DEPLOYED
+- **Runtime requirement:** `word_locales.py` imports `scripts/import_words_from_xlsx.py` and, if `data/Database words HR SR.xlsx` is present, reads it once at process start. It only fills empty locale fields. Every active catalog record already has Serbian, Croatian, German, and Turkish words and hints, so gameplay does not require the workbook. A missing workbook produces an empty overlay. `data/proposed_locale_gaps.json` is not applied.
+- **Known limitations:** the localization workbook itself still says “Varalica” in those German and Turkish home-screen sentences. The mode row’s Chat control still extends past a 320 px viewport (about 334 px in Croatian and 404 px in Turkish) and is clipped by its row. That was not changed.
+
+### 2026-11-23 — Approved workbook catalog sync
+
+- **Tool used:** Cursor
+- **Changed files:** `words.py`, `scripts/import_words_from_xlsx.py`, `main.py`, `word_locales.py`, `tests/test_word_catalog.py`, `PROJECT_STATUS_HANDOVER.md`
+- **Source:** `data/Database words HR SR.xlsx`, sheet `Tabelle1`, 1,169 data rows, 1,169 unique concepts, no blank pairs, no duplicate groups. The workbook was not edited.
+- **Import result:** 1,014 existing positions kept in order. 952 matched concepts updated in place. 53 concepts absent from the workbook marked inactive. 9 redundant legacy copies marked inactive. 217 approved concepts appended. Physical 1,231. Active 1,169. Inactive 62. A second import appended 0 and reproduced the same catalog.
+- **Ids and indexes:** ids at positions 0–1013 are unchanged (SHA-256 `c301d17c0aca2a0d6973cee6aba2ebd0f8786e20de5e2b60a841b0aa0c07c417`). `kuca_064` is now Latin `slavina`. Two source-backed category moves, with ids kept: `tehnologija_061` Tehnologija → Posao, `putovanja_072` Putovanja → Prevoz. Difficulty of existing slots was kept. New ids continue each category’s highest number.
+- **Languages:** every active record has Serbian, Croatian, German, and Turkish words and hints. Serbian hints are stored separately from Croatian hints. Unapproved `data/proposed_locale_gaps.json` is no longer applied during play. The workbook is not read on each request.
+- **Selection:** `words_for_category` and `choose_word` skip inactive slots, including after a used-word reset. An inactive index already stored in `room_used_words` stays stored and is not drawn. SQLite was not modified.
+- **Tests run:** `python -m py_compile` for `main.py`, `words.py`, `word_locales.py`, `scripts/import_words_from_xlsx.py`, `validate_words.py`, and `tests/test_word_catalog.py`. `python -X utf8 validate_words.py`: structure OK for 1,231 words; 7 quality warnings for workbook hints `tekst` / `uređaj`; 159 hint-repetition warnings; 7 single-language overlaps that are different approved pairs. `python -m unittest tests.test_word_catalog tests.test_final_discussion_and_hints tests.test_feedback tests.test_ui_translations tests.test_player_limits tests.test_player_auth tests.test_suspicion_tips`: 64 tests, OK. `varalica.sqlite3` size and modification time were unchanged (53,248 bytes, 2026-11-23T06:00:36Z). Tests used a temporary `VARALICA_DB_PATH`.
+- **Not changed:** the Excel file, SQLite schema and data, voting, timers, room codes, feedback behavior, and the existing uncommitted UI/localization work. No commit, push, or deploy.
+- **Deploy status:** NOT DEPLOYED
+- **Rollback:** restore `words.py`, `scripts/import_words_from_xlsx.py`, the word-selection changes in `main.py`, and the proposed-gap change in `word_locales.py`. Do not edit SQLite. Indexes 0–1013 still refer to the same slots, so existing used-word history stays valid. Local history did not use an index above 999.
+- **Known limitations:** the validator still warns about seven approved hints that use `tekst` or `uređaj`, and about seven pairs that share one language’s word but are different concepts. Those rows were kept because they are distinct workbook concepts. This pass checked structure and mapping, not a new linguistic review. `word_locales.py` still loads the workbook once at process start and only fills fields that are empty; active records already contain all four languages.
+
+### 2026-11-23 — homeScreen.android1 SR and HR correction
+
+- **Tool used:** Cursor
+- **Changed files:** `static/i18n.js`, `static/index.html`, `PROJECT_STATUS_HANDOVER.md`
+- **Summary:** Serbian and Croatian `homeScreen.android1` now match the corrected workbook: `Otvori Varalicu u Chrome.` German stays `Öffne Varalica in Chrome.` Turkish stays `Varalica'yı Chrome'da aç.` The HTML fallback for that step uses the same Croatian sentence. Cache: `i18n.js?v=20261123_2`.
+- **Tests run:** `node --check static/i18n.js` passed. `python -m unittest tests.test_ui_translations tests.test_feedback` passed, 18 tests. No test expected the old wording.
+- **Not changed:** the workbook, German, Turkish, other keys, gameplay, database, production.
+- **Deploy status:** NOT DEPLOYED
+
+### 2026-11-23 — Add to Home Screen instructions
+
+- **Tool used:** Cursor
+- **Changed files:** `static/index.html`, `static/styles.css`, `static/app.js`, `static/i18n.js`, `tests/test_ui_translations.py`, `PROJECT_STATUS_HANDOVER.md`
+- **Summary:** A secondary “Add to Home Screen” link sits under the player-entry panel. It opens a manual instruction modal with iPhone and Android steps. The eleven `homeScreen.*` strings are copied from `docs/localization/VARALICA_UI_TRANSLATIONS_REVIEWED_V3.xlsx`, sheet `01_UI_Translations`, rows 394–404. The workbook was not edited. The link is hidden when `display-mode: standalone` matches or `navigator.standalone` is true. No install prompt, service worker, or new dependency was added. Cache: `styles.css?v=20261123_3`, `i18n.js?v=20261123_1`, `app.js?v=20261123_2`.
+- **Tests run:** `node --check static/app.js`; `node --check static/i18n.js`; `python -m unittest tests.test_ui_translations tests.test_feedback` (18 tests, OK). Browser at `http://127.0.0.1:8000/`, desktop Chrome emulation, not a physical phone. The modal stayed closed on load. Opening it showed the Turkish iPhone steps, then Android, and switching SR/HR/DE updated the open modal and the link immediately. Escape closed it and returned focus to the link. At 320, 375 and 390 the card stayed inside the viewport with no horizontal overflow. Home, Rules and Contact remained 106×34. Contact still opened with Send disabled until the form is valid.
+- **Not changed:** the workbook, feedback validation, Turkish flag, header buttons, gameplay, database.
+- **Deploy status:** NOT DEPLOYED
+- **Known risks:** the iPhone and Android tab labels are the product names, because the workbook has no separate tab keys. German copy keeps the approved word “Varalica” in the title and description. Standalone hiding was not observed on a physical installed home-screen icon. A scripted `matchMedia` override did not stay attached across browser reloads.
+- **Manual checks still useful:** open the installed icon on an iPhone and an Android phone and confirm the link is absent, then follow the Share and Chrome menu labels on those devices.
+
+### 2026-11-23 — Home, Rules and Contact share one width
+
+- **Tool used:** Cursor
+- **Changed files:** `static/styles.css`, `static/index.html`, `PROJECT_STATUS_HANDOVER.md`
+- **Summary:** Home, Rules and Contact are now the same size: 106×34 px, radius 8 px. 106 px is the smallest whole-pixel width that fits the widest label, Turkish “📖 Kurallar”, at the desktop Rules/Contact font (14.4 px), including the icon and padding. Home’s colors, glow, type and action are unchanged; Rules and Contact keep their secondary colors, icons and actions. The pair stays on one row when the right column is at least 220 px. Below that, the two buttons wrap inside their group instead of clipping the label. Cache: `styles.css?v=20261123_2`.
+- **Tests run:** Browser at `http://127.0.0.1:8000/`. SR, HR, DE and TR at 320, 375, 390 and 1440. Every one of the three buttons measured 106×34 with an 8 px radius. No label was clipped (`scrollWidth` stayed within the button). The page did not gain a horizontal scrollbar.
+- **Overflow:** At 390 and 1440 the pair stays side by side in all four languages. At 320 it wraps in all four languages, and at 375 it wraps as well, because the right column is narrower than 220 px. The wrapped buttons do not overlap the logo. The Live/Chat row is a separate control and was not resized; at 320 its second segment extends past the viewport in every language (Turkish also does so at 375 and 390, to about 406 px). That row is clipped by the page rather than scrolling.
+- **Not changed:** feedback form, message-length validation, Turkish flag, logo scale, gameplay.
+- **Deploy status:** NOT DEPLOYED
+- **Manual checks still useful:** the Live/Chat row on a 320 px phone, especially in Turkish.
+
+### 2026-11-23 — Feedback close button, five-character rule, Turkish star, header button size
+
+- **Tool used:** Cursor
+- **Changed files:** `main.py`, `static/app.js`, `static/index.html`, `static/styles.css`, `static/assets/flags/flag-tr.svg`, `tests/test_feedback.py`, `PROJECT_STATUS_HANDOVER.md`
+- **Summary:** The feedback modal no longer has a Cancel button. The top control is an X with the existing close label (`Zatvori`, `Schließen`, `Kapat`). Send stays disabled until a category is chosen and the trimmed message has at least five characters. The server uses the same rule and still stores the trimmed text. The Turkish flag SVG star is a regular five-point star; the crescent and red field are unchanged. Rules and Contact now use the Home button’s height (34px), padding (6px 12px) and radius (8px). Their colors, borders, fonts, icons and actions are unchanged. Cache: `styles.css?v=20261123_1`, `app.js?v=20261123_1`, `flag-tr.svg?v=20261123_1`.
+- **Tests run:** `python -m py_compile main.py tests/test_feedback.py`; `python -m unittest tests.test_feedback` (10 tests, OK); `node --check static/app.js`. Browser at `http://127.0.0.1:8000/`: X closes before and after a real submit; no Cancel button; German success text stayed on screen until X. Send stayed disabled for a message without a category, for four characters, and for spaces only; it enabled for `  abcde  ` and disabled again when the text was shortened. At 390px, Home, Rules and Contact are all 34px tall with an 8px radius, no overlap and no horizontal overflow in SR, HR, DE and TR. Width follows each label. The flag SVG renders a white five-point star beside the crescent.
+- **Not changed:** Home button colors and rules, other flags, Lang.png, gameplay, WebSocket, auth, SQLite schema, approved copy.
+- **Deploy status:** NOT DEPLOYED
+- **Known limitations:** a physical iPhone or Android device was not used; the star was checked in desktop Chrome, including a 390px viewport. Button widths are not forced equal, so longer labels stay readable.
+- **Manual checks still useful:** the language card on a phone, and the header at 1920px.
+
+### 2026-11-22 — SR/HR logo matched to the German wordmark
+
+- **Tool used:** Cursor
+- **Changed files:** `static/styles.css`, `static/index.html`, `PROJECT_STATUS_HANDOVER.md`
+- **Summary:** `.home-logo.is-varalica` scale went from `1.044` to `1.38`. The earlier step only matched the opaque PNG bounds. The Varalica script sits in a shorter, narrower band, so the word still looked smaller than Betrüger. The new scale keeps the aspect ratio and does not change DE or TR. Cache is `styles.css?v=20261122_16`.
+- **Tests run:** Browser at `http://127.0.0.1:8000/`, 390, 430, and 1920, for SR, HR, and DE. No overlap, clipping, or horizontal overflow. Home stays under the logo. At 390 the rendered boxes are SR/HR 116×50 and DE 107×36; the bright artwork is about 102×34 versus 87×26. Side-by-side screenshots show similar prominence: Varalica is slightly taller, Betrüger slightly wider.
+- **Deploy status:** NOT DEPLOYED
+- **Not changed:** PNG files, navigation, form, gameplay.
+
+### 2026-11-22 — Homepage header, logo balance, avatar scroll
+
+- **Tool used:** Cursor
+- **Changed files:** `static/styles.css`, `static/index.html`, `static/i18n.js`, `static/app.js`, `PROJECT_STATUS_HANDOVER.md`
+- **Summary:** SR/HR `Varalica_home.png` is displayed 4.4% taller so its solid neon artwork matches the German logo. DE and TR element sizes are unchanged. The header is one grid in every language: logo with Home underneath on the left; globe and Live/Chat on the first right row; Rules and the existing Contact button on the second right row. Contact keeps the approved labels (SR/HR/DE Kontakt, TR İletişim) and the existing `/api/feedback` store. The avatar list has a custom scroll rail and one arrow: down while more avatars remain below, up at the end, which returns to the top. The rail is hidden when the list does not overflow. Cache queries are `styles.css?v=20261122_15`, `i18n.js?v=20261122_10`, and `app.js?v=20261122_10`.
+- **Not changed:** logo PNG files, Landing.png, Lang.png, flags, gameplay, timers, voting, authentication, database schema, and the contact modal copy.
+- **Tests run:** `node --check static/app.js`; `node --check static/i18n.js`; `git diff --check` (CRLF warning on `static/app.js` only). Browser at `http://127.0.0.1:8000/` in desktop emulation, not a physical iPhone: 390×844, 430×900, 768×1024, and 1920×1080 in SR/HR/DE/TR. No horizontal overflow. Rules and Contact stay on one row under the globe and mode switch. At 390 the measured solid artwork was about 27px (HR) and 28px (DE); TR stayed about 32px because its file has less transparent padding. Avatar rail stayed visible, down scrolled, up at the end returned to the top, and the selected avatar stayed selected. Contact opened, Escape closed it, and Rules still opened.
+- **Deploy status:** NOT DEPLOYED
+- **Known limitations:** a real iPhone Safari session was not available. Turkish letters remain slightly taller than the German reference because TR/DE files were not resized. Suggested labels Poruka/Nachricht/Mesaj were not applied; the approved workbook labels stay.
+- **Known issues:** none new in the measured layouts.
+
+### 2026-11-22 — Contact translations aligned with the reviewed workbook
+
+- **Tool used:** Cursor
+- **Changed files:** `main.py`, `static/app.js`, `static/index.html`, `static/i18n.js`, `tests/test_feedback.py`, `PROJECT_STATUS_HANDOVER.md`
+- **Summary:** All 23 `contact.*` rows from `docs/localization/VARALICA_UI_TRANSLATIONS_REVIEWED_V3.xlsx` (`01_UI_Translations`, A371:W393) are now the strings the contact button and modal use. The older draft keys (`contact.placeholder.*`, `contact.error.*`) were removed so the page no longer falls back to raw key names. The button keeps a message-square icon plus the visible label: SR/HR/DE Kontakt, TR İletişim. Validation, the loading label, the generic failure, the rate limit, and a confirmed duplicate each use the matching workbook key. A duplicate within 120 seconds still stores nothing new and now returns `duplicate: true`, so the UI shows `contact.duplicate` instead of a second success. `feedback.*` rows stay in the workbook and are not copied into this form. Cache queries are `i18n.js?v=20261122_9` and `app.js?v=20261122_9`.
+- **Not changed:** the workbook, gameplay, timers, voting, images, `styles.css`, production, and the `feedback` table shape.
+- **Tests run:** `python -m py_compile main.py storage.py tests/test_feedback.py`; `python -m unittest tests.test_feedback tests.test_ui_translations` (16 tests, OK); `node --check static/app.js`; `node --check static/i18n.js`; `git diff --check` (CRLF warnings only). Browser at `http://127.0.0.1:8000/`: 390×700, 390×480, 430×900, and 1920×1080 in SR, HR, DE, and TR. No raw `contact.*` text. Rules and Contact stay side by side at 40px with an 8px gap and no horizontal overflow. On 390×480 the form scrolls and the submit button stays visible. Empty submit, a short message, and an invalid email show the workbook messages and keep the typed text. Switching HR to DE while the modal is open updates the title, placeholder, and error. A real first submit showed “Poruka je poslata. Hvala ti!” only after HTTP 200. Escape returns focus to Contact. Rules still opens. Logo stays above the Home button.
+- **Deploy status:** NOT DEPLOYED
+- **Privacy still open:** `contact.privacy` remains `NEEDS_LEGAL_REVIEW`. Retention is undefined. GDPR has not been legally reviewed. Email and Telegram notifications are not configured.
+- **Known issues:** none new in the contact layout. Turkish Live/Chat can still wrap, as before.
+
+### 2026-11-22 — Local contact / feedback
+
+- **Tool used:** Cursor
+- **Changed files:** `main.py`, `storage.py`, `static/index.html`, `static/styles.css`, `static/app.js`, `static/i18n.js`, `tests/test_feedback.py`, `PROJECT_STATUS_HANDOVER.md`
+- **Summary:** A Contact button sits beside Rules (SR/HR/DE Kontakt, TR İletişim). The modal accepts a required category, a required message (10 meaningful characters, 2000 maximum), and an optional email. Success is shown only after SQLite confirms the insert. Text stays in the form on error. Duplicate category+message+email within 120 seconds returns the existing success and does not add a row. A new message is limited to 5 per 10 minutes per client address. Request bodies over 16 KB are rejected. There is no public read route (`GET /api/feedback` returns 405). No email, Telegram, SMTP, or analytics. Cache queries are `styles.css?v=20261122_14`, `i18n.js?v=20261122_8`, and `app.js?v=20261122_8`.
+- **Storage:** table `feedback` in `D:\Projects\Varalica_webapp\varalica.sqlite3` (override with `VARALICA_DB_PATH`). Columns: `id`, `category`, `message`, `email`, `ui_language`, `created_at`. Game tables were not altered. The message and email are stored as text and are not written to the server log. A browser check left one local row: id 1, category `bug`, language `tr`.
+- **Operator inspect:** `.venv\Scripts\python.exe -c "import sqlite3; c=sqlite3.connect(r'D:\Projects\Varalica_webapp\varalica.sqlite3'); print(c.execute('SELECT id, category, message, email, ui_language, created_at FROM feedback ORDER BY id').fetchall())"`
+- **Operator delete:** `DELETE FROM feedback WHERE id = 1;`
+- **Security:** server-side category, message, and email checks; parameterized SQL; generic public error codes; in-process rate limit; duplicate window; 16 KB body cap. No admin account and no public list.
+- **Not changed:** logo, Home, globe, Live/Chat placement, rules text, voting, room codes, `FINAL_DISCUSSION_SECONDS` (still 30), word data, and production.
+- **Tests run:** `python -m py_compile main.py storage.py tests/test_feedback.py`; `python -m unittest tests.test_feedback` (9 tests, OK: labels and copy, validation, persistence, generic store failure, duplicate protection, rate limit, oversized body, no public read, `FINAL_DISCUSSION_SECONDS == 30`); `node --check static/app.js`; `git diff --check` on the touched tracked files (no whitespace errors). Browser at `http://localhost:8000/`: 390×700, 390×480, 430×900, and 1920×1080 in SR, HR, DE, and TR. Rules and Contact stay side by side at 40px height, 8px radius, 8px gap, with no clipped labels and no horizontal overflow. On 390×480 the modal body scrolls and Gönder stays on screen. Escape returns focus to Contact. Rules still opens. A real submit stored the row above and showed the Turkish success text only after the response. The local uvicorn on port 8000 was restarted so this route is loaded. Production was not contacted.
+- **Deploy status:** NOT DEPLOYED
+- **Notifications:** NOT configured. No email or Telegram delivery.
+- **Privacy still open:** retention period is not defined. Legal review, including GDPR, has not been done. The privacy note only says the message is used to understand the report and that email is optional for a reply.
+- **Manual checks needed:** none beyond the browser pass above for the local UI. Production will not have this feature until a separate deploy.
+- **Known issues:** below 430px the two header buttons use 0.8rem type and 10px horizontal padding so both labels fit. Height, radius, and the secondary button style stay the same. Turkish Live/Chat can still wrap onto its own row, as before.
+
+### 2026-11-22 — Direct production deploy of the latest local version
+
+- **Tool used:** Cursor
+- **Release:** archive SHA-256 `c165c14f67147da2c8ac93335335de4ee0a9110e633c99621a9d186013e49ac6`. No git commit or push. Public `styles.css?v=20261122_13` matches the local file.
+- **Backup:** `/var/backups/varalica/20261122_2058/` contains `app-code.tar.gz` (`2d9f35ca146aefb76533087741045938c4009b3476632567d64516c4835a7622`), a consistent SQLite copy (`8f6f5e1f375bd1e1593fc4cef4c1af34a2f1890d99be1a3e8f93e7f69e9b5d14`, room `83175`), and `varalica.service`.
+- **Transferred:** `main.py`, `word_locales.py`, `words.py`, `storage.py`, `requirements.txt`, `validate_words.py`, `static/`, `data/proposed_locale_gaps.json`, `data/Database words HR SR.xlsx`, `scripts/import_words_from_xlsx.py`. The production database, `.venv`, and `.git` were not replaced.
+- **Service:** `varalica.service` restarted once. New process pid `117497`, port 8010, clean startup.
+- **Online checks:** HTTPS checksums match local `index.html`, `app.js`, `i18n.js`, `styles.css`, `Lang.png`, the three homepage logos, and `flag-tr.svg`. The live homepage shows the German logo above Startseite. Rules scroll moves from 0 to 240. Isolated room `54363` entered discussion, rejected an early tip, accepted Next Player, and reset. Isolated room `88211` rejected Next Player after the 120-second discussion, accepted a tip in the 30-second window, rejected a tip after that window, and opened voting. One self-vote was rejected, so that room did not reach the final result screen.
+- **Database:** existing file kept. Room `83175` was still present after restart and reconnected. Deploy status: DEPLOYED.
+- **Remaining:** hiding suspicion percentages on the final result was not observed online in this pass. Isolated QA rooms can remain until their disconnect timeout. At 390px, Pravila still wraps to a second row.
+
+### 2026-11-22 — Homepage header layout
+
+- **Tool used:** Cursor
+- **Changed files:** `static/index.html`, `static/styles.css`, `PROJECT_STATUS_HANDOVER.md`
+- **Summary:** The localized homepage logo is now above the home button. Its displayed height is 15% larger (`clamp` from `8vw` / `3.55rem` to `9.2vw` / `4.083rem`; on narrow screens the cap moved from `2.2rem` to `2.53rem`). Language, Live/Chat, and Rules sit 22px below the logo’s top edge. The setup form has one extra 12px top margin. Logo files were not edited. Cache query is `styles.css?v=20261122_13`.
+- **Not changed:** images, language behavior, rules text, game logic, backend, database.
+- **Tests:** browser layout at 390, 430, 768, and 1920 for HR, DE, and TR. No horizontal overflow. Inputs stay 52px tall. A 390×640 viewport scrolls vertically.
+- **Deploy status:** DEPLOYED with the 2026-11-22 direct release (`styles.css?v=20261122_13`)
+- **Known issues:** at 390px, Pravila wraps onto a second row. Turkish mode labels need a second and third row. Nothing is clipped.
+
+### 2026-11-22 — Rounded corners on all language-gate flags
+
+- **Tool used:** Cursor
+- **Changed files:** `static/styles.css`, `static/index.html`, `PROJECT_STATUS_HANDOVER.md`
+- **Summary:** All four Lang.png flags now share one clipping frame with the same corner radius. The Turkish flag is clipped to that shape. Flag size, 2×2 placement, labels, and the 100–115% pulse are unchanged. `Lang.png` and the flag SVGs were not edited. Cache query is `styles.css?v=20261122_11`.
+- **Not changed:** gameplay, translations, images, production.
+- **Tests:** browser check at 736×920 and 390×700. All four flags measured 103.9×75.1 px on desktop and 55×39.8 px on mobile. At 115% they stay inside the card and do not overlap. Choosing Türkçe still closes the gate.
+- **Deploy status:** DEPLOYED with the 2026-11-22 direct release (`styles.css?v=20261122_13`)
+- **Manual checks:** none beyond the browser check above
+- **Known issues:** none for this visual fix
+
+### 2026-11-22 — Direct production deploy from Windows
+
+- **Tool used:** Cursor
+- **Release:** local archive SHA-256 `78068ad144ec74a023f9595071c25e271abd553a273c61d2386ceb9280c0a261`. Deployed `main.py` SHA-256 `2e29aa430bef0edc5a80bfd3a01cabef4d03c0e8dc6eef18f47b0516088cf3db`. No git commit or push.
+- **Backup:** `/var/backups/varalica/20261122_2145/` contains `app-code.tar.gz` (`446f246ec35ecc5805a064756faf25342695d67602dad0162a3f4154ade3e1e3`), the pre-deploy `varalica.sqlite3` (`15fcd0dff5cfda5bfc5043b11d5b1487da4779e75cbae97df9009e2062a2ad4e`), and `varalica.service`.
+- **Transferred:** `main.py`, `word_locales.py`, `words.py`, `storage.py`, `requirements.txt`, `validate_words.py`, `static/`, `data/proposed_locale_gaps.json`, `data/Database words HR SR.xlsx`, `scripts/import_words_from_xlsx.py`. The production database, `.venv`, and `.git` were not replaced.
+- **Service:** `varalica.service` restarted once and is active on port 8010.
+- **Online checks:** HTTPS asset checksums match the local files for `index.html`, `app.js`, `i18n.js`, `styles.css`, `Lang.png`, `Landing.png`, and the three homepage logos. An isolated room confirmed WebSocket state, `final_discussion_seconds` 30, tips rejected during the normal 120-second discussion, Next Player accepted before expiry, and reset. The full 120-second wait into the tip window was not watched online.
+- **Database:** the existing file was kept. Its hash changed only because the isolated QA room was saved. The pre-deploy copy remains in the backup. Deploy status: DEPLOYED.
+- **Remaining:** live expiry, frozen percentages, tie overtime, and result hiding were not played through on production.
+
+### 2026-11-22 — Equal language-gate flag size
+
+- **Tool used:** Cursor
+- **Changed files:** `static/styles.css`, `static/index.html`, `PROJECT_STATUS_HANDOVER.md`
+- **Behavior:** The four Lang.png flags share one 36:26 box and `object-fit: cover`, about 10% taller than the previous cap. The Turkish square no longer paints larger than the other flags. The 2×2 card layout and 115% pulse are unchanged.
+- **Tests:** Browser measurements. Desktop 1920: all four 103.9×75.1 px. Mobile 390: all four 55×39.8 px. Labels in each row share one top edge. At 115% the flags stay inside the card and do not overlap.
+- **Not changed:** `Lang.png`, flag SVG files, gameplay, and production.
+- **Deploy status:** NOT DEPLOYED.
+
+### 2026-11-22 — 30-second tipping phase, invite language, rules scroll, language card
+
+- **Tool used:** Cursor
+- **Changed files:** `main.py`, `static/app.js`, `static/styles.css`, `static/index.html`, `static/i18n.js`, `tests/test_player_limits.py`, `tests/test_final_discussion_and_hints.py`, `tests/test_suspicion_tips.py`, `tests/test_ui_translations.py`, `PROJECT_STATUS_HANDOVER.md`
+- **Behavior:** The separate 20-second final discussion is now one 30-second discussion and suspicion-tip phase. Next Player is rejected on the server once the normal 120/180/300-second discussion expires. Tips lock at 00:00. Percentages stay visible through official voting and tie overtime, then disappear when the final result is shown. The next round clears them. The invitation notice waits for a saved language and refreshes when the language changes. The spectator line is translated on the client instead of a fixed Serbian server string. The rules dialog has a fixed scroll area and a wheel handler. The four Lang.png choices sit inside the held card, and the image keeps its real aspect ratio.
+- **Tests:** `python -m py_compile main.py`; `node --check static/app.js`; `node --check static/i18n.js`; `python -m unittest tests.test_player_limits tests.test_ui_translations tests.test_final_discussion_and_hints tests.test_suspicion_tips tests.test_player_auth` — 41 OK. `git diff --check` (CRLF warnings only). Browser: rules wheel scroll and last paragraph at 1920×1080, 390×700 and 390×480. Invitation text checked in SR, HR, DE and TR. Language controls measured inside the card at 1920 and 390, including a 115% flag box, with no overlap. A full multiplayer match was not played in the browser.
+- **Not changed:** Landing and homepage artwork, `Lang.png` pixels, word/hint datasets, player limits, official vote math, and production.
+- **Deploy status:** NOT DEPLOYED.
+- **Needs review:** new Turkish `api.voting_not_yet` and `api.next_player_closed`. The 30-second wording replaced the old 20-second (and one Turkish 15-second) phrases in the existing rules sentences.
+- **Known issues:** SR and HR use the same approved invitation sentence. A live four-player match through the 30-second window is still a manual check.
+
+### 2026-11-22 — Approved images, Turkish UI gaps, German word gaps, rules scrolling
+
+- **Tool used:** Cursor
+- **Changed files:** `static/assets/Varalica_home.png`, `static/assets/Landing.png`, `static/index.html`, `static/i18n.js`, `static/styles.css`, `static/app.js`, `word_locales.py`, `data/proposed_locale_gaps.json`, `PROJECT_STATUS_HANDOVER.md`
+- **Behavior:** Served `Varalica_home.png` and `Landing.png` now match the current files in `Fotos` (cache `?v=20261122_6`). German and Turkish homepage images were already identical and were not edited. Fourteen Turkish interface strings that were absent from the reviewed workbook were added as proposed text. One starter word (`kuca_064`) missed its reviewed German/Turkish row because the Croatian word contained a Cyrillic letter; pair matching now folds those lookalike letters, so the reviewed workbook value is used. The other 53 starter concepts with no workbook row get proposed German and Turkish words and hints only when those fields are empty. The rules dialog scrolls inside the text area, the close button stays visible, and the page behind the open dialog does not scroll.
+- **Tests:** `python -m py_compile main.py word_locales.py`; `node --check static/app.js`; `node --check static/i18n.js`; `python -m unittest tests.test_player_limits tests.test_ui_translations tests.test_final_discussion_and_hints tests.test_player_auth tests.test_suspicion_tips` — 39 OK. `git diff --check` (CRLF warnings only). HTTP 200 `image/png` for both updated images, SHA-256 equal to `Fotos`. Browser: 1920×1080 and 390×700, plus rules at 390×480. Logo left edge matches the Home button. Rules text scrolls (client 511px, content 3289px at 390×700; client 308px at 390×480) and the close button stays on screen. Avatar grid at 390px scrolls (138px visible, 1146px content, last item reached, selection kept). Full multiplayer match was not played.
+- **Not changed:** `Lang.png`, `Betrüger_home.png`, `Sahtekar_home.png`, `words.py`, gameplay limits, voting, discussion timers, and production.
+- **Deploy status:** NOT DEPLOYED.
+- **Needs review:** the 14 new Turkish UI strings and all 53 entries in `data/proposed_locale_gaps.json`. Linguistic quality was not scored.
+- **Known issues:** a full local multiplayer match is still a manual check.
+
+### 2026-11-22 — Header icon removed, neon title aligned
+
+- **Tool used:** Cursor
+- **Changed files:** `static/index.html`, `static/styles.css`, `PROJECT_STATUS_HANDOVER.md`
+- **Behavior:** The small `Logo_title.png` icon is no longer shown beside the homepage neon title. The title stays at the same height and lines up with the left edge of the home button. Language images are unchanged.
+- **Tests:** `git diff --check`. Browser check at desktop width and 390px.
+- **Not changed:** Logo artwork, language control, form, and gameplay.
+- **Deploy status:** NOT DEPLOYED.
+
+### 2026-11-22 — Header neon title and latest landing image
+
+- **Tool used:** Cursor
+- **Changed files:** `static/index.html`, `static/styles.css`, `static/assets/Landing.png`, `PROJECT_STATUS_HANDOVER.md`
+- **Behavior:** The neon language title is back in the header beside `Logo_title.png`, at the old heading height. It is no longer inside the name form. The served intro image was an older copy; it now matches `Fotos/Landing.png` and is requested as `Landing.png?v=20261122_4`.
+- **Tests:** SHA-256 of source and served `Landing.png` match. `git diff --check`. Browser check of header placement, four logo files, desktop and 390px height, and a cache-bypassed intro image.
+- **Not changed:** `Lang.png`, the 🌐 control, gameplay, and the files in `Fotos`.
+- **Deploy status:** NOT DEPLOYED.
+
+### 2026-11-22 — Homepage neon logos and globe emoji
+
+- **Tool used:** Cursor
+- **Changed files:** `static/index.html`, `static/i18n.js`, `static/styles.css`, `static/assets/Varalica_home.png`, `static/assets/Betrüger_home.png`, `static/assets/Sahtekar_home.png`, `PROJECT_STATUS_HANDOVER.md`
+- **Behavior:** The homepage name field is headed by the language’s neon title image: `Varalica_home.png` for Serbian and Croatian, `Betrüger_home.png` for German, and `Sahtekar_home.png` for Turkish. The image changes with the selected language and is not used on the landing screen, language card, or inside a room. The language button now shows the character 🌐. Originals in `Fotos` were copied, not edited.
+- **Tests:** `node --check static/i18n.js`, `git diff --check`, HTTP 200 for the three logo URLs, and a local browser check of the logo source and the 🌐 button.
+- **Not changed:** Game rules, authentication, words, `Landing.png`, and `Lang.png`.
+- **Deploy status:** NOT DEPLOYED.
+
+### 2026-11-22 — Ten-player rooms, Turkish UI, landing and language gate
+
+- **Tool used:** Cursor
+- **Changed files:** `main.py`, `static/app.js`, `static/i18n.js`, `static/index.html`, `static/styles.css`, `static/assets/Landing.png`, `static/assets/Lang.png`, `static/assets/flags/flag-tr.svg`, `scripts/merge_ui_packs.py`, `tests/test_player_limits.py`, `tests/test_ui_translations.py`, `PROJECT_STATUS_HANDOVER.md`
+- **Behavior:** Maximum active players is 10. The homepage loads `Fotos/Landing.png` through `/static/assets/Landing.png?v=20261122_2` because the previous URL kept the old cache token `20260604_11`. A first visit without a saved language shows `Lang.png` after the 3-second splash. Returning visitors skip that screen. The top flag row is replaced by one globe menu for SR, HR, DE, and TR, with confirmation in the selected language. Turkish UI text comes from the reviewed workbook. Fourteen interface keys that are not in that workbook stay without a Turkish source. Expanded rules from the workbook are shown in the rules dialog. Private-card neon shadows are about 10% dimmer. Card text and the landing artwork were not edited.
+- **Tests:** `tests.test_player_limits`, `tests.test_ui_translations`, `tests.test_final_discussion_and_hints` — 18 passed. `tests.test_player_auth` and `tests.test_suspicion_tips` — 21 passed. `py_compile` and `node --check` for `static/app.js` and `static/i18n.js` passed.
+- **Not changed:** Voting, the 20-second final discussion, the 30-second overtime, suspicion privacy, guest credentials, and `words.py`.
+- **Deploy status:** NOT DEPLOYED.
+
+### 2026-11-22 — Per-player word and hint language
+
+- **Tool used:** Cursor
+- **Changed files:** `main.py`, `word_locales.py`, `static/app.js`, `static/index.html`, `tests/test_final_discussion_and_hints.py`, `PROJECT_STATUS_HANDOVER.md`
+- **Behavior:** Each player’s selected interface language (`hr`, `sr`, `de`, and `tr` if sent) chooses the translation of the same secret word. The word id does not change when the language changes. Civilians receive only their own word text. The impostor receives only that language’s hint, never the word. German and Turkish text is read from `data/Database words HR SR.xlsx` and attached by the Croatian/Serbian pair. `words.py` was not regenerated. Missing German or Turkish text is left empty instead of being replaced by another language. Serbian still falls back to Croatian when Serbian text is empty. The Turkish interface was not added.
+- **Tests:** `tests.test_final_discussion_and_hints`, `tests.test_player_auth`, `tests.test_suspicion_tips`, and `tests.test_ui_translations` — 37 run, 35 passed, 2 failed. Both failures are the same pre-existing catalog gap: 89 reviewed workbook keys (expanded rules, install, feedback, legal, language confirmation) are not present in `static/i18n.js`. `py_compile` and `node --check static/app.js` passed. Overlay check: 1169 Excel pairs, `kruh`/`hleb` resolves to German `Brot`.
+- **Manual checks:** Local server is for browser testing only. Not deployed.
+- **Not changed:** Voting, overtime (30 seconds), final discussion (20 seconds), suspicion rules, guest credentials, and the curated `words.py` entries.
+- **Deploy status:** NOT DEPLOYED.
+
+### 2026-11-14 — Suspicion tips only in the final 20 seconds
+
+- **Tool used:** Cursor
+- **Changed files:** `main.py`, `static/app.js`, `static/index.html`, `tests/test_suspicion_tips.py`, `PROJECT_STATUS_HANDOVER.md`
+- **Behavior:** Tips are accepted only while the 20-second final discussion is active. The normal 120/180/300-second discussion, voting, overtime, reveal, and results reject them. The client shows the prompt, percentages, and selectable cards only during that window. The final discussion stays 20 seconds. Overtime stays 30 seconds. Voting is unchanged.
+- **Tests:** suspicion, auth, final-discussion, and translation suites — 35 passed. `py_compile`, `node --check`, `node tests/check_suspicion_ui.mjs`, and `git diff --check` passed. A full 120-second wait into the final window was not watched in the browser. Normal discussion was checked locally and did not show suspicion controls.
+- **Deploy status:** NOT DEPLOYED.
+
+### 2026-11-14 — Suspicion tips during discussion
+
+- **Tool used:** Cursor
+- **Changed files:**
+  - `main.py`
+  - `static/app.js`
+  - `static/styles.css`
+  - `static/i18n.js`
+  - `static/index.html`
+  - `tests/test_suspicion_tips.py`
+  - `tests/check_suspicion_ui.mjs`
+  - `tests/test_player_auth.py`
+  - `tests/test_ui_translations.py`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Behavior:** During normal discussion and the 20-second final discussion, an active player can tap another active player once. A different tap replaces the tip. The same target does nothing and is not broadcast. Percentages are each player's share of active tips, rounded with Python `round`, or 0 when there are no tips. Official votes are untouched. Overtime stays 30 seconds and does not accept tips.
+- **Authentication:** `POST /api/rooms/{code}/suspicion` uses the existing Bearer credential. The JSON player id is not proof. The public room state has percentages, the tip total, and only that viewer's selected target. The voter-to-target map is stored in the room snapshot and is not sent in `public_state`.
+- **Tests:** `tests.test_suspicion_tips`, `tests.test_player_auth`, `tests.test_final_discussion_and_hints`, and `tests.test_ui_translations` — 34 passed. `node tests/check_suspicion_ui.mjs`, `py_compile`, `node --check`, and `git diff --check` passed.
+- **Browser check:** one local Live room in German showed the suspicion prompt, a tap set 100% on one player, a second tap moved it, and the kick control opened its own confirmation without clearing the tip. At 390px the page did not overflow, and the three language flags were still present. Switching to Croatian showed “Tipuj Varalicu”. A second browser profile, Chat mode, and an official vote after tips were not played.
+- **Deploy status:** NOT DEPLOYED.
+- **Not changed:** guest authentication design, voting rules, discussion lengths, the 20-second final discussion, overtime, words, hints, categories, the two-impostor threshold, and the language selector.
+
+### 2026-11-14 — Guest player credentials
+
+- **Tool used:** Cursor
+- **Changed files:**
+  - `main.py`
+  - `static/app.js`
+  - `static/index.html`
+  - `tests/test_player_auth.py`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Authentication:** Each new player gets a 256-bit secret from `secrets.token_urlsafe(32)`. The snapshot stores only SHA-256 of room code, player id, and secret. REST mutations require `Authorization: Bearer`. The player id in JSON is not proof. Host checks run after that. The WebSocket URL is unchanged. The first message must be `{"type":"auth","credential":"..."}` within 5 seconds and 1024 bytes. Room state is sent only after that. A player is marked connected only then.
+- **Protected POSTs:** start, view-secret, change-word, confirm, next-player, reset, play-mode, kick, transfer-host, request-vote, open-final-voting, reveal, vote, association, reaction, start-overtime, new-round, leave, tab-close. Create and a brand-new join issue a credential. Join reattaches a seat only when the bearer secret matches that player. Name or player id alone does not.
+- **Legacy rooms:** A restored room with any player missing a verifier is rejected with “Soba je istekla.” There is no player-id fallback.
+- **Browser:** The secret is in `localStorage` key `varalica_player_credential`. This is not a vault. Script injection on the page can read it, and another person using the same browser profile can too. UI language, avatar, and play-mode preferences are not cleared. A saved player id without a credential is dropped.
+- **Deploy / rollback (not executed):** Finish or retire live rooms first. Deploy server and the new `app.js` together. Do not log `Authorization` or create/join response bodies. Old pages cached without the credential cannot play. Rollback is reverting this change and restarting; do not leave old and new pages in the same room. Production data was not migrated.
+- **Tests:** `tests.test_player_auth`, `tests.test_final_discussion_and_hints`, and `tests.test_ui_translations` — 26 passed. `py_compile`, `node --check`, and `git diff --check` passed. `httpx` was installed in the local virtualenv so FastAPI’s test client could run. It was not added to `requirements.txt`.
+- **Not covered here:** A real two-browser game, kick during a live round, and proxy access logs. Passing tests do not by themselves prove the deployment is safe.
+- **Deploy status:** NOT DEPLOYED.
+- **Not changed:** Voting, overtime, discussion lengths, the 20-second final discussion, words, hints, categories, two-impostor rule, Live/Chat, language selector, flags, and suspicion tips.
+
+### 2026-11-14 — Secure player credentials not applied
+
+Superseded by the guest credential entry above. This entry records the earlier stop.
+
+- **Tool used:** Cursor
+- **Changed files:** `PROJECT_STATUS_HANDOVER.md` only.
+- **Summary:** No credential system was added. Current create/join returns a UUID `player_id`. That id is stored in `localStorage` (`varalica_player_id`) and sent on every POST and on `/ws/{room_code}/{player_id}`. `public_state` includes every player id, so the id is not a secret. SQLite snapshots store players without a credential verifier.
+- **Why this was not implemented:** Existing browsers and snapshots have nothing the server can check. Issuing a new secret to anyone who sends an old player id or a matching name would not be authentication. Requiring a secret immediately would lock those players out of voting, host actions, and reconnect. Keeping the old routes as a fallback would leave the game unauthenticated. The task said not to ship either of those.
+- **Transition required before a later implementation:** End or abandon in-progress rooms. Players join again and receive a new id plus a secret. The server stores only a verifier. REST sends the secret in a header, not the URL. The WebSocket authenticates with a first message, not the player id in the path. Old routes stop accepting player id alone. Rollback is a git revert of that change before deploy; do not mix old and new clients in one room.
+- **Deploy status:** NOT DEPLOYED. Production data was not migrated.
+
+### 2026-11-14 — 20-second final discussion; suspicion tips not enabled
+
+- **Tool used:** Cursor
+- **Changed files:**
+  - `main.py`
+  - `static/i18n.js`
+  - `static/index.html`
+  - `tests/test_final_discussion_and_hints.py`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - `FINAL_DISCUSSION_SECONDS` is 20. Voting stays locked until that window ends. The 120/180/300 discussion options, the 70-second lock, and the 30-second overtime path are unchanged.
+  - Rules and the “voting not yet” message now say 20 seconds in HR, SR, and DE. The server detail string matches the translation source map.
+- **Suspicion tips were not implemented.** Create, join, vote, and the WebSocket identify a player only by the `player_id` in the request or URL. There is no session cookie, bearer token, or other secret. A new tip endpoint that trusted that id would let anyone who knows a player id submit or replace that player’s tip. The task said not to ship that endpoint.
+- **What was not changed:**
+  - Voting results, overtime behavior, words, hints, language selector, and flags.
+- **Tests run:**
+  - `python -m unittest tests.test_final_discussion_and_hints tests.test_ui_translations` — 14 passed. The catalog test skips `NEW_FEATURE_PENDING_IMPLEMENTATION` rows, including `suspicion.*`.
+  - `python -m py_compile main.py` — passed.
+  - `node --check static/app.js` and `node --check static/i18n.js` — passed.
+  - `git diff --check` on the touched files — passed, with existing LF-to-CRLF warnings only.
+- **Deploy status:** NOT DEPLOYED.
+- **Known blocker:**
+  - Tipuj Varalicu needs a server-issued secret bound to the participant before a mutation endpoint is safe. The reviewed `suspicion.*` strings remain unused.
+
+### 2026-11-14 — Remaining interface strings
+
+- **Tool used:** Cursor
+- **Changed files:**
+  - `static/i18n.js`
+  - `static/app.js`
+  - `static/index.html`
+  - `tests/test_ui_translations.py`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Localized the remaining visible labels that were not in the reviewed catalog: invite notice, chat “Poslano”, vote buttons, “Ti”, post-vote waiting text, discussion phase label, host reveal instruction, spectator waiting badges, and “Sakrij QR”.
+  - These 13 keys were added to the HR, SR, and DE dictionaries. The language selector, flags, and preference storage were not changed.
+- **What was not changed:**
+  - Gameplay, voting rules, overtime timing, secret words, server game language, and `results.extend_button` wording.
+- **Unresolved:**
+  - `results.extend_button` remains `Produži igru 30 sekundi` in all three languages. The host can still see that button when `can_overtime` is true, while `api.overtime_auto` says overtime starts automatically. Proposed correction, not applied: translate that existing 30-second label only after confirming which path the button actually starts.
+  - `api.vote_host_only_legacy` is still the translated 70-second host-only message. That endpoint is not the normal voting rule. Normal voting opens after the selected discussion plus the 15-second final discussion.
+  - `results.tie_hide` and `results.tie_extend` still omit the 30-second duration. The timer code is unchanged.
+- **Tests run:**
+  - `python -m unittest tests.test_final_discussion_and_hints tests.test_ui_translations` — 14 passed.
+  - `node --check static/app.js` — passed.
+  - `node --check static/i18n.js` — passed.
+  - `git diff --check` on the localization files — passed, with existing LF-to-CRLF warnings only.
+- **Deploy status:** NOT DEPLOYED.
+- **Manual checks still needed:**
+  - Chat “sent” state, a real vote with one and two targets, a spectator badge, and the QR hide label during a live round.
+
+### 2026-11-13 — Graphical language flags
+
+- **Tool used:** Cursor
+- **Changed files:**
+  - `static/index.html`
+  - `static/styles.css`
+  - `static/assets/flags/flag-rs.svg`
+  - `static/assets/flags/flag-hr.svg`
+  - `static/assets/flags/flag-de.svg`
+  - `static/assets/flags/NOTICE.txt`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Replaced Unicode regional-indicator emoji with local Twemoji SVG images, 26×26, above SR, HR, and DE. Images are decorative (`alt=""`). Button names stay SR, HR, and DE.
+  - Artwork is Twemoji v15.1.0 (CC BY 4.0). Attribution is in `static/assets/flags/NOTICE.txt`. No CDN request at runtime.
+  - Stylesheet and flag cache strings bumped to `v=20260607_7`.
+- **What was not changed:**
+  - Language detection, storage, dictionaries, gameplay, and backend code.
+- **Tests run:**
+  - `node --check static/app.js` — passed.
+  - `node --check static/i18n.js` — passed.
+  - `git diff --check` — passed, with existing LF-to-CRLF warnings only.
+  - Chromium on Windows at 390px: each control is an `img` (26×26, loaded SVG) above SR/HR/DE, with no horizontal overflow. Clicking HR still switches the interface and stores `hr`.
+- **Deploy status:** NOT DEPLOYED.
+- **Known limitations:**
+  - Flags are Twemoji artwork, so they match that emoji set rather than every operating system’s native flag style.
+
+### 2026-11-13 — Language selector flags
+
+- **Tool used:** Cursor
+- **Changed files:**
+  - `static/index.html`
+  - `static/styles.css`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Added native Unicode flags above the existing SR, HR, and DE abbreviations: 🇷🇸, 🇭🇷, and 🇩🇪. Each flag is hidden from assistive technology so the abbreviation remains the button name. Selection, storage, and translation behavior are unchanged.
+  - Stylesheet cache bumped to `styles.css?v=20260607_6`.
+- **What was not changed:**
+  - Language detection, dictionaries, gameplay, voting, words, hints, and backend logic.
+- **Tests run:**
+  - `node --check static/app.js` — passed.
+  - `node --check static/i18n.js` — passed.
+  - `git diff --check` — passed, with existing LF-to-CRLF warnings only.
+  - Local browser at 390px: flags sit above SR/HR/DE, DE stays selected, and the page does not overflow. On this Windows browser the flags render as regional letter pairs (RS, HR, DE) above the abbreviations.
+- **Deploy status:** NOT DEPLOYED.
+- **Known limitations:**
+  - Windows often draws regional-indicator emoji as letter pairs instead of flag images. The abbreviation under each flag stays readable.
+
+### 2026-11-13 — Phase 1 three-language interface
+
+- **Tool used:** Cursor
+- **Changed files:**
+  - `static/i18n.js` (new translation runtime and dictionaries)
+  - `static/index.html`
+  - `static/app.js`
+  - `static/styles.css`
+  - `tests/test_ui_translations.py`
+  - `tests/check_ui_language.mjs`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Translation resource:** reviewed workbook `docs/localization/VARALICA_UI_TRANSLATIONS_REVIEWED_V3.xlsx`. 263 catalog keys were checked. Asset-review and word-corpus rows were not imported. Reviewed HR/SR/DE strings are embedded in `static/i18n.js`.
+- **Summary:**
+  - Added an SR | HR | DE selector on the upper-right status row. It is keyboard focusable, marks the active language with `aria-pressed`, switches immediately, and stores a manual choice in `localStorage`. A saved choice wins over `navigator.languages`. Otherwise `sr`, `hr`, `de` and regional variants are matched, with Croatian as the default. No IP geolocation.
+  - Localized titles: HR/SR `Varalica`, DE `Betrüger`. The Chat mode name stays `Chat` in all three languages.
+  - Home, room, lobby, private card, discussion, voting, results, rules, confirms, and known server messages use stable keys. Language changes redraw the current screen and do not reset room state.
+  - Secret words and hints still follow the fixed server game language `hr`. German and Serbian secret-word gameplay is reserved for Phase 2.
+- **What was not changed:**
+  - Gameplay rules, voting, overtime, discussion timing, two-impostor availability, Live/Chat behavior, room/reconnect/host transfer, `words.py`, the word workbook, and `scripts/import_words_from_xlsx.py`. `main.py` was not edited in this phase.
+- **Unresolved or intentionally unchanged entries:**
+  - `results.extend_button` stays the original `Produži igru 30 sekundi` in HR, SR, and DE. The reviewed proposal was not applied.
+  - `api.vote_host_only_legacy` is translated, including its 70-second wording. That endpoint is not the normal voting rule.
+  - `results.tie_hide` and `results.tie_extend` use the reviewed text, which does not mention the existing 30-second overtime timer. The timer code is unchanged.
+  - `room.round_initial` remains the static catalog sentence. Live rounds use the added key `room.round_label`.
+  - Strings still shown from the previous source because they are not in the reviewed catalog: invite notice, chat “Poslano”, vote buttons “Odaberi” / “Glasaj” / “Izabrano”, “Ti”, post-vote waiting sentences, discussion phase label “Diskusija”, host sentence “Prikaži Varalicu kada su svi spremni da vide rezultat.”, spectator waiting badges, and “Sakrij QR”.
+- **Tests run:**
+  - `python -m unittest tests.test_final_discussion_and_hints tests.test_ui_translations` — 13 passed.
+  - `python -m py_compile main.py` — passed.
+  - `node --check static/app.js` — passed.
+  - `node --check static/i18n.js` — passed.
+  - `node tests/check_ui_language.mjs` — passed (saved preference, `de-AT`, `sr-RS`, `hr-HR`, unsupported fallback, manual override, Chat name, titles, placeholder, mode-lock message).
+  - `git diff --check` — passed, with existing LF-to-CRLF warnings only.
+- **Deploy status:** NOT DEPLOYED.
+- **Manual checks needed:**
+  - Open the app in HR, SR, and DE, including a refresh after a manual choice and a first visit with a German or Serbian browser language.
+  - Switch language during a round and confirm the room, timer, and private card state stay in place.
+  - Use two browsers in one room with different interface languages.
+  - Confirm a normal player still sees only the Croatian secret word and a Varalica still does not see it.
+  - Read the rules modal in all three languages on a phone-width and desktop layout.
+- **Known limitations:**
+  - Interface language does not change secret words, hints, or `GAME_LANGUAGE`.
+  - Backend error text is translated in the browser from the existing Croatian `detail` strings. `main.py` responses were not changed.
+  - Phase 2 is required before German or Serbian secret-word play can be treated as operational.
+
+### 2026-11-13 — Remove home title eyes
+
+- **Tool used:** Cursor
+- **Changed files:**
+  - `static/index.html`
+  - `static/styles.css`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Removed the `eyes_normal.png` image beside the home title. The heading remains the plain text `Varalica`.
+  - Removed the unused `.hero-title-eyes` CSS. The image file was not deleted.
+  - Stylesheet cache bumped to `v=20260607_4`.
+  - Verified, without changing behavior, that the 15-second final discussion starts after the configured 120/180/300 discussion, voting stays locked until that window ends, two impostors are offered only when there are more than 6 players, and overtime is unchanged.
+- **What was not changed:**
+  - Discussion timing, voting, overtime, Chat mode, game rules, `words.py`, the Excel workbook, and the importer.
+- **Tests run:**
+  - `python -m unittest tests.test_final_discussion_and_hints` — 8 passed.
+  - `python -m py_compile main.py` — passed.
+  - `node --check static/app.js` — passed.
+  - `git diff --check` — passed, CRLF warnings only.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Hard refresh and confirm the home title is text only, with the landing splash unchanged.
+  - Confirm a real room still shows the final-discussion message only after the selected discussion ends.
+- **Known issues:**
+  - Browser multiplayer was not run in this turn.
+
+### 2026-11-13 — Final discussion timing and language-specific hints
+
+- **Tool used:** Cursor
+- **Changed files:**
+  - `main.py`
+  - `scripts/import_words_from_xlsx.py`
+  - `tests/test_final_discussion_and_hints.py`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - The 15-second final discussion now starts at `discussion_started_at + discussion_duration_seconds` (120, 180, or 300). The 70-second lock remains a separate gate. Host voting opens only after both have passed. `ready_for_final_voting` no longer skips the window.
+  - Hint selection uses `hint_hr`, `hint_sr`, or `hint_de` when present. Legacy `hint_pool` values stay position-based: first hint Croatian, second Serbian, and a single hint only when the importer stored one shared string. The server language is fixed to `hr`. The impostor payload has no secret word.
+  - The importer now keeps language hint lists separate and can read optional `word_de` / `hint_de` columns. `words.py` was not regenerated.
+- **What was not changed:**
+  - `words.py`, the Excel workbook, overtime duration, frontend styling, sound, room codes, and QR logic.
+- **Tests run:**
+  - `python -m unittest tests.test_final_discussion_and_hints` — 8 tests passed.
+  - `python -m py_compile main.py scripts/import_words_from_xlsx.py`
+  - `node --check static/app.js`
+  - `git diff --check`
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Play 120, 180, and 300 second rooms and confirm voting stays closed until the discussion ends plus 15 seconds.
+  - Refresh, reconnect, and transfer host during that window.
+  - Confirm overtime still opens on its own rule.
+  - Confirm a Varalica hint is Croatian and the secret word is hidden.
+- **Known issues:**
+  - Existing `words.py` records do not yet have explicit `hint_hr` / `hint_sr` fields. Separation for those records depends on the historical pool order.
+  - German columns are supported by the importer, but the current workbook was not rewritten and German UI is inactive.
+  - Multiplayer browser testing was not run.
+
+### 2026-11-13 — Title eyes, 15s final discussion, Croatian word display
+
+- **Tool used:** Cursor
+- **Changed files:**
+  - `static/index.html`
+  - `static/styles.css`
+  - `static/app.js`
+  - `static/assets/eyes_normal.png` (copy of `Fotos/eyes_normal.png`)
+  - `main.py`
+  - `PROJECT_STATUS_HANDOVER.md`
+- **Summary:**
+  - Removed the inline `Logo_title.png` beside the home title. Title stays left; `eyes_normal.png` sits immediately to its right with aspect ratio preserved.
+  - Added a server-timed 15-second final discussion that starts once when the existing 70-second voting lock elapses. Voting stays closed during that window, then the host can open voting. Timestamp is persisted for refresh, reconnect, and host transfer. Overtime is unchanged.
+  - Croatian UI (`UI_LANGUAGE = "hr"`) shows only the Croatian word. Serbian text is no longer rendered in parentheses. `words.py` data is unchanged. A later `sr` language value can use stored `sr` fields without another import.
+- **What was not changed:**
+  - Landing splash, word database, voting majority, overtime rules, result reveal, sound, room codes, QR vendor.
+- **Tests run:**
+  - `python -m py_compile main.py`
+  - `node --check static/app.js`
+  - `git diff --check`
+  - `validate_words.py` not run; `words.py` was not edited.
+- **Deploy status:** Not deployed.
+- **Manual checks needed:**
+  - Title alignment on phone and desktop.
+  - Normal discussion still runs its selected duration.
+  - At 70 seconds, “Završna rasprava” and the 15-second countdown appear and voting stays disabled.
+  - After 15 seconds the host can open voting. Direct API calls during the window are rejected.
+  - Refresh, reconnect, and host transfer keep the same countdown.
+  - Overtime, caught/survived results, Nova runda, and Resetuj sobu still work.
+  - Result word shows Croatian only. Varalica still does not see the secret word.
+- **Known issues:**
+  - Browser multiplayer flow was not exercised in this session.
+  - Hint text is still the existing selected hint. The pool is not split into separate Croatian and Serbian hint fields.
 
 ### 2026-06-07 - Hero title logo size and glow polish
 
