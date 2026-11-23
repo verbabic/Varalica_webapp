@@ -1053,8 +1053,7 @@ body.cinematic-reveal-active .association-overlay-dock {
   pointer-events: none !important;
 }
 
-.room-topline,
-.players-header {
+.room-topline {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1063,6 +1062,46 @@ body.cinematic-reveal-active .association-overlay-dock {
 
 .room-topline {
   flex-wrap: wrap;
+}
+
+.players-header {
+  container-type: inline-size;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  gap: 0;
+}
+
+.players-header h2 {
+  justify-self: start;
+  min-width: 0;
+  margin: 0;
+  white-space: nowrap;
+  font-size: clamp(0.88rem, 4.2cqi, 1.2rem);
+}
+
+.players-header-logo {
+  grid-column: 2;
+  display: block;
+  width: clamp(44px, 21cqi, 104px);
+  max-width: 100%;
+  height: auto;
+  justify-self: center;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+#playerCountBadge {
+  justify-self: end;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 24px;
+  padding-inline: clamp(4px, 1.8cqi, 10px);
+  font-size: clamp(0.58rem, 2.9cqi, 0.82rem);
+  line-height: 1.12;
+  text-align: right;
+  white-space: normal;
 }
 
 .room-summary {
@@ -1367,8 +1406,7 @@ body.cinematic-reveal-active .association-overlay-dock {
   padding: 16px;
 }
 
-.phase-card h2,
-.players-header h2 {
+.phase-card h2 {
   margin: 0;
   font-size: 1.2rem;
 }

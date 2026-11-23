@@ -215,8 +215,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `styles.css?v=20261123_14`, `i18n.js?v=20261123_4`, `app.js?v=20261123_3`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
-- **Last frontend version update:** 2026-11-23 (consolidated gameplay QA fixes)
+- **Frontend cache/version string:** `styles.css?v=20261123_15`, `i18n.js?v=20261123_5`, `app.js?v=20261123_3`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
+- **Last frontend version update:** 2026-11-23 (centered language-specific Players header logo)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -233,6 +233,18 @@ _Add new rows here when bugs are found._
 ---
 
 ## 11. Changelog
+
+### 2026-11-23 12:36 UTC+1 — Centered neon logo in Players header
+
+- **Tool used:** Cursor
+- **Changed files:** `static/index.html`, `static/i18n.js`, `static/styles.css`, `tests/check_gameplay_ui_browser.mjs`, `PROJECT_STATUS_HANDOVER.md`.
+- **Summary:** Added the approved language-specific neon title image between the Players heading and counter. The header now uses equal flexible side columns around an intrinsic center column, keeping the logo centered against the full header width rather than relative to either text region. The heading is left-aligned, the logo is centered, and the complete counter remains right-aligned in the same grid row. Responsive sizing and counter wrapping prevent clipping or overlap without distorting the image.
+- **Localization:** SR/HR use `Varalica_home.png`, DE uses `Betrüger_home.png`, and TR uses `Sahtekar_home.png`. The existing interface-language update path now refreshes both the Home logo and the Players-header logo. Cache tokens are `styles.css?v=20261123_15` and `i18n.js?v=20261123_5`.
+- **Tests run:** Full Python unittest suite **76/76 PASS** with temporary SQLite. JavaScript syntax PASS for `app.js`, `i18n.js`, and the browser regression. Existing language and suspicion Node checks PASS. Headless Chrome/Edge regression PASS for HR/SR/DE/TR at 320, 375, 390, 768, and 1280 CSS px, asserting exact center position, one-row vertical alignment, correct asset, loaded image, preserved aspect ratio, visible heading/counter, no overlap/clipping, and no horizontal overflow. `git diff --check` PASS apart from CRLF notices. The real local SQLite SHA-256 remained unchanged.
+- **What was not changed:** Gameplay rules/state, player controls, WebSocket behavior, backend, catalog, approved image assets, translations, Excel files, database, or production configuration.
+- **Deploy status:** NOT DEPLOYED. No commit, push, server access, database change, or production restart occurred.
+- **Manual checks needed:** Optional physical-phone visual confirmation at 320–390 CSS px after a future controlled deployment.
+- **Known issues:** None confirmed for this header change.
 
 ### 2026-11-23 11:25 UTC+1 — Gameplay QA fixes deployed
 

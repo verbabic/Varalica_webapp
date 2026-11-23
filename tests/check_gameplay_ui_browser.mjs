@@ -366,7 +366,7 @@ async function main() {
       deviceScaleFactor: 1,
       mobile: width <= 390,
     });
-    const dimensions = await evaluate(`(() => {
+    const dimensions = await evaluate(`(async () => {
       setupView.classList.add("hidden");
       roomView.classList.remove("hidden");
       roomState.state = "discussion";
@@ -380,17 +380,78 @@ async function main() {
       forceFullRender = false;
       const input = document.querySelector("#associationInput");
       const next = document.querySelector("#nextPlayerButton");
+      const headers = [];
+      for (const language of ["hr", "sr", "de", "tr"]) {
+        window.VaralicaI18n.setUiLanguage(language, { manual: true });
+        const header = document.querySelector(".players-header");
+        const heading = header.querySelector("h2");
+        const logo = document.querySelector("#playersHeaderLogo");
+        const counter = document.querySelector("#playerCountBadge");
+        await logo.decode().catch(() => {});
+        const headerRect = header.getBoundingClientRect();
+        const headingRect = heading.getBoundingClientRect();
+        const logoRect = logo.getBoundingClientRect();
+        const counterRect = counter.getBoundingClientRect();
+        headers.push({
+          language,
+          file: decodeURIComponent(new URL(logo.src).pathname.split("/").pop()),
+          header: { left: headerRect.left, right: headerRect.right, center: headerRect.left + headerRect.width / 2 },
+          heading: { left: headingRect.left, right: headingRect.right, centerY: headingRect.top + headingRect.height / 2 },
+          logo: {
+            left: logoRect.left,
+            right: logoRect.right,
+            center: logoRect.left + logoRect.width / 2,
+            centerY: logoRect.top + logoRect.height / 2,
+            width: logoRect.width,
+            height: logoRect.height,
+            naturalWidth: logo.naturalWidth,
+            naturalHeight: logo.naturalHeight
+          },
+          counter: {
+            left: counterRect.left,
+            right: counterRect.right,
+            centerY: counterRect.top + counterRect.height / 2,
+            text: counter.textContent.trim()
+          }
+        });
+      }
+      window.VaralicaI18n.setUiLanguage("hr", { manual: true });
       return {
         viewport: innerWidth,
         documentWidth: document.documentElement.scrollWidth,
         inputRight: input ? input.getBoundingClientRect().right : 0,
-        nextRight: next ? next.getBoundingClientRect().right : 0
+        nextRight: next ? next.getBoundingClientRect().right : 0,
+        headers
       };
     })()`);
     assert.equal(dimensions.viewport, width);
     assert.ok(dimensions.documentWidth <= width, `${width}px viewport overflowed to ${dimensions.documentWidth}px`);
     assert.ok(dimensions.inputRight <= width);
     assert.ok(dimensions.nextRight <= width);
+    const expectedLogoFiles = {
+      hr: "Varalica_home.png",
+      sr: "Varalica_home.png",
+      de: "Betrüger_home.png",
+      tr: "Sahtekar_home.png",
+    };
+    for (const header of dimensions.headers) {
+      const label = `${width}px ${header.language}`;
+      assert.equal(header.file, expectedLogoFiles[header.language], `${label} used the wrong logo`);
+      assert.ok(Math.abs(header.logo.center - header.header.center) <= 0.75, `${label} logo was not centered`);
+      assert.ok(header.heading.left >= header.header.left - 0.5, `${label} heading clipped left`);
+      assert.ok(header.counter.right <= header.header.right + 0.5, `${label} counter clipped right`);
+      assert.ok(header.heading.right <= header.logo.left + 0.5, `${label} heading overlapped logo`);
+      assert.ok(header.logo.right <= header.counter.left + 0.5, `${label} logo overlapped counter`);
+      assert.ok(header.logo.width > 0 && header.logo.height > 0, `${label} logo was hidden`);
+      assert.ok(header.heading.right > header.heading.left, `${label} heading was hidden`);
+      assert.match(header.counter.text, /\d+\/10/, `${label} counter was hidden`);
+      assert.ok(header.logo.naturalWidth > 0 && header.logo.naturalHeight > 0, `${label} logo did not load`);
+      const naturalRatio = header.logo.naturalWidth / header.logo.naturalHeight;
+      const renderedRatio = header.logo.width / header.logo.height;
+      assert.ok(Math.abs(renderedRatio - naturalRatio) < 0.02, `${label} logo proportions changed`);
+      assert.ok(Math.abs(header.heading.centerY - header.logo.centerY) <= 1, `${label} heading left the header row`);
+      assert.ok(Math.abs(header.counter.centerY - header.logo.centerY) <= 1, `${label} counter left the header row`);
+    }
   }
   await send("Emulation.clearDeviceMetricsOverride");
 

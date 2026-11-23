@@ -75,14 +75,15 @@ function applyStaticTranslations() {
     button.setAttribute("aria-pressed", selected ? "true" : "false");
   });
   document.querySelector("#languageMenuButton")?.setAttribute("aria-label", t("language.selector.aria_label"));
-  const homeLogo = document.querySelector("#homeLogo");
-  if (homeLogo) {
-    const files = { sr: "Varalica_home.png", hr: "Varalica_home.png", de: "Betrüger_home.png", tr: "Sahtekar_home.png" };
-    const file = files[uiLanguage] || files.hr;
-    homeLogo.src = "/static/assets/" + encodeURIComponent(file) + "?v=20261122_6";
-    homeLogo.alt = t("home.title");
-    homeLogo.classList.toggle("is-varalica", uiLanguage === "sr" || uiLanguage === "hr");
-  }
+  const files = { sr: "Varalica_home.png", hr: "Varalica_home.png", de: "Betrüger_home.png", tr: "Sahtekar_home.png" };
+  const file = files[uiLanguage] || files.hr;
+  [document.querySelector("#homeLogo"), document.querySelector("#playersHeaderLogo")]
+    .filter(Boolean)
+    .forEach((logo) => {
+      logo.src = "/static/assets/" + encodeURIComponent(file) + "?v=20261122_6";
+      logo.alt = logo.id === "homeLogo" ? t("home.title") : "";
+      logo.classList.toggle("is-varalica", uiLanguage === "sr" || uiLanguage === "hr");
+    });
 }
 
 function setUiLanguage(lang, { manual = false } = {}) {
