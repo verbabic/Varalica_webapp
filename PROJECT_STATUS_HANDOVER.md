@@ -209,7 +209,7 @@ _Add new rows here when bugs are found._
 - **Reverse proxy:** openresty/nginx (observed via response headers) — exact config: **needs manual verification**
 - **SSL status:** HTTPS active on production domain — certificate renewal: **needs manual verification**
 - **Docker status:** Not used for confirmed production workflow
-- **Last deploy:** 2026-11-23 — commit `33f6ccd` on `/opt/Varalica_webapp`, service restarted, production verification passed. Previous production commit was `93e9592`.
+- **Last deploy:** 2026-11-23 — health hotfix `dc25afa` on `/opt/Varalica_webapp`. Previous commit was `6ef771d`.
 - **Rollback notes:** Code and the pre-deploy working tree are archived at `/root/varalica-backups/20261123T090951Z`. A Git stash named `pre-33f6ccd tracked local changes` remains on the server. Roll code back from that archive or commit, then restart `varalica`. Do not restore the SQLite backup over the live database unless the live file itself is damaged.
 - **Render:** `render.yaml` in repo only; **not confirmed** as live production host
 
@@ -244,10 +244,11 @@ _Add new rows here when bugs are found._
 - **Summary:** Restored that route in `main.py`. It returns only the status object and does not read the database, environment, or game state. The production stash was inspected read-only and was not applied.
 - **Changed files:** `main.py`, `tests/test_health.py`, `PROJECT_STATUS_HANDOVER.md`.
 - **Tests run:** `py_compile` PASS. Unittest **65/65 OK**, including `tests.test_health`. Temporary `VARALICA_DB_PATH` was used. Local `varalica.sqlite3` remained 53,248 bytes, mtime 2026-11-23T06:00:36Z.
+- **Production backup:** `/root/varalica-backups/20261123T092637Z`. SQLite backup integrity `ok`. The previous server health script was preserved as `tests/vbot360_health_contract.py` and in that backup. The old Git stash was not applied.
 - **Not changed:** gameplay, WebSocket, localization, feedback, catalog, SQLite, production service. No commit, push, deploy, or restart.
-- **Deploy status:** NOT DEPLOYED. Ready for a small controlled deployment of this route.
-- **Manual checks needed:** after deployment, `GET /health` on port 8010 and through the public proxy should return 200 without a service restart loop.
-- **Known issues:** production still returns 404 until this correction is deployed.
+- **Deploy status:** DEPLOYED as commit `dc25afa`. Public `GET /health` returned 200 `{"ok":true}`. The vBot360 monitor classified it `ok`. Service stayed active. SQLite integrity remained `ok` with 0 rooms, 0 used words, and 3 feedback rows.
+- **Manual checks needed:** none for this hotfix.
+- **Known issues:** none for the health route. The verification WebSocket probe closed before authentication and logged one expected disconnect.
 
 ### 2026-11-23 10:13 UTC+1 — Production release deployed
 
