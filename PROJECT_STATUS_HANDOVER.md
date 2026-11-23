@@ -207,8 +207,8 @@ _Add new rows here when bugs are found._
 - **Reverse proxy:** openresty/nginx (observed via response headers) — exact config: **needs manual verification**
 - **SSL status:** HTTPS active on production domain — certificate renewal: **needs manual verification**
 - **Docker status:** Not used for confirmed production workflow
-- **Last deploy:** 2026-11-23 — gameplay QA-fix release `465871b` on `/opt/Varalica_webapp`. Previous production commit was `4db0f53`.
-- **Rollback notes:** The immediate pre-release code, service unit, repository bundle, Git status, and consistent SQLite backup are under `/root/varalica-backups/20261123T102444Z`. The older Git stash named `pre-33f6ccd tracked local changes` remains untouched on the server. Roll code back to `4db0f53` or the archived source, then restart only `varalica`; do not restore the SQLite backup over the live database merely to roll back code.
+- **Last deploy:** 2026-11-23 — Players-header logo release `b438a7b` on `/opt/Varalica_webapp`. Previous production commit was `e0d20b0`.
+- **Rollback notes:** The immediate pre-release code, service unit, repository bundle, Git status, and consistent SQLite backup are under `/root/varalica-backups/20261123T114304Z`. The older Git stash named `pre-33f6ccd tracked local changes` remains untouched on the server. Roll code back to `e0d20b0` or the archived source, then restart only `varalica`; do not restore the SQLite backup over the live database merely to roll back code.
 - **Render:** `render.yaml` in repo only; **not confirmed** as live production host
 
 ---
@@ -234,6 +234,21 @@ _Add new rows here when bugs are found._
 
 ## 11. Changelog
 
+### 2026-11-23 12:44 UTC+1 — Players-header neon logo deployed
+
+- **Tool used:** Cursor
+- **Release:** Commit `b438a7b` (`Add centered multilingual neon logo to players header`) was pushed to GitHub `master` without force-pushing and fast-forwarded on `/opt/Varalica_webapp` from `e0d20b0`.
+- **Preflight and backup:** Production had no tracked modifications. Ten server-only untracked files and the existing `pre-33f6ccd tracked local changes` stash were preserved. Backup `/root/varalica-backups/20261123T114304Z` contains the pre-release source, repository bundle, service unit, Git status, and a transactionally consistent SQLite backup. Backup integrity was `ok`, permissions remained root:root mode 0644, and counts were 1 room, 0 used-word rows, and 3 feedback rows.
+- **Local validation:** Python unittest **76/76 PASS** with temporary SQLite. JavaScript syntax, language/suspicion checks, and the headless-browser regression all passed. The browser regression verified HR/SR/DE/TR at 320, 375, 390, 768, and 1280 CSS px. The local runtime database was excluded from Git and not used by tests; a separately running local server held it open during final validation.
+- **Production service verification:** `varalica.service` restarted once for activation and is active/running with `NRestarts=0`. Public home and `/health` returned HTTP 200; health body was `{"ok":true}` and the vBot360 monitor returned `{"varalica":"ok","detail":"ok"}`. TLS 1.3 remained valid through 19 Feb 2027, and the public WebSocket upgrade returned HTTP 101.
+- **Static and browser verification:** Public HTML serves `styles.css?v=20261123_15` and `i18n.js?v=20261123_5`; both responses exactly matched the deployed files. All three approved PNG assets returned HTTP 200. Client-only production-browser verification used no API writes and passed all 20 language/viewport combinations: HR/SR loaded `Varalica_home.png`, DE loaded `Betrüger_home.png`, and TR loaded `Sahtekar_home.png`; language changes completed with one navigation entry, proving no page reload. Maximum measured logo-center deviation was under 0.006 CSS px, proportions were preserved, and no overlap, clipping, horizontal overflow, or browser error was observed.
+- **Database safety:** The live SQLite file was not replaced or migrated. Final integrity was `ok`; schema and counts remained 1 room, 0 used-word rows, and 3 feedback rows. The backed-up room key remained present, and feedback/used-word rows matched the backup.
+- **What was not changed:** Gameplay, WebSocket protocol, backend, catalog, translations beyond the approved logo mapping, approved image files, environment, dependencies, systemd unit, reverse proxy, database schema/data, server-only files, existing stash, or prior backups. Node.js is not installed in the production runtime and was not added; JavaScript validation was completed locally.
+- **Rollback:** Not required.
+- **Deploy status:** DEPLOYED.
+- **Remaining manual checks:** None required for release acceptance; physical-phone visual confirmation remains optional.
+- **Known issues:** None confirmed for this release.
+
 ### 2026-11-23 12:36 UTC+1 — Centered neon logo in Players header
 
 - **Tool used:** Cursor
@@ -242,8 +257,8 @@ _Add new rows here when bugs are found._
 - **Localization:** SR/HR use `Varalica_home.png`, DE uses `Betrüger_home.png`, and TR uses `Sahtekar_home.png`. The existing interface-language update path now refreshes both the Home logo and the Players-header logo. Cache tokens are `styles.css?v=20261123_15` and `i18n.js?v=20261123_5`.
 - **Tests run:** Full Python unittest suite **76/76 PASS** with temporary SQLite. JavaScript syntax PASS for `app.js`, `i18n.js`, and the browser regression. Existing language and suspicion Node checks PASS. Headless Chrome/Edge regression PASS for HR/SR/DE/TR at 320, 375, 390, 768, and 1280 CSS px, asserting exact center position, one-row vertical alignment, correct asset, loaded image, preserved aspect ratio, visible heading/counter, no overlap/clipping, and no horizontal overflow. `git diff --check` PASS apart from CRLF notices. The real local SQLite SHA-256 remained unchanged.
 - **What was not changed:** Gameplay rules/state, player controls, WebSocket behavior, backend, catalog, approved image assets, translations, Excel files, database, or production configuration.
-- **Deploy status:** NOT DEPLOYED. No commit, push, server access, database change, or production restart occurred.
-- **Manual checks needed:** Optional physical-phone visual confirmation at 320–390 CSS px after a future controlled deployment.
+- **Deploy status:** DEPLOYED as release commit `b438a7b`; see the 12:44 deployment entry above.
+- **Manual checks needed:** Optional physical-phone visual confirmation at 320–390 CSS px.
 - **Known issues:** None confirmed for this header change.
 
 ### 2026-11-23 11:25 UTC+1 — Gameplay QA fixes deployed
