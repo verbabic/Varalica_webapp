@@ -237,6 +237,18 @@ _Add new rows here when bugs are found._
 
 ## 11. Changelog
 
+### 2026-11-23 10:19 UTC+1 — Restore GET /health
+
+- **Tool used:** Cursor
+- **Root cause:** The reviewed release did not include `GET /health`. The previous uncommitted production copy exposed `@app.get("/health")` returning `{"ok": True}`, and the vBot360 monitor expects HTTP 200 with the exact body `{"ok":true}`.
+- **Summary:** Restored that route in `main.py`. It returns only the status object and does not read the database, environment, or game state. The production stash was inspected read-only and was not applied.
+- **Changed files:** `main.py`, `tests/test_health.py`, `PROJECT_STATUS_HANDOVER.md`.
+- **Tests run:** `py_compile` PASS. Unittest **65/65 OK**, including `tests.test_health`. Temporary `VARALICA_DB_PATH` was used. Local `varalica.sqlite3` remained 53,248 bytes, mtime 2026-11-23T06:00:36Z.
+- **Not changed:** gameplay, WebSocket, localization, feedback, catalog, SQLite, production service. No commit, push, deploy, or restart.
+- **Deploy status:** NOT DEPLOYED. Ready for a small controlled deployment of this route.
+- **Manual checks needed:** after deployment, `GET /health` on port 8010 and through the public proxy should return 200 without a service restart loop.
+- **Known issues:** production still returns 404 until this correction is deployed.
+
 ### 2026-11-23 10:13 UTC+1 — Production release deployed
 
 - **Tool used:** Cursor

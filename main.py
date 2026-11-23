@@ -230,6 +230,11 @@ async def index() -> FileResponse:
     return html_page_response()
 
 
+@app.get("/health")
+async def health() -> dict:
+    return {"ok": True}
+
+
 @app.get("/room/{room_code}")
 async def room_page(room_code: str) -> FileResponse:
     return html_page_response()
