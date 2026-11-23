@@ -19,7 +19,10 @@ function load({ saved = null, languages = ["hr"] } = {}) {
       documentElement: {},
       title: "",
       querySelector() {
-        return { setAttribute() {} };
+        return {
+          classList: { toggle() {} },
+          setAttribute() {},
+        };
       },
       querySelectorAll() {
         return [];

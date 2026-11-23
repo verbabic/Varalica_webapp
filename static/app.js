@@ -127,6 +127,7 @@ let shouldReconnectSocket = true;
 let connectionMode = "disconnected";
 let hadSocketDisconnect = false;
 let isExplicitlyLeavingRoom = false;
+let leaveNavigationPromise = null;
 let lastSeenEventId = "";
 let currentTurnId = "";
 let nextPlayerUnlockAt = 0;
@@ -143,6 +144,9 @@ let lastPlayersListPhase = "";
 let lastSuspicionOpen = null;
 let lastRenderedRevealPhase = "";
 let revealCountdownImageReady = false;
+let pendingVoteTargets = new Set();
+let pendingVotePhaseKey = "";
+let lastHostPanelStructureKey = "";
 
 function initLandingSplash() {
   if (!landingSplash) return;
@@ -479,6 +483,7 @@ async function joinRoom() {
 
 function enterRoom(roomCode, playerId, avatar, credential) {
   isExplicitlyLeavingRoom = false;
+  leaveNavigationPromise = null;
   localRoomCode = roomCode;
   localPlayerId = playerId;
   if (credential) {
@@ -852,6 +857,7 @@ function connectSocket() {
       return;
     }
     roomState = incoming;
+    reconcilePendingVoteTargets();
     touchSession();
     handleRoomEvent(roomState.last_event);
     updateTurnLock(roomState);
@@ -1021,11 +1027,13 @@ async function submitFinalVote(targetIds) {
   clearError();
   touchSession();
   const normalizedTargets = Array.isArray(targetIds) ? targetIds : [targetIds];
-  await apiRequest(`/api/rooms/${localRoomCode}/vote`, {
+  const result = await apiRequest(`/api/rooms/${localRoomCode}/vote`, {
     player_id: localPlayerId,
     target_id: normalizedTargets[0] || null,
     target_ids: normalizedTargets,
   });
+  if (result && normalizedTargets.length > 1) clearPendingVoteTargets();
+  return result;
 }
 
 async function sendAssociation() {
@@ -1150,29 +1158,72 @@ async function transferHost(targetId) {
   await apiRequest(`/api/rooms/${localRoomCode}/transfer-host`, { player_id: localPlayerId, target_id: targetId });
 }
 
-async function leaveRoom() {
-  clearError();
-  hideModal(leaveModal);
-  isExplicitlyLeavingRoom = true;
-  shouldReconnectSocket = false;
-  if (localRoomCode && localPlayerId) {
-    await apiRequest(`/api/rooms/${localRoomCode}/leave`, { player_id: localPlayerId });
+async function requestAuthenticatedLeave(roomCode, playerId, credential) {
+  if (!roomCode || !playerId || !credential) return true;
+  try {
+    const response = await fetch(`/api/rooms/${encodeURIComponent(roomCode)}/leave`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${credential}`,
+      },
+      body: JSON.stringify({ player_id: playerId }),
+      keepalive: true,
+    });
+    return response.ok;
+  } catch {
+    return false;
   }
+}
+
+function finishLocalLeaveNavigation() {
   if (socket) socket.close();
-  localStorage.removeItem("varalica_room_code");
-  localStorage.removeItem("varalica_player_id");
-  localStorage.removeItem("varalica_player_credential");
-  localStorage.removeItem("varalica_last_active_at");
+  clearStoredSession();
   sessionStorage.clear();
   localRoomCode = "";
   localPlayerId = "";
   localCredential = "";
   roomState = null;
+  clearPendingVoteTargets();
   lastPlayersListPhase = "";
+  lastHostPanelStructureKey = "";
   roomView.classList.add("hidden");
   setupView.classList.remove("hidden");
+  expiredRoomView.classList.add("hidden");
+  homeButton.classList.remove("hidden");
+  inviteNotice.classList.add("hidden");
+  roomCodeInput.value = "";
+  createRoomButton.classList.remove("hidden");
+  connectionStatus.classList.add("hidden");
+  updateJoinButtons();
   applyRoomPanelCollapse();
   window.history.replaceState({}, "", "/");
+  setConnectionMode("disconnected");
+}
+
+function leaveCurrentRoomAndGoHome() {
+  if (leaveNavigationPromise) return leaveNavigationPromise;
+  const roomCode = localRoomCode;
+  const playerId = localPlayerId;
+  const credential = localCredential;
+  isExplicitlyLeavingRoom = true;
+  shouldReconnectSocket = false;
+  stopHeartbeat();
+  hideModal(leaveModal);
+  clearError();
+  leaveNavigationPromise = (async () => {
+    const leftCleanly = await requestAuthenticatedLeave(roomCode, playerId, credential);
+    finishLocalLeaveNavigation();
+    if (!leftCleanly && roomCode && playerId && credential) {
+      showToast(t("error.server_unreachable"), "error");
+    }
+    return leftCleanly;
+  })();
+  return leaveNavigationPromise;
+}
+
+async function leaveRoom() {
+  return leaveCurrentRoomAndGoHome();
 }
 
 async function startOvertime() {
@@ -1428,30 +1479,10 @@ function showExpiredRoomUI(code) {
   applyRoomPanelCollapse();
 }
 
-function goToHome() {
+async function goToHome() {
   setCinematicRevealActive(false);
-  shouldReconnectSocket = false;
-  stopHeartbeat();
-  if (socket) socket.close();
-  clearStoredSession();
   inviteRoomCode = "";
-  localRoomCode = "";
-  localPlayerId = "";
-  roomState = null;
-
-  expiredRoomView.classList.add("hidden");
-  setupView.classList.remove("hidden");
-  roomView.classList.add("hidden");
-  homeButton.classList.remove("hidden");
-  inviteNotice.classList.add("hidden");
-  roomCodeInput.value = "";
-  createRoomButton.classList.remove("hidden");
-  connectionStatus.classList.add("hidden");
-  clearError();
-  updateJoinButtons();
-  window.history.replaceState({}, "", "/");
-  setConnectionMode("disconnected");
-  applyRoomPanelCollapse();
+  return leaveCurrentRoomAndGoHome();
 }
 
 function handleExpiredRoom() {
@@ -2175,16 +2206,19 @@ function renderHostPanel() {
   const isHost = roomState.viewer_id === roomState.host_id;
   hostPanel.classList.toggle("hidden", !isHost);
   if (!isHost) {
-    hostPanelActions.innerHTML = "";
+    if (hostPanelActions.childElementCount) hostPanelActions.innerHTML = "";
+    lastHostPanelStructureKey = "";
     return;
   }
 
   const roundHasStarted = roomState.state !== "lobby";
   const actions = roundHasStarted ? [`<button id="hostResetRoomButton" class="small replay">${escapeHtml(t("host.reset"))}</button>`] : [];
-  if (roomState.state === "reveal" || (roomState.state === "discussion" && roomState.change_word_available)) {
-    const secondsLeft = roomState.state === "discussion" ? Number(roomState.change_word_seconds_left || 0) : 0;
-    const helper = roomState.state === "discussion" && secondsLeft > 0
-      ? `<p class="helper-text">${escapeHtml(t("host.change_word_left", { seconds: secondsLeft }))}</p>`
+  const showChangeWord = roomState.state === "reveal" || (roomState.state === "discussion" && roomState.change_word_available);
+  const secondsLeft = roomState.state === "discussion" ? Number(roomState.change_word_seconds_left || 0) : 0;
+  const showChangeWordHelper = showChangeWord && roomState.state === "discussion" && secondsLeft > 0;
+  if (showChangeWord) {
+    const helper = showChangeWordHelper
+      ? `<p id="hostChangeWordHelper" class="helper-text">${escapeHtml(t("host.change_word_left", { seconds: secondsLeft }))}</p>`
       : "";
     actions.unshift(`
       <div class="host-helper">
@@ -2212,6 +2246,30 @@ function renderHostPanel() {
     `);
   }
 
+  const structureKey = JSON.stringify({
+    language: currentUiLanguage(),
+    state: roomState.state,
+    roundHasStarted,
+    showChangeWord,
+    showChangeWordHelper,
+    showOpenVoting: Boolean(
+      roomState.state === "discussion"
+      || roomState.state === "ready_for_final_voting"
+      || roomState.state === "overtime" && roomState.overtime?.voting_unlocked
+    ),
+    transferTargets: transferTargets.map((player) => [player.id, player.name, player.avatar]),
+  });
+  if (!forceFullRender && structureKey === lastHostPanelStructureKey) {
+    const helper = document.querySelector("#hostChangeWordHelper");
+    if (helper) helper.textContent = t("host.change_word_left", { seconds: secondsLeft });
+    const openVotingButton = document.querySelector("#hostOpenVotingButton");
+    if (openVotingButton && roomState.state === "discussion") {
+      openVotingButton.disabled = !roomState.discussion?.voting_unlocked;
+    }
+    return;
+  }
+
+  lastHostPanelStructureKey = structureKey;
   hostPanelActions.innerHTML = actions.join("");
   document.querySelector("#hostResetRoomButton")?.addEventListener("click", promptRestartRoom);
   document.querySelector("#hostChangeWordButton")?.addEventListener("click", changeWord);
@@ -2624,7 +2682,47 @@ function spectatorNoticeHtml() {
   `;
 }
 
+function clearPendingVoteTargets() {
+  pendingVoteTargets.clear();
+  pendingVotePhaseKey = "";
+}
+
+function currentVotePhaseKey() {
+  if (!roomState || !["final_voting", "overtime_voting"].includes(roomState.state)) return "";
+  return [
+    roomState.room_code || "",
+    roomState.round_number || 1,
+    roomState.state,
+    roomState.overtime_count || 0,
+    roomState.viewer_id || "",
+  ].join(":");
+}
+
+function reconcilePendingVoteTargets() {
+  const phaseKey = currentVotePhaseKey();
+  const me = roomState?.players?.find((player) => player.id === roomState.viewer_id);
+  const isSpectator = Boolean(roomState?.viewer_is_spectator || (me && !me.is_active_round_player));
+  const requiredTargets = Number(roomState?.required_vote_targets || 1);
+  if (!phaseKey || requiredTargets !== 2 || isSpectator || me?.has_voted) {
+    clearPendingVoteTargets();
+    return;
+  }
+  if (pendingVotePhaseKey && pendingVotePhaseKey !== phaseKey) {
+    pendingVoteTargets.clear();
+  }
+  pendingVotePhaseKey = phaseKey;
+  const validTargets = new Set(
+    roomState.players
+      .filter((player) => player.is_active_round_player && player.id !== roomState.viewer_id)
+      .map((player) => player.id),
+  );
+  pendingVoteTargets = new Set(
+    [...pendingVoteTargets].filter((targetId) => validTargets.has(targetId)).slice(0, requiredTargets),
+  );
+}
+
 function renderFinalVoting() {
+  reconcilePendingVoteTargets();
   const me = roomState.players.find((player) => player.id === roomState.viewer_id);
   const isSpectator = Boolean(roomState.viewer_is_spectator || (me && !me.is_active_round_player));
   const hasVoted = Boolean(me?.has_voted);
@@ -2662,7 +2760,7 @@ function renderFinalVoting() {
         <span>${escapeHtml(t("vote.progress"))}</span>
       </div>
       ${renderVotingChecklist(activeRoundPlayers)}
-      ${requiredTargets === 2 && !hasVoted ? `<p id="voteSelectionCounter" class="helper-text">${escapeHtml(t("vote.selected_count", { selected: 0, required: 2 }))}</p>` : ""}
+      ${requiredTargets === 2 && !hasVoted ? `<p id="voteSelectionCounter" class="helper-text">${escapeHtml(t("vote.selected_count", { selected: pendingVoteTargets.size, required: 2 }))}</p>` : ""}
       <div class="vote-list">
         ${activePlayers
           .map(
@@ -2693,32 +2791,31 @@ function renderFinalVoting() {
     });
   }
   if (!hasVoted && requiredTargets === 2) {
-    const selectedTargets = new Set();
     const counter = document.querySelector("#voteSelectionCounter");
     const submitButton = document.querySelector("#submitMultiVoteButton");
     const updateSelection = () => {
       document.querySelectorAll("[data-select-target-id]").forEach((row) => {
         const targetId = row.dataset.selectTargetId;
-        const selected = selectedTargets.has(targetId);
+        const selected = pendingVoteTargets.has(targetId);
         row.classList.toggle("selected", selected);
         const button = row.querySelector(".vote-button");
         if (button) button.textContent = selected ? t("vote.chosen") : t("vote.select");
       });
-      if (counter) counter.textContent = t("vote.selected_count", { selected: selectedTargets.size, required: 2 });
-      if (submitButton) submitButton.disabled = selectedTargets.size !== 2;
+      if (counter) counter.textContent = t("vote.selected_count", { selected: pendingVoteTargets.size, required: 2 });
+      if (submitButton) submitButton.disabled = pendingVoteTargets.size !== 2;
     };
     document.querySelectorAll(".vote-button").forEach((button) => {
       button.addEventListener("click", () => {
         const targetId = button.dataset.targetId;
-        if (selectedTargets.has(targetId)) {
-          selectedTargets.delete(targetId);
-        } else if (selectedTargets.size < 2) {
-          selectedTargets.add(targetId);
+        if (pendingVoteTargets.has(targetId)) {
+          pendingVoteTargets.delete(targetId);
+        } else if (pendingVoteTargets.size < requiredTargets) {
+          pendingVoteTargets.add(targetId);
         }
         updateSelection();
       });
     });
-    submitButton?.addEventListener("click", () => submitFinalVote([...selectedTargets]));
+    submitButton?.addEventListener("click", () => submitFinalVote([...pendingVoteTargets]));
     updateSelection();
   }
 }
@@ -3235,6 +3332,7 @@ function patchRevealPlayersInPlace() {
     row.classList.toggle("is-spectator", Boolean(player.is_spectator));
     row.classList.toggle("is-current", Boolean(player.is_current && !player.is_spectator));
     syncRevealStatusBadge(row, player);
+    syncPlayerConnectionStatus(row, player);
   });
   return true;
 }
@@ -3258,6 +3356,7 @@ function patchDiscussionPlayersInPlace() {
 
     const nameBlock = row.querySelector(".player-name");
     syncSuspicionControl(row, player);
+    syncPlayerConnectionStatus(row, player);
     let associationEl = row.querySelector(".association-bubble");
     if (player.association) {
       const associationText = player.association.text || "";
@@ -3271,6 +3370,31 @@ function patchDiscussionPlayersInPlace() {
     }
   });
   return true;
+}
+
+const PLAYER_CONNECTION_STATUSES = ["active", "away", "idle", "offline"];
+
+function normalizedPlayerConnectionStatus(player) {
+  return PLAYER_CONNECTION_STATUSES.includes(player?.connection_status) ? player.connection_status : "offline";
+}
+
+function playerConnectionStatusLabel(player) {
+  const keys = {
+    active: "players.active",
+    away: "players.away",
+    idle: "players.idle",
+    offline: "players.offline",
+  };
+  return t(keys[normalizedPlayerConnectionStatus(player)]);
+}
+
+function syncPlayerConnectionStatus(row, player) {
+  const dot = row.querySelector(".status-dot");
+  if (!dot) return;
+  const status = normalizedPlayerConnectionStatus(player);
+  dot.classList.remove(...PLAYER_CONNECTION_STATUSES);
+  dot.classList.add(status);
+  dot.setAttribute("title", playerConnectionStatusLabel(player));
 }
 
 function renderPlayers() {
@@ -3306,13 +3430,8 @@ function renderPlayers() {
     }
 
     const revealStatus = revealStatusForPlayer(player);
-    const connectionLabels = {
-      active: "players.active",
-      away: "players.away",
-      idle: "players.idle",
-      offline: "players.offline",
-    };
-    const connectionStatusLabel = t(connectionLabels[player.connection_status] || "players.offline");
+    const connectionStatus = normalizedPlayerConnectionStatus(player);
+    const connectionStatusLabel = playerConnectionStatusLabel(player);
     const disconnectedLabel = "";
     const connectedLabel = "";
     const isViewerHost = roomState.viewer_id === roomState.host_id;
@@ -3331,7 +3450,7 @@ function renderPlayers() {
 
     row.innerHTML = `
       <div class="player-name">
-        ${suspicionControlHtml(player, connectionStatusLabel, reactionCluster)}
+        ${suspicionControlHtml({ ...player, connection_status: connectionStatus }, connectionStatusLabel, reactionCluster)}
         ${associationBubble}
       </div>
       <div class="player-meta">

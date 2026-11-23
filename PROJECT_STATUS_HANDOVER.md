@@ -62,7 +62,7 @@ Every future **Cursor** or **Codex** session must:
 
 - Automated admin cleanup for stale room snapshots (per README)
 - Bot framework / AI services — not applicable to this project
-- Formal automated test suite (unit/integration/e2e) — **TODO: confirm**
+- A full browser-driven multiplayer suite is not implemented. Python unit/integration coverage and focused local multiplayer/WebSocket tests exist under `tests/`.
 
 ### What is currently deployed
 
@@ -155,7 +155,7 @@ Every future **Cursor** or **Codex** session must:
 |-------|--------|-------------------------|--------|
 | README out of date vs code | Docs misleading for testers | README not updated after Chat/reactions/cache changes | Open — **TODO: confirm** |
 | Old room snapshot cleanup missing | DB growth over time | No admin/cron cleanup (per README) | Known limitation |
-| Manual gameplay regression risk | UX bugs after deploy | No automated E2E tests | Ongoing — manual test after releases |
+| Browser gameplay regression risk | Real multi-device/network behavior can differ from deterministic local tests | Headless browser coverage now exists for voting state, Home leave, presence, host focus, and responsive overflow; physical-device interruption remains manual | Reduced; continue manual release smoke tests |
 
 _Add new rows here when bugs are found._
 
@@ -175,14 +175,16 @@ _Add new rows here when bugs are found._
 
 ### Last tests run
 
-- **2026-11-23:** Python compile, `validate_words.py`, `node --check` for `app.js` and `i18n.js`, and 64 unittest tests. All passed. Local `varalica.sqlite3` stayed 53,248 bytes, mtime 2026-11-23T06:00:36Z. Tests used a temporary `VARALICA_DB_PATH`.
+- **2026-11-23:** Python compile, catalog validation, JavaScript syntax, two existing Node checks, a new real headless-browser regression, and **76 Python unittest tests**. All passed. Tests used isolated temporary SQLite storage. The real local `varalica.sqlite3` SHA-256 remained `806DE0CD0F11E768AD6D1165C2085CA910E151DC18B5868CC6C50705FE38CD55`.
 
 ### What passed
 
 - Python compile for the runtime modules and importer
 - Word validation structure for 1,231 records, including 1,169 active and 62 inactive
 - JavaScript syntax for `static/app.js` and `static/i18n.js`
-- 64 unittest tests, including catalog IDs, localization, rooms, WebSocket authentication, and player limits
+- 76 unittest tests, including catalog IDs/localization, room sizes 4–10, one/two Varalice, multilingual private state, voting/overtime/scoring, consecutive rounds, spectators, kick/auth rejection, reconnection, host departure, WebSocket synchronization, tab-close expiry, exact change-word boundaries, reset, and cleanup
+- Headless Chrome/Edge check against the real frontend: interleaved two-target voting, authenticated/idempotent Home leave and failed-network cleanup, discussion/overtime presence patching, host-select focus preservation, and Chat layout at 320/375/390/768/1280 CSS px
+- Read-only production check: landing page rendered and `GET /health` returned HTTP 200 with `{"ok":true}`; no production room was created
 
 ### What failed
 
@@ -190,12 +192,8 @@ _Add new rows here when bugs are found._
 
 ### What still needs manual testing
 
-- Full multiplayer flow (4+ players): reveal, discussion, Live next-player, Chat Pošalji/auto-next
-- Emoji reactions: Live target, Chat target, sender player-list placement, multi-reaction, 3s expiry
-- Voting, overtime, reveal sequence, Nova runda, Resetuj sobu
-- Cache behavior after deploy: fresh HTML + new `?v=` assets
-- Mobile reconnect / tab close / leave room
-- Production smoke test on `https://varalica.autolovac.space` — **TODO: confirm**
+- Multi-device mobile reconnect/tab-kill timing and reactions
+- Real network interruption during an active round and service restart with a populated room snapshot
 
 ---
 
@@ -217,8 +215,8 @@ _Add new rows here when bugs are found._
 
 ## 9. Cache / Version Notes
 
-- **Frontend cache/version string:** `styles.css?v=20261123_14`, `i18n.js?v=20261123_4`, `app.js?v=20261123_2`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
-- **Last frontend version update:** 2026-11-23 (language-flag cache tokens aligned)
+- **Frontend cache/version string:** `styles.css?v=20261123_14`, `i18n.js?v=20261123_4`, `app.js?v=20261123_3`. Germany and Serbia flags use `?v=20261123_9` in both the header menu and language gate. Turkey uses `?v=20261123_2` and Croatia `?v=20261123_7` in both places. Interface language is stored in `localStorage` key `varalica_ui_language`. Final discussion is 30 seconds. Guest credentials use `varalica_player_credential`.
+- **Last frontend version update:** 2026-11-23 (consolidated gameplay QA fixes)
 - **Browser cache notes:**
   - Static assets: cache-busted via `?v=...` — **bump version on every frontend deploy**
   - HTML (`/`, `/room/{code}`): `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`, `Pragma: no-cache`, `Expires: 0` via `html_page_response()` in `main.py`
@@ -227,15 +225,41 @@ _Add new rows here when bugs are found._
 
 ## 10. Next Recommended Steps
 
-1. Run full manual QA checklist (Live, Chat, reactions, voting, reveal, Nova runda, Resetuj sobu) on local and production.
-2. Bump `?v=` in `static/index.html` whenever `app.js` or `styles.css` changes, then deploy.
-3. Update `README.md` to match current features (Chat mode, reactions, player limits, cache/deploy notes).
-4. Add automated smoke tests or CI (compile + `validate_words.py` + `node --check`) — **TODO: confirm** preference.
-5. Plan/admin tooling for old room snapshot cleanup.
+1. Review the consolidated QA-fix diff, then use the normal controlled commit/deployment workflow when explicitly authorized.
+2. Run a physical multi-device smoke test for mobile tab termination, network loss, reconnect, and reactions.
+3. Update README to match current features and plan stale-snapshot cleanup.
+4. Continue bumping `?v=` in `static/index.html` whenever frontend runtime assets change.
 
 ---
 
 ## 11. Changelog
+
+### 2026-11-23 11:14 UTC+1 — Consolidated gameplay QA fixes
+
+- **Tool used:** Cursor
+- **Changed files:** `main.py`, `static/app.js`, `static/index.html`, `tests/test_gameplay_e2e.py`, `tests/check_gameplay_ui_browser.mjs` (new), `tests/check_ui_language.mjs`, `PROJECT_STATUS_HANDOVER.md`.
+- **Summary:** Pending two-target votes now persist across unrelated WebSocket renders and are reconciled only when their phase/viewer/targets become invalid or submission succeeds. Home and the leave modal now share one idempotent authenticated `/leave` workflow, with safe local cleanup and a user-visible warning on network failure. Discussion, overtime, and reveal in-place player updates now patch authoritative presence classes/titles without rebuilding rows. Host controls use a structural key and patch countdown/disabled state in place, preserving focused select nodes and values on timer broadcasts. `app.js` cache token is now `20261123_3`.
+- **Change-word policy:** Preserved the established rule: change-word is allowed throughout private-card reveal and strictly before 10 seconds of discussion. Boundary testing exposed a real floating-point defect in the old hand-written ceiling calculation at 9.999 seconds; `math.ceil` now returns 1 before the deadline and 0 at/after 10.000 seconds. No new timer or phase rule was introduced.
+- **Automated tests:** Python unittest **76/76 PASS** using temporary SQLite. Python compilation PASS. `validate_words.py` PASS with 1,231 physical records and existing warning-only catalog findings. `node --check` passed for `app.js`, `i18n.js`, and the browser test. Existing language/suspicion Node checks PASS. New dependency-free headless Chrome/Edge test PASS.
+- **Browser regression coverage:** Verified first vote target → unrelated peer render → retained target → second target → valid two-target submission; one authenticated leave request despite repeated Home actions; failed leave request still cleans local state; active/away/idle/offline presence patching in discussion and overtime without row replacement; host select node/focus/value retained while voting state patches; no horizontal overflow for Chat controls at 320, 375, 390, 768, or 1280 CSS px.
+- **Database safety:** Real local `varalica.sqlite3` SHA-256 remained `806DE0CD0F11E768AD6D1165C2085CA910E151DC18B5868CC6C50705FE38CD55` before and after tests.
+- **What was not changed:** Voting majority/overtime/scoring rules, one-Varalica behavior, catalog, translations, Excel, flag artwork, CSS design, SQLite schema/data, production configuration, or unrelated UI. Existing uncommitted/untracked files were preserved.
+- **Deploy status:** NOT DEPLOYED. No commit, push, server access, production room, database change, or service restart.
+- **Manual checks needed:** Physical-device network-loss/tab-kill/reconnect and reaction smoke tests remain recommended before a future deployment.
+- **Known issues / integration recommendation:** The five QA blockers are resolved with automated regression coverage. No remaining blocker from this audit prevents Triborex integration.
+
+### 2026-11-23 10:58 UTC+1 — Complete multiplayer gameplay QA
+
+- **Tool used:** Cursor
+- **Changed files:** `tests/test_gameplay_e2e.py` (new), `tests/check_ui_language.mjs`, `PROJECT_STATUS_HANDOVER.md`.
+- **Summary:** Added 10 isolated multiplayer regression scenarios covering room sizes 4–10, one/two Varalice, HR/SR/DE/TR private content and hints, reveal/confirm/discussion/final voting, two overtime rounds, scoring, consecutive non-repeated words, spectators, kick/auth rejection, invalid votes, synchronized timers, WebSocket state, reconnection, host transfer/departure, tab-close expiry, reset, and empty-room cleanup. Updated the localization Node test's DOM mock with the `classList.toggle` API already used by production code.
+- **Executed tests:** Python unittest **75/75 PASS**; Python compilation PASS; `node --check static/app.js` and `static/i18n.js` PASS; `check_ui_language.mjs` and `check_suspicion_ui.mjs` PASS; `git diff --check` PASS apart from Git's CRLF notices. All state-changing tests used temporary SQLite. The real local database SHA-256 was unchanged.
+- **Browser validation:** At a 390 CSS-pixel local viewport, created an isolated four-player Chat room, advanced it to discussion, and exercised the host next-player control. Association, send, and next-player controls were visible within the viewport; document width equaled viewport width (390 px). Production checks were read-only: German landing UI rendered and `/health` returned 200 `{"ok":true}`.
+- **Verified findings:** Two-Varalica client selections are lost on any voting re-render; Home clears the session without calling `/leave`; discussion/overtime in-place rendering does not refresh presence dots; reveal permits word changes beyond the documented 10 seconds; host controls are rebuilt on each state render. Unreachable legacy code remains after the first return in `results_state_multi`; it is cleanup debt, not an observed runtime failure.
+- **What was not changed:** No gameplay/backend/frontend runtime code, catalog, translations, approved UI, Excel, or SQLite schema/data changed. No production rooms, feedback, service restart, commit, push, or deployment.
+- **Deploy status:** NOT DEPLOYED.
+- **Manual checks needed:** Multi-device browser verification after the listed frontend defects are fixed; real network loss/service-restart recovery remains outside this isolated test.
+- **Known issues / recommendation:** NO-GO for Triborex integration until the two-Varalica selection-loss defect is fixed and regression-tested. Other findings are medium/low priority but should be scheduled before broader integration.
 
 ### 2026-11-23 10:19 UTC+1 — Restore GET /health
 

@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import math
 import random
 import re
 import secrets
@@ -2539,7 +2540,7 @@ def change_word_seconds_left(room: Room) -> int:
         return 0
     elapsed = max(0.0, time.time() - room.discussion_started_at)
     remaining = CHANGE_WORD_GRACE_SECONDS - elapsed
-    return max(0, int(remaining + 0.999))
+    return max(0, math.ceil(remaining))
 
 
 def change_word_allowed(room: Room) -> bool:
